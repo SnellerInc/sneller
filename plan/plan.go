@@ -24,7 +24,6 @@ import (
 	"github.com/SnellerInc/sneller/expr"
 	"github.com/SnellerInc/sneller/ion"
 	"github.com/SnellerInc/sneller/plan/pir"
-	"github.com/SnellerInc/sneller/sorting"
 	"github.com/SnellerInc/sneller/vm"
 )
 
@@ -761,35 +760,36 @@ func (h *HashAggregate) rewrite(rw expr.Rewriter) {
 }
 
 type HashOrder struct {
-	Column    int
-	Desc      bool
-	NullsLast bool
+	Column   int
+	Ordering vm.SortOrdering
 }
 
 func (h *HashAggregate) String() string {
-	s := fmt.Sprintf("HASH AGGREGATE %s ", h.Agg)
+	b := &strings.Builder{}
+
+	fmt.Fprintf(b, "HASH AGGREGATE %s ", h.Agg)
 	if len(h.Windows) > 0 {
-		s += fmt.Sprintf("WINDOWS %s ", h.Windows)
+		fmt.Fprintf(b, "WINDOWS %s ", h.Windows)
 	}
-	s += fmt.Sprintf("GROUP BY %s", h.By)
+	fmt.Fprintf(b, "GROUP BY %s", h.By)
 	if h.OrderBy != nil {
-		s += " ORDER BY "
+		b.WriteString(" ORDER BY ")
 		for i := range h.OrderBy {
 			col := h.OrderBy[i].Column
 			if col < len(h.Agg) {
-				s += h.Agg[col].String()
+				fmt.Fprintf(b, "%s", h.Agg[col].String())
 			} else {
-				s += expr.ToString(&h.By[col-len(h.Agg)])
+				b.WriteString(expr.ToString(&h.By[col-len(h.Agg)]))
 			}
 			if i != len(h.OrderBy)-1 {
-				s += ", "
+				b.WriteString(", ")
 			}
 		}
 	}
 	if h.Limit > 0 {
-		s += fmt.Sprintf(" LIMIT %d", h.Limit)
+		fmt.Fprintf(b, " LIMIT %d", h.Limit)
 	}
-	return s
+	return b.String()
 }
 
 func (h *HashAggregate) encode(dst *ion.Buffer, st *ion.Symtab, rw expr.Rewriter) error {
@@ -809,8 +809,8 @@ func (h *HashAggregate) encode(dst *ion.Buffer, st *ion.Symtab, rw expr.Rewriter
 		for i := range h.OrderBy {
 			dst.BeginList(-1)
 			dst.WriteInt(int64(h.OrderBy[i].Column))
-			dst.WriteBool(h.OrderBy[i].Desc)
-			dst.WriteBool(h.OrderBy[i].NullsLast)
+			dst.WriteBool(h.OrderBy[i].Ordering.Direction == vm.SortDescending)
+			dst.WriteBool(h.OrderBy[i].Ordering.NullsOrder == vm.SortNullsLast)
 			dst.EndList()
 		}
 		dst.EndList()
@@ -851,14 +851,29 @@ func (h *HashAggregate) setfield(d Decoder, f ion.Field) error {
 				return fmt.Errorf("reading \"OrderBy.Column\": %w", err)
 			}
 			o.Column = int(i)
-			o.Desc, err = it.Bool()
+
+			var desc bool
+			desc, err = it.Bool()
 			if err != nil {
 				return fmt.Errorf("reading \"OrderBy.Desc\": %w", err)
 			}
-			o.NullsLast, err = it.Bool()
+			if desc {
+				o.Ordering.Direction = vm.SortDescending
+			} else {
+				o.Ordering.Direction = vm.SortAscending
+			}
+
+			var nullsLast bool
+			nullsLast, err = it.Bool()
 			if err != nil {
 				return fmt.Errorf("reading \"OrderBy.NullsLast\": %w", err)
 			}
+			if nullsLast {
+				o.Ordering.NullsOrder = vm.SortNullsLast
+			} else {
+				o.Ordering.NullsOrder = vm.SortNullsFirst
+			}
+
 			h.OrderBy = append(h.OrderBy, o)
 			return nil
 		})
@@ -878,28 +893,23 @@ func (h *HashAggregate) exec(dst vm.QuerySink, src TableHandle, ep *ExecParams) 
 	}
 	for i := range h.OrderBy {
 		col := h.OrderBy[i].Column
+		ordering := h.OrderBy[i].Ordering
+
 		if col < len(h.Agg) {
-			ha.OrderByAggregate(col, h.OrderBy[i].Desc)
+			ha.OrderByAggregate(col, ordering)
 		} else if col < len(h.Agg)+len(h.By) {
-			ha.OrderByGroup(col-len(h.Agg), h.OrderBy[i].Desc, h.OrderBy[i].NullsLast)
+			ha.OrderByGroup(col-len(h.Agg), ordering)
 		} else {
-			ha.OrderByWindow(col-len(h.Agg)-len(h.By), h.OrderBy[i].Desc, h.OrderBy[i].NullsLast)
+			ha.OrderByWindow(col-len(h.Agg)-len(h.By), ordering)
 		}
 	}
 	return h.From.exec(ha, src, ep)
 }
 
-// OrderByColumn represents a single column and its sorting settings in an ORDER BY clause.
-type OrderByColumn struct {
-	Node      expr.Node
-	Desc      bool
-	NullsLast bool
-}
-
 // OrderBy implements ORDER BY clause (without GROUP BY).
 type OrderBy struct {
 	Nonterminal
-	Columns []OrderByColumn
+	Columns []vm.SortColumn
 	Limit   int
 	Offset  int
 }
@@ -912,34 +922,28 @@ func (o *OrderBy) rewrite(rw expr.Rewriter) {
 }
 
 func (o *OrderBy) String() string {
-	s := "ORDER BY "
+	b := &strings.Builder{}
+
+	b.WriteString("ORDER BY ")
 	for i, column := range o.Columns {
 		if i > 0 {
-			s += ", "
+			b.WriteString(", ")
 		}
 
-		s += expr.ToString(column.Node)
-		if column.Desc {
-			s += " DESC"
-		} else {
-			s += " ASC"
-		}
-		if column.NullsLast {
-			s += " NULLS LAST"
-		} else {
-			s += " NULLS FIRST"
-		}
+		b.WriteString(expr.ToString(column.Node))
+		b.WriteRune(' ')
+		b.WriteString(column.Ordering.String())
 	}
 
 	if o.Limit > 0 {
-		s += fmt.Sprintf(" LIMIT %d", o.Limit)
+		fmt.Fprintf(b, " LIMIT %d", o.Limit)
 	}
 
 	if o.Offset > 0 {
-		s += fmt.Sprintf(" OFFSET %d", o.Offset)
+		fmt.Fprintf(b, " OFFSET %d", o.Offset)
 	}
 
-	return s
+	return b.String()
 }
 
 func (o *OrderBy) exec(dst vm.QuerySink, src TableHandle, ep *ExecParams) error {
@@ -951,18 +955,7 @@ func (o *OrderBy) exec(dst vm.QuerySink, src TableHandle, ep *ExecParams) error 
 	orderBy := make([]vm.SortColumn, len(o.Columns))
 	for i := range orderBy {
 		orderBy[i].Node = ep.rewrite(o.Columns[i].Node)
-
-		if o.Columns[i].Desc {
-			orderBy[i].Direction = sorting.Descending
-		} else {
-			orderBy[i].Direction = sorting.Ascending
-		}
-
-		if o.Columns[i].NullsLast {
-			orderBy[i].Nulls = sorting.NullsLast
-		} else {
-			orderBy[i].Nulls = sorting.NullsFirst
-		}
+		orderBy[i].Ordering = o.Columns[i].Ordering
 	}
 
 	var limit *vm.SortLimit
@@ -1021,8 +1014,8 @@ func (o *OrderBy) encode(dst *ion.Buffer, st *ion.Symtab, rw expr.Rewriter) erro
 	for i := range o.Columns {
 		dst.BeginList(-1)
 		expr.Rewrite(rw, o.Columns[i].Node).Encode(dst, st)
-		dst.WriteBool(o.Columns[i].Desc)
-		dst.WriteBool(o.Columns[i].NullsLast)
+		dst.WriteBool(o.Columns[i].Ordering.Direction == vm.SortDescending)
+		dst.WriteBool(o.Columns[i].Ordering.NullsOrder == vm.SortNullsLast)
 		dst.EndList()
 	}
 	dst.EndList()
@@ -1044,7 +1037,7 @@ func (o *OrderBy) setfield(d Decoder, f ion.Field) error {
 	switch f.Label {
 	case "columns":
 		return f.UnpackList(func(v ion.Datum) error {
-			var col OrderByColumn
+			var col vm.SortColumn
 			var err error
 			i, err := v.Iterator()
 			if err != nil {
@@ -1057,14 +1050,28 @@ func (o *OrderBy) setfield(d Decoder, f ion.Field) error {
 			if err != nil {
 				return err
 			}
-			col.Desc, err = i.Bool()
+			var desc bool
+			desc, err = i.Bool()
 			if err != nil {
 				return err
 			}
-			col.NullsLast, err = i.Bool()
+			if desc {
+				col.Ordering.Direction = vm.SortDescending
+			} else {
+				col.Ordering.Direction = vm.SortAscending
+			}
+
+			var nullsLast bool
+			nullsLast, err = i.Bool()
 			if err != nil {
 				return err
 			}
+			if nullsLast {
+				col.Ordering.NullsOrder = vm.SortNullsLast
+			} else {
+				col.Ordering.NullsOrder = vm.SortNullsFirst
+			}
+
 			o.Columns = append(o.Columns, col)
 			return nil
 		})

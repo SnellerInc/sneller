@@ -12,7 +12,7 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-package sorting
+package vm
 
 import (
 	"bytes"
@@ -31,7 +31,7 @@ type ionTuple struct {
 // > 0 -- greater
 // Returns relation and the index of element if not equal (when the tuples
 // are equal, index is unspecified)
-func compareEquallySizedTuples(t1, t2 ionTuple, directions []Direction, nullsOrder []NullsOrder) (relation int, index int) {
+func compareEquallySizedTuples(t1, t2 ionTuple, directions []SortDirection, nullsOrder []SortNullsOrder) (relation int, index int) {
 	if len(t1.rawFields) != len(t2.rawFields) {
 		panic("trying to compare tuples of different sizes")
 	}
@@ -132,7 +132,7 @@ var typesRelations [256]typesRelation = [256]typesRelation{compareSameType,
 	unsupportedRelation, unsupportedRelation, unsupportedRelation,
 	unsupportedRelation, unsupportedRelation}
 
-func compareEquallySizedTuplesUnsafe(t1, t2 ionTuple, directions []Direction, nullsOrder []NullsOrder) (relation int, index int) {
+func compareEquallySizedTuplesUnsafe(t1, t2 ionTuple, directions []SortDirection, nullsOrder []SortNullsOrder) (relation int, index int) {
 	for i := 0; i < len(t1.rawFields); i++ {
 		rel := compareIonValues(t1.rawFields[i], t2.rawFields[i], directions[i], nullsOrder[i])
 		if rel != 0 {
@@ -143,27 +143,8 @@ func compareEquallySizedTuplesUnsafe(t1, t2 ionTuple, directions []Direction, nu
 	return 0, -1
 }
 
-// Ordering defines an ordering for ion values.
-type Ordering struct {
-	// Nulls determines whether null values
-	// are returned first or last in the ordering.
-	Nulls NullsOrder
-	// Direction determines whether non-null values
-	// are sorted in ascending or descending order
-	// according to PartiQL global comparison semantics.
-	Direction
-}
-
-// Compare compares two ion values according
-// using the Ordering o.
-// Similarly to bytes.Compare, Compare returns
-// -1 if a < b, 0 if a == b, or 1 if a > b
-func (o Ordering) Compare(a, b []byte) int {
-	return int(o.Direction) * compareIonValues(a, b, o.Direction, o.Nulls)
-}
-
 func compareIonValues(raw1, raw2 []byte,
-	direction Direction, nullsOrder NullsOrder) int {
+	direction SortDirection, nullsOrder SortNullsOrder) int {
 
 	type1, l1 := ion.DecodeTLV(raw1[0])
 	type2, l2 := ion.DecodeTLV(raw2[0])
@@ -180,7 +161,7 @@ func compareIonValues(raw1, raw2 []byte,
 		}
 
 		// change direction only if null last xor descending order
-		if (nullsOrder == NullsLast) != (direction == Descending) {
+		if (nullsOrder == SortNullsLast) != (direction == SortDescending) {
 			rel = -rel
 		}
 
@@ -291,7 +272,6 @@ func compareIonValues(raw1, raw2 []byte,
 	case alwaysGreater:
 		return 1
 	case unsupportedRelation:
-		// FIXME: wrong input Ion or types we don't support yet --- panic?
 		return 0
 	}
 

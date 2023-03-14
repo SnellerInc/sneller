@@ -24,7 +24,6 @@ import (
 
 	"github.com/SnellerInc/sneller/expr"
 	"github.com/SnellerInc/sneller/ion"
-	"github.com/SnellerInc/sneller/sorting"
 )
 
 const (
@@ -123,63 +122,58 @@ func (h *HashAggregate) Limit(n int) {
 	h.limit = n
 }
 
-func (h *HashAggregate) groupFn(n int, desc, nullslast bool) aggOrderFn {
-	o := sorting.Ordering{}
-	o.Direction = sorting.Ascending
-	o.Nulls = sorting.NullsFirst
-	if desc {
-		o.Direction = sorting.Descending
-	}
-	if nullslast {
-		o.Nulls = sorting.NullsLast
-	}
+func (h *HashAggregate) groupFn(n int, ordering SortOrdering) aggOrderFn {
 	return func(agt *aggtable, i, j int) int {
 		leftmem := agt.repridx(&agt.pairs[i], n)
 		rightmem := agt.repridx(&agt.pairs[j], n)
-		return o.Compare(leftmem, rightmem)
+		return ordering.Compare(leftmem, rightmem)
 	}
 }
 
-func (h *HashAggregate) aggFn(n int, desc, nullslast bool) aggOrderFn {
+func (h *HashAggregate) aggFn(n int, ordering SortOrdering) aggOrderFn {
 	return func(agt *aggtable, i, j int) int {
 		aggregateFn := h.aggregateOps[n].fn
 		lmem := agt.valueof(&agt.pairs[i])
 		rmem := agt.valueof(&agt.pairs[j])
 		dir := aggcmp(aggregateFn, lmem, rmem)
-		if desc {
+		if ordering.Direction == SortDescending {
 			return -dir
 		}
 		return dir
 	}
 }
 
-func (h *HashAggregate) windowOrder(n int, desc, nullslast bool) aggOrderFn {
+func (h *HashAggregate) windowOrder(n int, ordering SortOrdering) aggOrderFn {
 	return func(agt *aggtable, i, j int) int {
 		return int(h.windows[n].final[i]) - int(h.windows[n].final[j])
 	}
 }
 
-func (h *HashAggregate) OrderByGroup(n int, desc bool, nullslast bool) error {
+func (h *HashAggregate) OrderByGroup(n int, ordering SortOrdering) error {
 	if n < 0 || n >= len(h.by) {
 		return fmt.Errorf("group %d doesn't exist", n)
 	}
-	h.order = append(h.order, h.groupFn(n, desc, nullslast))
+	h.order = append(h.order, h.groupFn(n, ordering))
 	return nil
 }
 
-func (h *HashAggregate) OrderByAggregate(n int, desc bool) error {
+func (h *HashAggregate) OrderByAggregate(n int, ordering SortOrdering) error {
 	if n < 0 || n >= len(h.agg) {
 		return fmt.Errorf("aggregate %d doesn't exist", n)
 	}
-	h.order = append(h.order, h.aggFn(n, desc, false))
+	o := SortOrdering{
+		Direction:  ordering.Direction,
+		NullsOrder: SortNullsFirst,
+	}
+	h.order = append(h.order, h.aggFn(n, o))
 	return nil
 }
 
-func (h *HashAggregate) OrderByWindow(n int, desc, nullslast bool) error {
+func (h *HashAggregate) OrderByWindow(n int, ordering SortOrdering) error {
 	if n < 0 || n >= len(h.windows) {
 		return fmt.Errorf("window %d doesn't exist", n)
 	}
-	h.order = append(h.order, h.windowOrder(n, desc, nullslast))
+	h.order = append(h.order, h.windowOrder(n, ordering))
 	return nil
 }
 

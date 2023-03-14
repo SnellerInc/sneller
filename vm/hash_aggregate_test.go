@@ -118,7 +118,7 @@ func TestHashAggregate(t *testing.T) {
 				t.Fatal(err)
 			}
 			for i := range ordering {
-				err = ha.OrderByAggregate(ordering[i], false)
+				err = ha.OrderByAggregate(ordering[i], defaultSortOrdering)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -215,7 +215,7 @@ func BenchmarkHashAggregate(b *testing.B) {
 				b.Fatal(err)
 			}
 			for i := range ordering {
-				ha.OrderByAggregate(ordering[i], false)
+				ha.OrderByAggregate(ordering[i], defaultSortOrdering)
 			}
 			b.ReportAllocs()
 			b.SetBytes(nycSize)

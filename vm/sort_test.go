@@ -24,13 +24,12 @@ import (
 
 	"github.com/SnellerInc/sneller/expr"
 	"github.com/SnellerInc/sneller/ion"
-	"github.com/SnellerInc/sneller/sorting"
 )
 
 func TestSortSingleColumnAscendingNullsFirst(t *testing.T) {
 	// Note: we don't include the ids of rows, as some keys repeat and
 	// a sorting algorithm may order them randomly
-	expected := []string{
+	expectedAscendingNullsFirst := []string{
 		"null",
 		"null",
 		"null",
@@ -59,13 +58,7 @@ func TestSortSingleColumnAscendingNullsFirst(t *testing.T) {
 		"'the Answer'",
 	}
 
-	testSingleColumnSorting(t, sorting.Ascending, sorting.NullsFirst, expected)
-}
-
-func TestSortSingleColumnAscendingNullsLast(t *testing.T) {
-	// Note: we don't include the ids of rows, as some keys repeat and
-	// a sorting algorithm may order them randomly
-	expected := []string{
+	expectedAscendingNullsLast := []string{
 		"false",
 		"false",
 		"true",
@@ -94,13 +87,7 @@ func TestSortSingleColumnAscendingNullsLast(t *testing.T) {
 		"null",
 	}
 
-	testSingleColumnSorting(t, sorting.Ascending, sorting.NullsLast, expected)
-}
-
-func TestSortSingleColumnDescendingNulls_first(t *testing.T) {
-	// Note: we don't include the ids of rows, as some keys repeat and
-	// a sorting algorithm may order them randomly
-	expected := []string{
+	expectedDescendingNullsFirst := []string{
 		"null",
 		"null",
 		"null",
@@ -129,13 +116,7 @@ func TestSortSingleColumnDescendingNulls_first(t *testing.T) {
 		"false",
 	}
 
-	testSingleColumnSorting(t, sorting.Descending, sorting.NullsFirst, expected)
-}
-
-func TestSortSingleColumnDescendingNullsLast(t *testing.T) {
-	// Note: we don't include the ids of rows, as some keys repeat and
-	// a sorting algorithm may order them randomly
-	expected := []string{
+	expectedDescendingNullsLast := []string{
 		"'the Answer'",
 		"'kitten'",
 		"'elephant'",
@@ -164,19 +145,44 @@ func TestSortSingleColumnDescendingNullsLast(t *testing.T) {
 		"null",
 	}
 
-	testSingleColumnSorting(t, sorting.Descending, sorting.NullsLast, expected)
+	testcases := []struct {
+		expected []string
+		ordering SortOrdering
+	}{
+		{
+			expected: expectedAscendingNullsFirst,
+			ordering: SortOrdering{Direction: SortAscending, NullsOrder: SortNullsFirst},
+		},
+		{
+			expected: expectedAscendingNullsLast,
+			ordering: SortOrdering{Direction: SortAscending, NullsOrder: SortNullsLast},
+		},
+		{
+			expected: expectedDescendingNullsFirst,
+			ordering: SortOrdering{Direction: SortDescending, NullsOrder: SortNullsFirst},
+		},
+		{
+			expected: expectedDescendingNullsLast,
+			ordering: SortOrdering{Direction: SortDescending, NullsOrder: SortNullsLast},
+		},
+	}
+
+	for i := range testcases {
+		tc := &testcases[i]
+		t.Run(fmt.Sprintf("case-%d", i), func(t *testing.T) {
+			testSingleColumnSorting(t, tc.ordering, tc.expected)
+		})
+	}
 }
 
-func testSingleColumnSorting(t *testing.T, direction sorting.Direction, nullsOrder sorting.NullsOrder, expected []string) {
+func testSingleColumnSorting(t *testing.T, ordering SortOrdering, expected []string) {
 	// given
 	input, err := singleColumnTestIon()
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	orderBy := []SortColumn{
-		SortColumn{Node: parsePath("key"), Direction: direction, Nulls: nullsOrder},
-	}
+	orderBy := []SortColumn{SortColumn{Node: parsePath("key"), Ordering: ordering}}
 
 	const parallelism = 1
 
@@ -304,10 +310,10 @@ func singleColumnTestIon() (result []byte, err error) {
 
 func TestSortMultipleColumnsCase1(t *testing.T) {
 	orderBy := []SortColumn{
-		SortColumn{Node: parsePath("name1"), Direction: sorting.Ascending, Nulls: sorting.NullsFirst},
-		SortColumn{Node: parsePath("coef"), Direction: sorting.Ascending, Nulls: sorting.NullsFirst},
-		SortColumn{Node: parsePath("num"), Direction: sorting.Ascending, Nulls: sorting.NullsFirst},
-		SortColumn{Node: parsePath("flag"), Direction: sorting.Ascending, Nulls: sorting.NullsFirst},
+		makeOrdering("name1", SortAscending, SortNullsFirst),
+		makeOrdering("coef", SortAscending, SortNullsFirst),
+		makeOrdering("num", SortAscending, SortNullsFirst),
+		makeOrdering("flag", SortAscending, SortNullsFirst),
 	}
 
 	// note: ORDER BY name, coef, num, flag
@@ -329,8 +335,8 @@ func TestSortMultipleColumnsCase1(t *testing.T) {
 
 func TestSortMultipleColumnsCase2(t *testing.T) {
 	orderBy := []SortColumn{
-		SortColumn{Node: parsePath("coef"), Direction: sorting.Ascending, Nulls: sorting.NullsFirst},
-		SortColumn{Node: parsePath("name1"), Direction: sorting.Descending, Nulls: sorting.NullsFirst},
+		makeOrdering("coef", SortAscending, SortNullsFirst),
+		makeOrdering("name1", SortDescending, SortNullsFirst),
 	}
 
 	// note: ORDER BY coef, name1
@@ -352,9 +358,9 @@ func TestSortMultipleColumnsCase2(t *testing.T) {
 
 func TestSortMultipleColumnsCase3(t *testing.T) {
 	orderBy := []SortColumn{
-		SortColumn{Node: parsePath("num"), Direction: sorting.Descending, Nulls: sorting.NullsFirst},
-		SortColumn{Node: parsePath("flag"), Direction: sorting.Descending, Nulls: sorting.NullsFirst},
-		SortColumn{Node: parsePath("coef"), Direction: sorting.Ascending, Nulls: sorting.NullsFirst},
+		makeOrdering("num", SortDescending, SortNullsFirst),
+		makeOrdering("flag", SortDescending, SortNullsFirst),
+		makeOrdering("coef", SortAscending, SortNullsFirst),
 	}
 
 	// note: ORDER BY num DESC, flag DESC, coef
@@ -377,9 +383,9 @@ func TestSortMultipleColumnsCase3(t *testing.T) {
 func TestSortWithMissingField(t *testing.T) {
 	t.Skip("result not well-defined; usually MISSING does not end up in the final sort")
 	orderBy := []SortColumn{
-		SortColumn{Node: parsePath("unknown"), Direction: sorting.Ascending, Nulls: sorting.NullsFirst},
-		SortColumn{Node: parsePath("coef"), Direction: sorting.Ascending, Nulls: sorting.NullsFirst},
-		SortColumn{Node: parsePath("flag"), Direction: sorting.Ascending, Nulls: sorting.NullsFirst},
+		makeOrdering("unknown", SortAscending, SortNullsFirst),
+		makeOrdering("coef", SortAscending, SortNullsFirst),
+		makeOrdering("flag", SortAscending, SortNullsFirst),
 	}
 
 	// ORDER BY unknown, coef
@@ -473,9 +479,7 @@ func multiColumnTestIon() (result []byte, err error) {
 // --------------------------------------------------
 
 func TestSortWithLimit(t *testing.T) {
-	orderBy := []SortColumn{SortColumn{Node: parsePath("key"),
-		Direction: sorting.Ascending,
-		Nulls:     sorting.NullsFirst}}
+	orderBy := []SortColumn{makeOrdering("key", SortAscending, SortNullsFirst)}
 
 	input, err := limitTestIon(100000)
 	if err != nil {
@@ -672,6 +676,16 @@ func compareIonWithExpectations(t *testing.T, output []byte, expected []string) 
 		}
 		t.Helper()
 		t.Error("Wrongly sorted")
+	}
+}
+
+func makeOrdering(by string, direction SortDirection, nullsOrder SortNullsOrder) SortColumn {
+	return SortColumn{
+		Node: parsePath(by),
+		Ordering: SortOrdering{
+			Direction:  direction,
+			NullsOrder: nullsOrder,
+		},
 	}
 }
 

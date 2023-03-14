@@ -146,18 +146,36 @@ func lowerAggregate(in *pir.Aggregate, from Op) (Op, error) {
 	}, nil
 }
 
+func makeOrdering(node expr.Order) vm.SortOrdering {
+	var ordering vm.SortOrdering
+	if node.Desc {
+		ordering.Direction = vm.SortDescending
+	} else {
+		ordering.Direction = vm.SortAscending
+	}
+
+	if node.NullsLast {
+		ordering.NullsOrder = vm.SortNullsLast
+	} else {
+		ordering.NullsOrder = vm.SortNullsFirst
+	}
+
+	return ordering
+}
+
 func lowerOrder(in *pir.Order, from Op) (Op, error) {
 	if ha, ok := from.(*HashAggregate); ok {
 		// hash aggregates can accept ORDER BY directly
 	outer:
 		for i := range in.Columns {
 			ex := in.Columns[i].Column
+			ordering := makeOrdering(in.Columns[i])
+
 			for col := range ha.Agg {
 				if expr.IsIdentifier(ex, ha.Agg[col].Result) {
 					ha.OrderBy = append(ha.OrderBy, HashOrder{
-						Column:    col,
-						Desc:      in.Columns[i].Desc,
-						NullsLast: in.Columns[i].NullsLast,
+						Column:   col,
+						Ordering: ordering,
 					})
 					continue outer
 				}
@@ -165,9 +183,8 @@ func lowerOrder(in *pir.Order, from Op) (Op, error) {
 			for col := range ha.By {
 				if expr.IsIdentifier(ex, ha.By[col].Result()) {
 					ha.OrderBy = append(ha.OrderBy, HashOrder{
-						Column:    len(ha.Agg) + col,
-						Desc:      in.Columns[i].Desc,
-						NullsLast: in.Columns[i].NullsLast,
+						Column:   len(ha.Agg) + col,
+						Ordering: ordering,
 					})
 					continue outer
 				}
@@ -175,9 +192,8 @@ func lowerOrder(in *pir.Order, from Op) (Op, error) {
 			for col := range ha.Windows {
 				if expr.IsIdentifier(ex, ha.Windows[i].Result) {
 					ha.OrderBy = append(ha.OrderBy, HashOrder{
-						Column:    len(ha.Agg) + len(ha.By) + col,
-						Desc:      in.Columns[i].Desc,
-						NullsLast: in.Columns[i].NullsLast,
+						Column:   len(ha.Agg) + len(ha.By) + col,
+						Ordering: ordering,
 					})
 					continue outer
 				}
@@ -192,7 +208,7 @@ func lowerOrder(in *pir.Order, from Op) (Op, error) {
 
 slowpath:
 	// ordinary Order node
-	columns := make([]OrderByColumn, 0, len(in.Columns))
+	columns := make([]vm.SortColumn, 0, len(in.Columns))
 	for i := range in.Columns {
 		switch in.Columns[i].Column.(type) {
 		case expr.Bool, expr.Integer, *expr.Rational, expr.Float, expr.String:
@@ -200,10 +216,9 @@ slowpath:
 			continue
 		}
 
-		columns = append(columns, OrderByColumn{
-			Node:      in.Columns[i].Column,
-			Desc:      in.Columns[i].Desc,
-			NullsLast: in.Columns[i].NullsLast,
+		columns = append(columns, vm.SortColumn{
+			Node:     in.Columns[i].Column,
+			Ordering: makeOrdering(in.Columns[i]),
 		})
 	}
 

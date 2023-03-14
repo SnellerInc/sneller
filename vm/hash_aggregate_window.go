@@ -25,6 +25,11 @@ type windowFunc interface {
 	reset()
 }
 
+var defaultSortOrdering = SortOrdering{
+	Direction:  SortAscending,
+	NullsOrder: SortNullsFirst,
+}
+
 // set h.agg and h.by to agg and by, respectively,
 // but filter out window functions
 func (h *HashAggregate) compileWindows(windowed Aggregation, by Selection) error {
@@ -40,15 +45,15 @@ func (h *HashAggregate) compileWindows(windowed Aggregation, by Selection) error
 		}
 		return -1, false
 	}
-	pickOrder := func(e expr.Node, desc, nullslast bool) (aggOrderFn, error) {
+	pickOrder := func(e expr.Node, ordering SortOrdering) (aggOrderFn, error) {
 		for i := range h.agg {
 			if e == expr.Ident(h.agg[i].Result) ||
 				h.agg[i].Expr.Equals(e) {
-				return h.aggFn(i, desc, nullslast), nil
+				return h.aggFn(i, ordering), nil
 			}
 		}
 		if grp, ok := pickGroup(e); ok {
-			return h.groupFn(grp, desc, nullslast), nil
+			return h.groupFn(grp, ordering), nil
 		}
 		return nil, fmt.Errorf("unexpected expression %s in window function", expr.ToString(e))
 	}
@@ -64,16 +69,24 @@ func (h *HashAggregate) compileWindows(windowed Aggregation, by Selection) error
 			return fmt.Errorf("no support for window function %s", expr.ToString(windowed[i].Expr))
 		}
 		for j := range wind.PartitionBy {
-			fn, err := pickOrder(wind.PartitionBy[j], false, false)
+			fn, err := pickOrder(wind.PartitionBy[j], defaultSortOrdering)
 			if err != nil {
 				return err
 			}
 			order = append(order, fn)
 		}
 		for j := range wind.OrderBy {
-			desc := wind.OrderBy[j].Desc
-			nullslast := wind.OrderBy[j].NullsLast
-			fn, err := pickOrder(wind.OrderBy[j].Column, desc, nullslast)
+			o := SortOrdering{
+				Direction:  SortAscending,
+				NullsOrder: SortNullsFirst,
+			}
+			if wind.OrderBy[j].Desc {
+				o.Direction = SortDescending
+			}
+			if wind.OrderBy[j].NullsLast {
+				o.NullsOrder = SortNullsLast
+			}
+			fn, err := pickOrder(wind.OrderBy[j].Column, o)
 			if err != nil {
 				return err
 			}

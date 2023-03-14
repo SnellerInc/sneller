@@ -12,7 +12,7 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-package sorting
+package vm
 
 import (
 	"testing"
@@ -340,7 +340,7 @@ func TestIonValueCompare(t *testing.T) {
 
 func testRelations(t *testing.T, testcases []Testcase) {
 	for i, testcase := range testcases {
-		rel := compareIonValues(testcase.raw1, testcase.raw2, Ascending, NullsFirst)
+		rel := compareIonValues(testcase.raw1, testcase.raw2, SortAscending, SortNullsFirst)
 		if rel != testcase.relation {
 			t.Errorf("#%d Comparison of %02x with %02x yielded relation %d, should be %d",
 				i, testcase.raw1, testcase.raw2, rel, testcase.relation)
@@ -363,8 +363,8 @@ func TestTupleCompare(t *testing.T) {
 	type Testcase struct {
 		tuple1     ionTuple
 		tuple2     ionTuple
-		directions []Direction
-		nullsOrder []NullsOrder
+		directions []SortDirection
+		nullsOrder []SortNullsOrder
 		relation   int
 		index      int
 	}
@@ -373,36 +373,36 @@ func TestTupleCompare(t *testing.T) {
 		// ("test", 42, true) = ("test", 42, true)
 		{makeionTuple(ionStrTest, ionPosintVal42, ionTrue),
 			makeionTuple(ionStrTest, ionPosintVal42, ionTrue),
-			[]Direction{Ascending, Ascending, Ascending},
-			[]NullsOrder{NullsFirst, NullsFirst, NullsFirst},
+			[]SortDirection{SortAscending, SortAscending, SortAscending},
+			[]SortNullsOrder{SortNullsFirst, SortNullsFirst, SortNullsFirst},
 			0, -1},
 
 		// ("test", 42, true) > ("test", 42, false)
 		{makeionTuple(ionStrTest, ionPosintVal42, ionTrue),
 			makeionTuple(ionStrTest, ionPosintVal42, ionFalse),
-			[]Direction{Ascending, Ascending, Ascending},
-			[]NullsOrder{NullsFirst, NullsFirst, NullsFirst},
+			[]SortDirection{SortAscending, SortAscending, SortAscending},
+			[]SortNullsOrder{SortNullsFirst, SortNullsFirst, SortNullsFirst},
 			1, 2},
 
 		// ("test", 42, 0.0, true) < ("test", 42, 10.0, true)
 		{makeionTuple(ionStrTest, ionPosintVal42, ionFloatVal0, ionTrue),
 			makeionTuple(ionStrTest, ionPosintVal42, ionFloat32Valp10, ionTrue),
-			[]Direction{Ascending, Ascending, Ascending, Ascending},
-			[]NullsOrder{NullsFirst, NullsFirst, NullsFirst, NullsFirst},
+			[]SortDirection{SortAscending, SortAscending, SortAscending, SortAscending},
+			[]SortNullsOrder{SortNullsFirst, SortNullsFirst, SortNullsFirst, SortNullsFirst},
 			-1, 2},
 
 		// ("test", 42, 0.0, null) > ("test", 42, 0.0, true) [nulls last]
 		{makeionTuple(ionStrTest, ionPosintVal42, ionFloatVal0, ionNull),
 			makeionTuple(ionStrTest, ionPosintVal42, ionFloatVal0, ionTrue),
-			[]Direction{Ascending, Ascending, Ascending, Ascending},
-			[]NullsOrder{NullsFirst, NullsFirst, NullsFirst, NullsLast},
+			[]SortDirection{SortAscending, SortAscending, SortAscending, SortAscending},
+			[]SortNullsOrder{SortNullsFirst, SortNullsFirst, SortNullsFirst, SortNullsLast},
 			1, 3},
 
 		// ("test", 42, 0.0, null) < ("test", 42, 0.0, true) [asc nulls first]
 		{makeionTuple(ionStrTest, ionPosintVal42, ionFloatVal0, ionNull),
 			makeionTuple(ionStrTest, ionPosintVal42, ionFloatVal0, ionFalse),
-			[]Direction{Ascending, Ascending, Ascending, Ascending},
-			[]NullsOrder{NullsFirst, NullsFirst, NullsFirst, NullsFirst},
+			[]SortDirection{SortAscending, SortAscending, SortAscending, SortAscending},
+			[]SortNullsOrder{SortNullsFirst, SortNullsFirst, SortNullsFirst, SortNullsFirst},
 			-1, 3},
 
 		// (0, 42, 123, 0, 42, 123) > (0, 42, 123, 0, 42, 42)
@@ -410,43 +410,43 @@ func TestTupleCompare(t *testing.T) {
 			ionPosintVal0, ionPosintVal42, ionPosintVal123),
 			makeionTuple(ionPosintVal0, ionPosintVal42, ionPosintVal123,
 				ionPosintVal0, ionPosintVal42, ionPosintVal42),
-			[]Direction{Ascending, Ascending, Ascending, Ascending, Ascending, Ascending},
-			[]NullsOrder{NullsFirst, NullsFirst, NullsFirst, NullsFirst, NullsFirst, NullsFirst},
+			[]SortDirection{SortAscending, SortAscending, SortAscending, SortAscending, SortAscending, SortAscending},
+			[]SortNullsOrder{SortNullsFirst, SortNullsFirst, SortNullsFirst, SortNullsFirst, SortNullsFirst, SortNullsFirst},
 			1, 5},
 
 		// (0, 42, "cat", 123) < (0, 42, "test", 123)
 		{makeionTuple(ionPosintVal0, ionPosintVal42, ionStrCat, ionPosintVal123),
 			makeionTuple(ionPosintVal0, ionPosintVal42, ionStrTest, ionPosintVal123),
-			[]Direction{Ascending, Ascending, Ascending, Ascending},
-			[]NullsOrder{NullsFirst, NullsFirst, NullsFirst, NullsFirst},
+			[]SortDirection{SortAscending, SortAscending, SortAscending, SortAscending},
+			[]SortNullsOrder{SortNullsFirst, SortNullsFirst, SortNullsFirst, SortNullsFirst},
 			-1, 2},
 
 		// ("test", 42, 0.0, true) > ("test", 42, 0.0, null) [asc nulls first]
 		{makeionTuple(ionStrTest, ionPosintVal42, ionFloatVal0, ionTrue),
 			makeionTuple(ionStrTest, ionPosintVal42, ionFloatVal0, ionNull),
-			[]Direction{Ascending, Ascending, Ascending, Ascending},
-			[]NullsOrder{NullsFirst, NullsFirst, NullsFirst, NullsFirst},
+			[]SortDirection{SortAscending, SortAscending, SortAscending, SortAscending},
+			[]SortNullsOrder{SortNullsFirst, SortNullsFirst, SortNullsFirst, SortNullsFirst},
 			1, 3},
 
 		// ("test", 42, 0.0, true) < ("test", 42, 0.0, null) [asc nulls last]
 		{makeionTuple(ionStrTest, ionPosintVal42, ionFloatVal0, ionTrue),
 			makeionTuple(ionStrTest, ionPosintVal42, ionFloatVal0, ionNull),
-			[]Direction{Ascending, Ascending, Ascending, Ascending},
-			[]NullsOrder{NullsFirst, NullsFirst, NullsFirst, NullsLast},
+			[]SortDirection{SortAscending, SortAscending, SortAscending, SortAscending},
+			[]SortNullsOrder{SortNullsFirst, SortNullsFirst, SortNullsFirst, SortNullsLast},
 			-1, 3},
 
 		// ("test", 42, 0.0, true) < ("test", 42, 0.0, null) [desc nulls first]
 		{makeionTuple(ionStrTest, ionPosintVal42, ionFloatVal0, ionTrue),
 			makeionTuple(ionStrTest, ionPosintVal42, ionFloatVal0, ionNull),
-			[]Direction{Ascending, Ascending, Ascending, Descending},
-			[]NullsOrder{NullsFirst, NullsFirst, NullsFirst, NullsFirst},
+			[]SortDirection{SortAscending, SortAscending, SortAscending, SortDescending},
+			[]SortNullsOrder{SortNullsFirst, SortNullsFirst, SortNullsFirst, SortNullsFirst},
 			-1, 3},
 
 		// ("test", 42, 0.0, true) > ("test", 42, 0.0, null) [desc nulls last]
 		{makeionTuple(ionStrTest, ionPosintVal42, ionFloatVal0, ionTrue),
 			makeionTuple(ionStrTest, ionPosintVal42, ionFloatVal0, ionNull),
-			[]Direction{Ascending, Ascending, Ascending, Descending},
-			[]NullsOrder{NullsFirst, NullsFirst, NullsFirst, NullsLast},
+			[]SortDirection{SortAscending, SortAscending, SortAscending, SortDescending},
+			[]SortNullsOrder{SortNullsFirst, SortNullsFirst, SortNullsFirst, SortNullsLast},
 			1, 3},
 	}
 

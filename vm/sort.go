@@ -23,15 +23,68 @@ import (
 	"github.com/SnellerInc/sneller/expr"
 	"github.com/SnellerInc/sneller/heap"
 	"github.com/SnellerInc/sneller/ion"
-	"github.com/SnellerInc/sneller/sorting"
 )
+
+// SortDirection selectes ordering of non-null values: ascending or descending.
+type SortDirection int
+
+const (
+	SortAscending  SortDirection = +1
+	SortDescending SortDirection = -1
+)
+
+func (v SortDirection) String() string {
+	switch v {
+	case SortAscending:
+		return "ASC"
+	case SortDescending:
+		return "DESC"
+	default:
+		return fmt.Sprintf("<SortDirection: %d>", int(v))
+	}
+}
+
+// SortNullsOrder selects ordering of null values.
+type SortNullsOrder int
+
+const (
+	SortNullsFirst SortNullsOrder = 0
+	SortNullsLast  SortNullsOrder = 1
+)
+
+func (v SortNullsOrder) String() string {
+	switch v {
+	case SortNullsFirst:
+		return "NULLS FIRST"
+	case SortNullsLast:
+		return "NULLS LAST"
+	default:
+		return fmt.Sprintf("<SortNullsOrder: %d>", int(v))
+	}
+}
+
+// SortOrdering select ordering of null and non-null values
+type SortOrdering struct {
+	Direction  SortDirection
+	NullsOrder SortNullsOrder
+}
+
+func (o SortOrdering) String() string {
+	return o.Direction.String() + " " + o.NullsOrder.String()
+}
+
+// Compare compares two Ion values according to ordering settings.
+// Similarly to bytes.Compare, Compare returns
+// -1 if a < b, 0 if a == b, or 1 if a > b
+func (o SortOrdering) Compare(a, b []byte) int {
+	return int(o.Direction) * compareIonValues(a, b, o.Direction, o.NullsOrder)
+}
 
 // SortColumn represents a single entry in the 'ORDER BY' clause:
 // "column-name [ASC|DESC] [NULLS FIRST|NULLS LAST]"
 type SortColumn struct {
-	Node      expr.Node
-	Direction sorting.Direction
-	Nulls     sorting.NullsOrder
+	Node     expr.Node
+	Ordering SortOrdering
 }
 
 type SortLimit struct {
@@ -109,11 +162,10 @@ func (s *Order) setSymbolTable(st *symtab) error {
 	return nil
 }
 
-func (s *Order) orderList() []sorting.Ordering {
-	orders := make([]sorting.Ordering, len(s.columns))
+func (s *Order) orderList() []SortOrdering {
+	orders := make([]SortOrdering, len(s.columns))
 	for i := range s.columns {
-		orders[i].Direction = s.columns[i].Direction
-		orders[i].Nulls = s.columns[i].Nulls
+		orders[i] = s.columns[i].Ordering
 	}
 	return orders
 }
@@ -413,13 +465,13 @@ func (s *sortstateKtop) maybePrefilter() error {
 
 		// v[i] < recent[i]
 		var less *value
-		switch s.parent.columns[0].Direction {
-		case sorting.Ascending:
+		switch s.parent.columns[0].Ordering.Direction {
+		case SortAscending:
 			less = p.and(validtype, cmplt(v, imm))
-		case sorting.Descending:
+		case SortDescending:
 			less = p.and(validtype, cmplt(imm, v))
 		default:
-			return fmt.Errorf("unrecognized sort direction %d", s.parent.columns[0].Direction)
+			return fmt.Errorf("unrecognized sort direction %d", s.parent.columns[0].Ordering.Direction)
 		}
 
 		// v[i] == recent[i]
@@ -451,10 +503,10 @@ type krecord struct {
 
 // kheap is a heap of ion records
 type kheap struct {
-	heaporder []int              // records[heaporder[...]] is the max-heap ordering
-	records   []krecord          // raw record storage
-	fields    []sorting.Ordering // ordering constraint
-	limit     int                // target size
+	heaporder []int          // records[heaporder[...]] is the max-heap ordering
+	records   []krecord      // raw record storage
+	fields    []SortOrdering // ordering constraint
+	limit     int            // target size
 }
 
 // insert a set of ordering fields into the heap,
