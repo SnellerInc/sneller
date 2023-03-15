@@ -16,6 +16,9 @@ package vm
 
 import (
 	"fmt"
+	"math"
+
+	"golang.org/x/exp/slices"
 )
 
 // stackslot is a relative offset into a virtual stack buffer
@@ -26,34 +29,35 @@ const permanentStackSlot = stackslot(0x0001)
 
 const bcStackAlignment = 64
 
-// Groups registers that have the same size so the allocator can reuse freed
-// registers more efficiently (sharing stack sizes instead of register types)
-type regsizegroup uint8
-
-const (
-	regSizeGroup1xK regsizegroup = iota
-	regSizeGroup2xVec
-	regSizeGroup3xVec
-	regSizeGroup4xVec
-	regSizeGroupCount
-)
-
-var regSizeGroupByRegClass = [...]regsizegroup{
-	regK: regSizeGroup1xK,
-	regS: regSizeGroup2xVec,
-	regV: regSizeGroup3xVec,
-	regB: regSizeGroup2xVec,
-	regH: regSizeGroup4xVec,
-	regL: regSizeGroup2xVec,
+func (r regclass) align() int {
+	switch r {
+	case regK:
+		return 2 // don't bother cache-line-aligning these tiny spills
+	case regV:
+		return 32 // regV is 1.5 cachelines, so let it be 50% mis-aligned
+	default:
+		return bcStackAlignment
+	}
 }
 
-var regSizeByRegClass = [...]uint32{
-	regK: kRegSize,
-	regS: sRegSize,
-	regV: vRegSize,
-	regB: bRegSize,
-	regH: hRegSize,
-	regL: lRegSize,
+// size returns the register size of the register class
+func (r regclass) size() int {
+	switch r {
+	case regK:
+		return kRegSize
+	case regS:
+		return sRegSize
+	case regV:
+		return vRegSize
+	case regB:
+		return bRegSize
+	case regH:
+		return hRegSize
+	case regL:
+		return lRegSize
+	default:
+		panic("undefined reclass.size()")
+	}
 }
 
 // Calculates a stack slot from the given index.
@@ -61,7 +65,7 @@ var regSizeByRegClass = [...]uint32{
 // Can be used to calculate stack slots that will be reserved by a
 // program from an increasing set of indexes that start from zero.
 func stackSlotFromIndex(rc regclass, index int) stackslot {
-	slot := uint(index) * uint(regSizeByRegClass[rc])
+	slot := uint(index) * uint(rc.size())
 
 	// The last slot is invalidstackslot, we have to refuse it
 	// too as it's not a valid slot.
@@ -72,163 +76,28 @@ func stackSlotFromIndex(rc regclass, index int) stackslot {
 	return stackslot(slot)
 }
 
-type reservedslot struct {
-	offset uint32
-	size   uint32
-}
-
-// Used by stackmap to track the allocation of separate stack (low level interface).
-type stackalloc struct {
-	offset        uint32         // offset in a virtual stack where next stack will be allocated
-	reservedIndex int            // index of the first reserved slot in reservedSlots array
-	reservedSlots []reservedslot // sorted array that holds all reserved slots of this stack
-}
-
-// Reserves a slot of the specified size on the stack.
-//
-// This is a special purpose function that was designed to reserve certain areas in the stack that hold
-// data from a previous execution of a different program and then serve as inputs to a next program. It's
-// an error if the reserved slot overlaps another slot, which was either reserved or already allocated.
-func (s *stackalloc) reserveSlot(slot stackslot, size int) {
-	offset := int(slot)
-
-	if offset < int(s.offset) {
-		panic(fmt.Sprintf(
-			"invalid state in stackmap.reserveSlot(): cannot reserve slot %d of size %d, which is before the current offset %d",
-			offset, size, s.offset))
-	}
-
-	for i, reservedSlot := range s.reservedSlots {
-		// Skips slots before `offset`.
-		if int(reservedSlot.offset)+int(reservedSlot.size) <= offset {
-			continue
-		}
-
-		if int(reservedSlot.offset) >= offset+size {
-			// Inserts the required slot into reservedSlots array, keeping it sorted.
-			s.reservedSlots = append(s.reservedSlots[:i+1], s.reservedSlots[i:]...)
-			s.reservedSlots[i] = reservedslot{offset: uint32(offset), size: uint32(size)}
-			return
-		}
-
-		panic(fmt.Sprintf(
-			"invalid state in stackmap.reserveSlot(): cannot reserve slot %d of size %d, which overlaps with slot %d of size %d",
-			offset, size, reservedSlot.offset, reservedSlot.size))
-	}
-
-	// Append to the end if we haven't inserted the slot anywhere in the middle.
-	s.reservedSlots = append(s.reservedSlots, reservedslot{offset: uint32(offset), size: uint32(size)})
-}
-
-// Allocates the requested size on the stack
-func (s *stackalloc) allocSlot(size int) stackslot {
-	// Check whether we have to consider reserved slots. If true, then we have to check whether
-	// the current allocation would not overlap with regions, which were explicitly reserved.
-	slot := invalidstackslot
-
-	if s.reservedIndex < len(s.reservedSlots) {
-		for s.reservedIndex < len(s.reservedSlots) {
-			reservedSlot := s.reservedSlots[s.reservedIndex]
-			if s.offset > reservedSlot.offset {
-				panic(fmt.Sprintf("invalid state in stackalloc.allocSlot(): current offset %d is greater than the closest reserved offset %d", s.offset, reservedSlot.offset))
-			}
-
-			slot = stackslot(s.offset)
-			remainingSpace := int(reservedSlot.offset - s.offset)
-			if remainingSpace > size {
-				// Cannot advance reservedIndex as there will still be space left after
-				// allocating the current slot.
-				s.offset += uint32(size)
-				return slot
-			}
-
-			s.reservedIndex++
-			s.offset = reservedSlot.offset + reservedSlot.size
-			if remainingSpace == size {
-				return slot
-			}
-
-			// Reset, we cannot use it.
-			slot = invalidstackslot
-		}
-	}
-
-	if slot == invalidstackslot {
-		slot = stackslot(s.offset)
-		s.offset += uint32(size)
-	}
-
-	return slot
-}
-
 // stackmap manages a virtual stack. It allows to allocate stack regions either permanently or temporarily.
 // Temporary allocations can be reused by multiple virtual registers that don't live at the same time.
 type stackmap struct {
-	allocator stackalloc                     // low-level stack allocator
-	freeSlots [regSizeGroupCount][]stackslot // a map of unuset slots for each register size group
-	idToSlot  [_maxregclass][]stackslot      // a map that holds allocated value IDs and their stack slots
+	allocator spanalloc                 // low-level stack allocator
+	idToSlot  [_maxregclass][]stackslot // a map that holds allocated value IDs and their stack slot
 }
 
 func (s *stackmap) reserveSlot(rc regclass, slot stackslot) {
-	s.allocator.reserveSlot(slot, int(regSizeByRegClass[rc]))
+	s.allocator.reserve(int(slot), rc.size())
 }
 
 // Allocates a slot of the specified register class
 //
 // NOTE: This does not associate the allocated slot with a value, use allocValue() for that.
 func (s *stackmap) allocSlot(rc regclass) stackslot {
-	regSizeGroup := regSizeGroupByRegClass[rc]
-
-	// Try free slots first.
-	freeSlots := s.freeSlots[regSizeGroup]
-	if len(freeSlots) > 0 {
-		slot := freeSlots[len(freeSlots)-1]
-		s.freeSlots[regSizeGroup] = freeSlots[:len(freeSlots)-1]
-		return slot
-	}
-
-	slotSize := uint32(regSizeByRegClass[rc])
-	if slotSize == 0 {
-		// If you hit this, most likely a new register class was added and tables not updated.
-		panic("invalid state in stackmap.allocSlot(): slot size is zero")
-	}
-
-	// regV uses a bit different logic - since it's not aligned to 64 bytes (only to 32 bytes)
-	// we always allocate a pair of these to prevent misaligning the virtual stack. This means
-	// that one of the two would only be aligned to 32 bytes, but that seems to be just ok (the
-	// rest of virtual registers are still aligned to 64 bytes).
-	if rc == regV {
-		slot1 := s.allocator.allocSlot(int(slotSize))
-		slot2 := s.allocator.allocSlot(int(slotSize))
-		s.freeSlots[regSizeGroup] = append(freeSlots, slot2)
-
-		return slot1
-	}
-
-	// Always allocate regions that keep the stack aligned to the required alignment.
-	alignedSlotSize := (slotSize + bcStackAlignment - 1) & ^uint32(bcStackAlignment-1)
-	slot := s.allocator.allocSlot(int(alignedSlotSize))
-
-	// Keep stack size always aligned to N bytes, because this is the unit that we allocate.
-	// If we just allocated a smaller unit (like mask) then allocate more slots of the same
-	// kind and add them to freeSlots - this way we would reuse the space we just aligned
-	// for more masks, when needed, and kept the data aligned so we can assume uint64 to be
-	// the allocation unit.
-	if slotSize < alignedSlotSize {
-		extraOffset := int(alignedSlotSize) - int(slotSize)
-		for extraOffset >= int(slotSize) {
-			freeSlots = append(freeSlots, slot+stackslot(extraOffset))
-			extraOffset -= int(slotSize)
-		}
-		s.freeSlots[regSizeGroup] = freeSlots
-	}
-	return slot
+	pos := s.allocator.get(rc.size(), rc.align())
+	return stackslot(pos)
 }
 
 // frees an already allocated slot so it can be reused later.
 func (s *stackmap) freeSlot(rc regclass, slot stackslot) {
-	regSizeGroup := regSizeGroupByRegClass[rc]
-	s.freeSlots[regSizeGroup] = append(s.freeSlots[regSizeGroup], slot)
+	s.allocator.drop(int(slot))
 }
 
 func (s *stackmap) assignFreeableSlot(rc regclass, valueID int, slot stackslot) {
@@ -298,13 +167,152 @@ func (s *stackmap) stackSize() int {
 }
 
 func (s *stackmap) stackSizeInUInt64Units() int {
-	offset := s.allocator.offset
-	if len(s.allocator.reservedSlots) > 0 {
-		last := s.allocator.reservedSlots[len(s.allocator.reservedSlots)-1]
-		reservedEnd := last.offset + last.size
-		if offset < reservedEnd {
-			offset = reservedEnd
+	offset := s.allocator.max
+	return int((offset + 7) >> 3)
+}
+
+type span struct {
+	pos, size int
+}
+
+// used for slices.BinarySearchFunc to search for position
+func spancmp(sp span, i int) int {
+	return sp.pos - i
+}
+
+func (s *span) end() int { return s.pos + s.size }
+
+type spanalloc struct {
+	// free and used are ordered by pos
+	free, used []span
+	max        int // max pos+size
+}
+
+func (s *spanalloc) reserve(pos, size int) {
+	if len(s.free) != 0 {
+		panic("spanalloc.reserve not called early enough")
+	}
+	if pos < s.lastused() {
+		panic("spanalloc.reserve called on overlapping slots")
+	}
+	// for now, just reserve space in between
+	// the reserved slots as well:
+	if len(s.used) > 0 && s.used[len(s.used)-1].end() < pos {
+		s.used[len(s.used)-1].size = pos - s.used[len(s.used)-1].pos
+	}
+	s.used = append(s.used, span{pos: pos, size: size})
+	slices.SortFunc(s.used, func(a, b span) bool {
+		return a.pos-b.pos < 0
+	})
+}
+
+func (s *spanalloc) lastused() int {
+	l := len(s.used)
+	if l == 0 {
+		return 0
+	}
+	return s.used[l-1].end()
+}
+
+// get allocates a span of size n with the given alignment
+// and returns its position
+//
+// align must be a power of 2
+func (s *spanalloc) get(n, align int) int {
+	best := -1         // current best fit candidate
+	fit := math.MaxInt // gap bytes for current candidate
+
+	// traverse freelist and pick the free span
+	// with the size closest to the desired size
+	for i := range s.free {
+		size := s.free[i].size
+		pos := s.free[i].pos
+		end := s.free[i].end()
+		alignedpos := (pos + align - 1) &^ (align - 1)
+		if alignedpos+n > end {
+			continue // doesn't fit
+		}
+		gap := size - n
+		if gap < fit {
+			best = i
+			fit = gap
+			if fit == 0 {
+				break // found a perfect fit
+			}
 		}
 	}
-	return int((offset + 7) >> 3)
+	if best == -1 {
+		// allocate after the last chunk
+		pos := s.lastused()
+		alignedpos := (pos + align - 1) &^ (align - 1)
+		if alignedpos-pos > 0 {
+			// create a free span for padding:
+			s.free = append(s.free, span{pos: pos, size: alignedpos - pos})
+		}
+		s.used = append(s.used, span{pos: alignedpos, size: n})
+		if end := alignedpos + n; end > s.max {
+			s.max = end
+		}
+		return alignedpos
+	}
+	pos := s.free[best].pos
+	alignedpos := (pos + align - 1) &^ (align - 1)
+	if pos < alignedpos {
+		// free leading padding
+		s.free = slices.Insert(s.free, best, span{pos: pos, size: alignedpos - pos})
+		best++
+	}
+	end := s.free[best].end()
+	if end > alignedpos+n {
+		// free trailing padding
+		s.free[best].pos = alignedpos + n
+		s.free[best].size = end - (alignedpos + n) // tail gap
+	} else {
+		s.free = slices.Delete(s.free, best, best+1)
+	}
+
+	// create the new used span
+	i, ok := slices.BinarySearchFunc(s.used, alignedpos, spancmp)
+	if ok {
+		panic("duplicate position in used span list")
+	}
+	s.used = slices.Insert(s.used, i, span{pos: alignedpos, size: n})
+	return alignedpos
+}
+
+func (s *spanalloc) drop(pos int) {
+	n, ok := slices.BinarySearchFunc(s.used, pos, spancmp)
+	if !ok {
+		panic(fmt.Sprintf("free of position %v; used slots: %#v", pos, s.used))
+	}
+	width := s.used[n].size
+	s.used = slices.Delete(s.used, n, n+1)
+
+	n, ok = slices.BinarySearchFunc(s.free, pos, spancmp)
+	if ok {
+		panic(fmt.Sprintf("used and free lists both contain pos %v", pos))
+	}
+	l := len(s.free)
+	if n > 0 && s.free[n-1].end() == pos {
+		// extend preceding span forwards instead of inserting a new span:
+		s.free[n-1].size += width
+		// ... and extend through the subsequent span
+		// if it begins immediately following the extended span:
+		if n < l && s.free[n-1].end() == s.free[n].pos {
+			s.free[n-1].size += s.free[n].size
+			s.free = slices.Delete(s.free, n, n+1)
+		}
+	} else if n < l && s.free[n].pos == pos+width {
+		// extend subsequent span backwards instead of inserting a new span:
+		s.free[n].pos = pos
+		s.free[n].size += width
+	} else {
+		// slow path: create a new span
+		s.free = slices.Insert(s.free, n, span{pos: pos, size: width})
+	}
+	// don't bother keeping around free spans
+	// that point past the last-used span
+	if s.free[len(s.free)-1].pos == s.lastused() {
+		s.free = s.free[:len(s.free)-1]
+	}
 }

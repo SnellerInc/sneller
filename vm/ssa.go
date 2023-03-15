@@ -3498,8 +3498,8 @@ func (c *compilestate) emit(v *value, op bcop, args ...any) {
 	}
 }
 
-func (c regclass) String() string {
-	switch c {
+func (r regclass) String() string {
+	switch r {
 	case regK:
 		return "K"
 	case regS:

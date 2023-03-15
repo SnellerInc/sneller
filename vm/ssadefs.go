@@ -1044,8 +1044,8 @@ var _ssainfo = [_ssamax]ssaopinfo{
 	// GEO functions
 	sgeohash:      {text: "geohash", rettype: stStringMasked, argtypes: []ssatype{stFloat, stFloat, stInt, stBool}, bc: opgeohash},
 	sgeohashimm:   {text: "geohash.imm", rettype: stStringMasked, argtypes: []ssatype{stFloat, stFloat, stBool}, immfmt: fmti64, bc: opgeohashimm},
-	sgeotilex:     {text: "geotilex", rettype: stIntMasked, argtypes: []ssatype{stFloat, stInt, stBool}, bc: opgeotilex},
-	sgeotiley:     {text: "geotiley", rettype: stIntMasked, argtypes: []ssatype{stFloat, stInt, stBool}, bc: opgeotiley},
+	sgeotilex:     {text: "geotilex", rettype: stInt, argtypes: []ssatype{stFloat, stInt, stBool}, bc: opgeotilex},
+	sgeotiley:     {text: "geotiley", rettype: stInt, argtypes: []ssatype{stFloat, stInt, stBool}, bc: opgeotiley},
 	sgeotilees:    {text: "geotilees", rettype: stStringMasked, argtypes: []ssatype{stFloat, stFloat, stInt, stBool}, bc: opgeotilees},
 	sgeotileesimm: {text: "geotilees.imm", rettype: stStringMasked, argtypes: []ssatype{stFloat, stFloat, stBool}, immfmt: fmti64, bc: opgeotileesimm},
 	sgeodistance:  {text: "geodistance", rettype: stFloatMasked, argtypes: []ssatype{stFloat, stFloat, stFloat, stFloat, stBool}, bc: opgeodistance},

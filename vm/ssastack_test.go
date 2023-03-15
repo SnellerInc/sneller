@@ -24,14 +24,15 @@ func TestStackMapBasics(t *testing.T) {
 
 	assertStackSlot := func(got, expected stackslot) {
 		if got != expected {
-			t.Errorf("expected slot[%d] to be %d, not %d", n, uint(expected), uint(got))
+			t.Helper()
+			t.Errorf("expected slot to be %d, not %d", uint(expected), uint(got))
 		}
 		n += 1
 	}
 
-	kSize := regSizeByRegClass[regK] // Assumed to be 2 here...
-	vSize := regSizeByRegClass[regV]
-	hSize := regSizeByRegClass[regH]
+	kSize := regK.size() // Assumed to be 2 here...
+	vSize := regV.size()
+	hSize := regH.size()
 
 	// StackMap should allocate slots from 0.
 	assertStackSlot(m.allocSlot(regK), stackslot(0))
@@ -39,8 +40,8 @@ func TestStackMapBasics(t *testing.T) {
 	// When the size of the register is less than 8 (our allocation unit)
 	// it should keep the internal offset aligned so registers that need
 	// more than 8 bytes are aligned to 8 bytes.
-	assertStackSlot(m.allocSlot(regV), stackslot(bcStackAlignment))
-	assertStackSlot(m.allocSlot(regV), stackslot(bcStackAlignment+vRegSize))
+	assertStackSlot(m.allocSlot(regV), stackslot(bcStackAlignment/2))
+	assertStackSlot(m.allocSlot(regV), stackslot(bcStackAlignment/2+vRegSize))
 
 	// StackMap should use the space required for alignment to allocation
 	// unit for the same register group.
@@ -81,7 +82,7 @@ func TestStackMapWithReservedSlotsAtTheBeginning(t *testing.T) {
 		n += 1
 	}
 
-	vSize := regSizeByRegClass[regV]
+	vSize := regV.size()
 
 	// Reserve some slots that cannot be allocated.
 	m.reserveSlot(regV, stackslot(vSize*0))
@@ -101,42 +102,32 @@ func TestStackMapWithReservedSlotInTheMiddle(t *testing.T) {
 
 	assertStackSlot := func(got, expected stackslot) {
 		if got != expected {
+			t.Helper()
 			t.Errorf("expected slot[%d] to be %d, not %d", n, uint(expected), uint(got))
 		}
 		n += 1
 	}
 
-	vSize := regSizeByRegClass[regV]
+	vSize := regV.size()
 
 	// Reserve some slots first.
 	m.reserveSlot(regV, stackslot(vSize))
 	m.reserveSlot(regV, stackslot(vSize*4))
+	start := stackslot(vSize * 5)
 
 	// The first allocated slot should be at the beginning, because there is enough space.
-	assertStackSlot(m.allocSlot(regV), stackslot(0))
+	assertStackSlot(m.allocSlot(regV), start+stackslot(0))
 
 	// The second and third slot should start from vSize*2 (as vSize bytes at vSize were reserved).
-	assertStackSlot(m.allocSlot(regV), stackslot(vSize*2))
-	assertStackSlot(m.allocSlot(regV), stackslot(vSize*3))
+	assertStackSlot(m.allocSlot(regV), start+stackslot(vSize*1))
+	assertStackSlot(m.allocSlot(regV), start+stackslot(vSize*2))
 
 	// All other slots should continue from vSize*4.
-	assertStackSlot(m.allocSlot(regV), stackslot(vSize*5))
-	assertStackSlot(m.allocSlot(regV), stackslot(vSize*6))
-	assertStackSlot(m.allocSlot(regV), stackslot(vSize*7))
-	assertStackSlot(m.allocSlot(regV), stackslot(vSize*8))
-	assertStackSlot(m.allocSlot(regV), stackslot(vSize*9))
-	assertStackSlot(m.allocSlot(regV), stackslot(vSize*10))
-	assertStackSlot(m.allocSlot(regV), stackslot(vSize*11))
-
-	stackSize := m.stackSize()
-	if stackSize != int(vSize*12) {
-		t.Errorf("invalid stack size reported: expected %d, got %d", vSize*12, stackSize)
-	}
-
-	// Stack size must also cover all explicitly reserved regions.
-	m.reserveSlot(regV, stackslot(8192))
-	stackSize = m.stackSize()
-	if stackSize != int(8192+vSize) {
-		t.Errorf("invalid stack size after reservation: expected %d, got %d", 8192+vSize, stackSize)
-	}
+	assertStackSlot(m.allocSlot(regV), start+stackslot(vSize*3))
+	assertStackSlot(m.allocSlot(regV), start+stackslot(vSize*4))
+	assertStackSlot(m.allocSlot(regV), start+stackslot(vSize*5))
+	assertStackSlot(m.allocSlot(regV), start+stackslot(vSize*6))
+	assertStackSlot(m.allocSlot(regV), start+stackslot(vSize*7))
+	assertStackSlot(m.allocSlot(regV), start+stackslot(vSize*8))
+	assertStackSlot(m.allocSlot(regV), start+stackslot(vSize*9))
 }
