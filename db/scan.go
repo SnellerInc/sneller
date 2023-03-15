@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"io/fs"
 	"math"
+	"strings"
 	"time"
 
 	"github.com/SnellerInc/sneller/date"
@@ -221,6 +222,10 @@ func (st *tableState) scan(idx *blockfmt.Index, flushOnComplete bool) (int, erro
 		pat, err = fsutil.ToGlob(pat)
 		if err != nil {
 			return 0, err
+		}
+		if strings.HasSuffix(seek, "/") {
+			st.conf.logf("fixing bad cursor %q", seek)
+			seek = strings.TrimSuffix(seek, "/")
 		}
 		err = fsutil.WalkGlob(walkfs, seek, pat, walk)
 		idx.Cursors[i] = seek
