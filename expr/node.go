@@ -490,7 +490,7 @@ func (a *Aggregate) text(dst *strings.Builder, redact bool) {
 		dst.WriteByte('(')
 		a.Inner.text(dst, redact)
 		if a.Precision > 0 && a.Precision != ApproxCountDistinctDefaultPrecision {
-			dst.WriteString(fmt.Sprintf(", %d", a.Precision))
+			fmt.Fprintf(dst, ", %d", a.Precision)
 		}
 		dst.WriteByte(')')
 
@@ -1917,7 +1917,7 @@ func (c *Comparison) text(dst *strings.Builder, redact bool) {
 	} else {
 		c.Left.text(dst, redact)
 	}
-	dst.WriteString(fmt.Sprintf(" %s ", c.Op))
+	fmt.Fprintf(dst, " %s ", c.Op)
 	if parens {
 		dst.WriteByte('(')
 	}
@@ -2389,7 +2389,7 @@ func (a *Arithmetic) text(dst *strings.Builder, redact bool) {
 	// but it's easier just to do this unconditionally)
 	parens := infix(a.Right)
 	a.Left.text(dst, redact)
-	dst.WriteString(fmt.Sprintf(" %s ", a.Op))
+	fmt.Fprintf(dst, " %s ", a.Op)
 	if parens {
 		dst.WriteByte('(')
 	}
@@ -3786,7 +3786,7 @@ func (u *Union) text(dst *strings.Builder, redact bool) {
 	}
 
 	write(u.Left)
-	dst.WriteString(fmt.Sprintf(" %s ", u.Type))
+	fmt.Fprintf(dst, " %s ", u.Type)
 	write(u.Right)
 }
 

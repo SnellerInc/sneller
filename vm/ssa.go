@@ -1323,7 +1323,7 @@ func (p *prog) trimChar(str *value, chars string, trimtype trimType) *value {
 	}
 	if numberOfChars > 4 {
 		v := p.val()
-		v.errf(fmt.Sprintf("only 4 chars are supported in TrimChar, %v char(s) provided in %v", numberOfChars, chars))
+		v.errf("only 4 chars are supported in TrimChar, %v char(s) provided in %v", numberOfChars, chars)
 		return v
 	}
 	charsByteArray := make([]byte, 4)

@@ -1147,7 +1147,7 @@ func (p Pattern) String() string {
 	sb := strings.Builder{}
 	for i, r := range []rune(p.Needle) {
 		if p.Wildcard[i] {
-			sb.WriteString(fmt.Sprintf("%v%v%v", colorGreen, "█", colorReset))
+			fmt.Fprintf(&sb, "%v%v%v", colorGreen, "█", colorReset)
 		} else {
 			sb.WriteRune(r)
 		}
