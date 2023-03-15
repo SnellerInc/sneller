@@ -52,6 +52,9 @@ type Interface interface {
 	// but they are encouraged to implement
 	// it for arbitrary byte ranges.
 	Reader(start, size int64) (io.ReadCloser, error)
+
+	// Encode encodes the blob into a buffer.
+	Encode(dst *ion.Buffer, st *ion.Symtab)
 }
 
 // Info is a uniform set of
@@ -122,7 +125,7 @@ func (u *URL) client() *http.Client {
 	return u.Client
 }
 
-func (u *URL) encode(be *blobEncoder, dst *ion.Buffer, st *ion.Symtab) {
+func (u *URL) Encode(dst *ion.Buffer, st *ion.Symtab) {
 	dst.BeginStruct(-1)
 	dst.BeginField(st.Intern("type"))
 	dst.WriteSymbol(st.Intern("blob.URL"))
@@ -401,14 +404,14 @@ func (b *blobEncoder) intern(c *Compressed) {
 }
 
 func (b *blobEncoder) encode(i Interface, dst *ion.Buffer, st *ion.Symtab) {
-	type encoder interface {
-		encode(b *blobEncoder, dst *ion.Buffer, st *ion.Symtab)
+	switch c := i.(type) {
+	case *Compressed:
+		c.encode(b, dst, st)
+	case *CompressedPart:
+		c.encode(b, dst, st)
+	default:
+		i.Encode(dst, st)
 	}
-	if e, ok := i.(encoder); ok {
-		e.encode(b, dst, st)
-		return
-	}
-	dst.WriteString(fmt.Sprintf("cannot encode %T", i))
 }
 
 type blobDecoder struct {

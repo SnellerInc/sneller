@@ -106,6 +106,11 @@ func (d *decodeComp) SetField(f ion.Field) error {
 	return err
 }
 
+func (c *Compressed) Encode(dst *ion.Buffer, st *ion.Symtab) {
+	var be blobEncoder
+	c.encode(&be, dst, st)
+}
+
 func (c *Compressed) encode(be *blobEncoder, dst *ion.Buffer, st *ion.Symtab) {
 	dst.BeginStruct(-1)
 	dst.BeginField(st.Intern("type"))
@@ -265,6 +270,11 @@ func (c *CompressedPart) Stat() (*Info, error) {
 	}
 	info.Size = end - start
 	return info, nil
+}
+
+func (c *CompressedPart) Encode(dst *ion.Buffer, st *ion.Symtab) {
+	var be blobEncoder
+	c.encode(&be, dst, st)
 }
 
 func (c *CompressedPart) encode(be *blobEncoder, dst *ion.Buffer, st *ion.Symtab) {
