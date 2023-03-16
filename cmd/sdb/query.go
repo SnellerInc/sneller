@@ -109,6 +109,9 @@ type cmdlineEnv struct {
 }
 
 func (c *cmdlineEnv) Index(e expr.Node) (plan.Index, error) {
+	if b, ok := e.(*expr.Builtin); ok && strings.EqualFold(b.Text, "read_file") {
+		return nil, nil
+	}
 	if ie, ok := c.Env.(plan.Indexer); ok {
 		return ie.Index(e)
 	}
@@ -219,8 +222,6 @@ func query(args []string) bool {
 	}
 
 	sneller.CanVMOpen = true
-	rootfs := root(creds())
-	env := &cmdlineEnv{root: rootfs, Env: tenantEnv(dashtmp, rootfs)}
 	q, err := partiql.Parse(sql)
 	if err != nil {
 		var lexError *partiql.LexerError
@@ -239,6 +240,8 @@ func query(args []string) bool {
 		exitf("%s", err)
 	}
 
+	rootfs := root(creds())
+	env := &cmdlineEnv{root: rootfs, Env: tenantEnv(dashtmp, rootfs)}
 	tree, err := plan.New(q, env)
 	if err != nil {
 		exitf("planning query: %s", err)
