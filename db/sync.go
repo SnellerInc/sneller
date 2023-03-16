@@ -711,8 +711,9 @@ func (st *tableState) updateFailed(ctx context.Context, empty bool, parts []part
 			}
 			path := parts[i].lst[j].Path
 			etag := parts[i].lst[j].ETag
-			st.logf("rejecting object: path %s etag %s", path, etag)
-			_, err := idx.Inputs.Append(path, etag, -1)
+			err := parts[i].lst[j].Err
+			st.logf("rejecting object: path %s etag %s %s", path, etag, err)
+			_, err = idx.Inputs.Append(path, etag, -1)
 			if err != nil {
 				st.logf("blockfmt.FileTree.Append: %s", err)
 				return
