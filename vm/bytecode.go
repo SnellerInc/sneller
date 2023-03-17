@@ -456,11 +456,8 @@ func bcmakeopinfo() [_maxbcop]bcopinfo {
 		opfindsym2: {text: "findsym2", out: r("vk"), in: r("bvkyk")},
 
 		// Blend instructions:
-		opblendv:     {text: "blend.v", out: r("vk"), in: r("vkvk")},
-		opblendk:     {text: "blend.k", out: r("k"), in: r("kkkk")},
-		opblendi64:   {text: "blend.i64", out: r("sk"), in: r("sksk")},
-		opblendf64:   {text: "blend.f64", out: r("sk"), in: r("sksk")},
-		opblendslice: {text: "blend.slice", out: r("sk"), in: r("sksk")},
+		opblendv:   {text: "blend.v", out: r("vk"), in: r("vkvk")},
+		opblendf64: {text: "blend.f64", out: r("sk"), in: r("sksk")},
 
 		// Unboxing instructions:
 		opunboxktoi64:    {text: "unbox.k@i64", out: r("sk"), in: r("vk")},

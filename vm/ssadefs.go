@@ -204,9 +204,7 @@ const (
 
 	// blend ops (just conditional moves)
 	sblendv
-	sblendi64
 	sblendf64
-	sblendslice
 
 	// broadcasts a constant to all lanes
 	sbroadcastf // out = broadcast(float64(imm))
@@ -855,10 +853,8 @@ var _ssainfo = [_ssamax]ssaopinfo{
 	sfloatk:     {text: "floatk", rettype: stFloat, argtypes: []ssatype{stFloat, stBool}, bc: opmovf64},
 	snotmissing: {text: "notmissing", rettype: stBool, argtypes: []ssatype{stBool}, bc: opmovk}, // notmissing exists to coerce st*Masked into stBool
 
-	sblendv:     {text: "blend.v", rettype: stValueMasked, argtypes: []ssatype{stValue, stBool, stValue, stBool}, bc: opblendv, disjunctive: true, safeValueMask: true},
-	sblendi64:   {text: "blend.i64", rettype: stIntMasked, argtypes: []ssatype{stInt, stBool, stInt, stBool}, bc: opblendi64, disjunctive: true},
-	sblendf64:   {text: "blend.f64", rettype: stFloatMasked, argtypes: []ssatype{stFloat, stBool, stFloat, stBool}, bc: opblendf64, disjunctive: true},
-	sblendslice: {text: "blend.slice", rettype: stStringMasked, argtypes: []ssatype{stString, stBool, stString, stBool}, bc: opblendslice, disjunctive: true},
+	sblendv:   {text: "blend.v", rettype: stValueMasked, argtypes: []ssatype{stValue, stBool, stValue, stBool}, bc: opblendv, disjunctive: true, safeValueMask: true},
+	sblendf64: {text: "blend.f64", rettype: stFloatMasked, argtypes: []ssatype{stFloat, stBool, stFloat, stBool}, bc: opblendf64, disjunctive: true},
 
 	sbroadcastf: {text: "broadcast.f", rettype: stFloat, argtypes: []ssatype{}, immfmt: fmtf64, bc: opbroadcastf64},
 	sbroadcasti: {text: "broadcast.i", rettype: stInt, argtypes: []ssatype{}, immfmt: fmti64, bc: opbroadcasti64},

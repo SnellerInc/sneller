@@ -5096,54 +5096,6 @@ TEXT bcblendv(SB), NOSPLIT|NOFRAME, $0
 
   NEXT_ADVANCE(BC_SLOT_SIZE*6)
 
-// k[0].k[1] = blend(k[2].k[3], k[4].k[5])
-//
-// Outputs:
-//   k[0] = (k[2] & ~k[5]) | (k[4] & k[5])
-//   k[1] = k[3] | k[5]
-TEXT bcblendk(SB), NOSPLIT|NOFRAME, $0
-  BC_UNPACK_2xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R8))
-  BC_LOAD_RU16_FROM_SLOT(OUT(BX), IN(BX))   // BX <- k[2]
-  BC_LOAD_RU16_FROM_SLOT(OUT(R8), IN(R8))   // R8 <- k[3]
-
-  BC_UNPACK_2xSLOT(BC_SLOT_SIZE*4, OUT(CX), OUT(R15))
-  BC_LOAD_RU16_FROM_SLOT(OUT(CX), IN(CX))   // CX <- k[4]
-  BC_LOAD_RU16_FROM_SLOT(OUT(R15), IN(R15)) // R15 <- k[5]
-
-  ANDNL BX, R15, BX                         // BX <- k[2] & ~k[5]
-  ANDL R15, CX                              // CX <- k[4] &  k[5]
-
-  ORL R8, R15                               // R8 <- k[4] | k[5]
-  ORL CX, BX                                // BX <- (k[2] & ~k[5]) | (k[4] & k[5])
-
-  BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
-  BC_STORE_RU16_TO_SLOT(IN(BX), IN(DX))
-  BC_STORE_RU16_TO_SLOT(IN(R15), IN(R8))
-
-  NEXT_ADVANCE(BC_SLOT_SIZE*6)
-
-// i64[0].k[1] = blend(i64[2].k[3], i64[4].k[5])
-TEXT bcblendi64(SB), NOSPLIT|NOFRAME, $0
-  BC_UNPACK_2xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(DX))
-  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(DX))
-
-  BC_UNPACK_2xSLOT(BC_SLOT_SIZE*4, OUT(CX), OUT(DX))
-  BC_LOAD_K1_FROM_SLOT(OUT(K2), IN(DX))
-
-  KORW K1, K2, K1
-  KSHIFTRW $8, K2, K3
-  KSHIFTRW $8, K1, K4
-  BC_LOAD_I64_FROM_SLOT_MASKED(OUT(Z2), OUT(Z3), IN(BX), IN(K1), IN(K4))
-
-  BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
-  VMOVDQU64 0(VIRT_VALUES)(CX*1), K2, Z2
-  VMOVDQU64 64(VIRT_VALUES)(CX*1), K3, Z3
-
-  BC_STORE_I64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
-  BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
-
-  NEXT_ADVANCE(BC_SLOT_SIZE*6)
-
 // f64[0].k[1] = blend(f64[2].k[3], f64[4].k[5])
 TEXT bcblendf64(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_2xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R8))
@@ -5162,26 +5114,6 @@ TEXT bcblendf64(SB), NOSPLIT|NOFRAME, $0
   VMOVUPD 64(VIRT_VALUES)(CX*1), K3, Z3
 
   BC_STORE_F64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
-  BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
-
-  NEXT_ADVANCE(BC_SLOT_SIZE*6)
-
-// slice[0].k[1] = blend(slice[2].k[3], slice[4].k[5])
-TEXT bcblendslice(SB), NOSPLIT|NOFRAME, $0
-  BC_UNPACK_2xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(DX))
-  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(DX))
-
-  BC_UNPACK_2xSLOT(BC_SLOT_SIZE*4, OUT(CX), OUT(DX))
-  BC_LOAD_K1_FROM_SLOT(OUT(K2), IN(DX))
-
-  KORW K1, K2, K1
-  BC_LOAD_SLICE_FROM_SLOT_MASKED(OUT(Z2), OUT(Z3), IN(BX), IN(K1))
-
-  BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
-  VMOVDQU32 0(VIRT_VALUES)(CX*1), K2, Z2
-  VMOVDQU32 64(VIRT_VALUES)(CX*1), K2, Z3
-
-  BC_STORE_SLICE_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
   BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
 
   NEXT_ADVANCE(BC_SLOT_SIZE*6)
