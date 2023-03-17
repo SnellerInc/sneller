@@ -257,12 +257,12 @@ func query(args []string) bool {
 			defer f.Close()
 			w = f
 		}
-		var gv vm.TraceType
+		var gv vm.TraceFlags
 		switch dashtracefmt {
 		case "text", "":
-			gv = vm.TraceText
+			gv = vm.TraceSSAText
 		case "graphviz":
-			gv = vm.TraceDot
+			gv = vm.TraceSSADot
 		}
 		vm.Trace(w, gv)
 	}

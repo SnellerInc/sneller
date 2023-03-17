@@ -1036,7 +1036,7 @@ var _ssainfo = [_ssamax]ssaopinfo{
 	stimebucketts:           {text: "timebucket.ts", rettype: stInt, argtypes: []ssatype{stInt, stInt, stBool}, bc: optimebucketts},
 	sboxts:                  {text: "boxts", argtypes: []ssatype{stTime, stBool}, rettype: stValue, bc: opboxts},
 
-	sboxlist:       {text: "boxlist", rettype: stValue, argtypes: []ssatype{stList, stBool}, safeValueMask: true},
+	sboxlist:       {text: "boxlist", rettype: stValue, argtypes: []ssatype{stList, stBool}, bc: opboxlist, safeValueMask: true},
 	smakelist:      {text: "makelist", rettype: stValueMasked, argtypes: []ssatype{stBool}, vaArgs: []ssatype{stValue, stBool}, bc: opmakelist, safeValueMask: true, emit: emitMakeList},
 	smakestruct:    {text: "makestruct", rettype: stValueMasked, argtypes: []ssatype{stBool}, vaArgs: []ssatype{stString, stValue, stBool}, bc: opmakestruct, safeValueMask: true, emit: emitMakeStruct},
 	smakestructkey: {text: "makestructkey", rettype: stString, immfmt: fmtother, emit: emitNone},

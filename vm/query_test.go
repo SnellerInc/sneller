@@ -267,7 +267,7 @@ func TestQueries(t *testing.T) {
 	}
 	vm.Errorf = t.Logf
 	if *traceBytecodeFlag {
-		vm.Trace(os.Stdout, vm.TraceText)
+		vm.Trace(os.Stdout, vm.TraceSSAText)
 	}
 
 	defer func() {

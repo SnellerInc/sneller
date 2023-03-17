@@ -22,10 +22,80 @@ import (
 	"testing"
 	"time"
 
+	"github.com/SnellerInc/sneller/expr"
 	"github.com/SnellerInc/sneller/internal/stringext"
 
-	"github.com/SnellerInc/sneller/expr"
+	"golang.org/x/exp/slices"
 )
+
+func TestArgMatch(t *testing.T) {
+	compat := func(b bcArgType, s ssatype) bool {
+		regs := s.vregs()
+		switch b {
+		case bcK:
+			return regs.contains(regK)
+		case bcS:
+			return regs.contains(regS)
+		case bcV:
+			return regs.contains(regV)
+		case bcL:
+			return regs.contains(regL)
+		case bcH:
+			return regs.contains(regH)
+		case bcB:
+			return regs.contains(regB)
+		default:
+			return false
+		}
+	}
+	removeImm := func(lst []bcArgType) []bcArgType {
+		for i, t := range lst {
+			switch t {
+			case bcB, bcK, bcV, bcH, bcL, bcS:
+				// continue
+			default:
+				return append(slices.Clone(lst[:i]), lst[i+1:]...)
+			}
+		}
+		return lst
+	}
+
+	// for each opcode that uses the default emit function,
+	// check that the argument list and return value(s) match
+	// the associated bytecode instruction
+	for i := range ssainfo {
+		info := &ssainfo[i]
+		if info.emit != nil {
+			continue
+		}
+		args := info.argtypes
+		ret := info.rettype
+
+		bcinfo := &opinfo[info.bc]
+
+		if len(args) > 0 && args[0] == stMem {
+			args = args[1:]
+		}
+		bcargs := bcinfo.in
+		bcret := bcinfo.out
+		if info.immfmt != 0 {
+			bcargs = removeImm(bcargs)
+		}
+		if len(bcargs) != len(args) {
+			t.Fatalf("%s: %v can't match %v", bcinfo.text, bcargs, args)
+		}
+		for i := range bcargs {
+			if !compat(bcargs[i], args[i]) {
+				t.Errorf("%s: bytecode arg %v doesn't match arg %v", bcinfo.text, bcargs[i], args[i])
+			}
+		}
+		for i := range bcret {
+			if !compat(bcret[i], ret) {
+				t.Errorf("%s: bytecode output %v doesn't match ret %v", bcinfo.text, bcret[i], ret)
+			}
+		}
+	}
+}
 
 // CopyRows copies row from src to dst
 // using the provided parallelism hint

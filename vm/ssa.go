@@ -21,7 +21,6 @@ import (
 	"math/bits"
 	"os"
 	"strconv"
-	"strings"
 
 	"golang.org/x/exp/slices"
 	"golang.org/x/sys/cpu"
@@ -37,35 +36,6 @@ import (
 // MaxSymbolID is the largest symbol ID
 // supported by the system.
 const MaxSymbolID = (1 << 21) - 1
-
-// traceOut is the destination for writing VM bytecode while compiling.
-var traceOut io.Writer
-var traceOutDot bool
-
-// tracef formats according to a format specifier and writes to
-// the trace destination
-func tracef(f string, args ...any) {
-	if traceOut != nil {
-		io.WriteString(traceOut, fmt.Sprintf(f, args...))
-	}
-}
-
-type TraceType bool
-
-const (
-	// Traces are printed as assembler listings
-	TraceText TraceType = false
-
-	// Traces are printed in graphviz dot format
-	TraceDot TraceType = true
-)
-
-// Trace enables tracing of all VM bytecode compilation
-// if w is non-nil, or disables tracing if w is nil.
-func Trace(w io.Writer, dot TraceType) {
-	traceOut = w
-	traceOutDot = bool(dot)
-}
 
 type value struct {
 	id   int
@@ -4139,20 +4109,19 @@ func (p *prog) compile(dst *bytecode, st *symtab, callerName string) error {
 		return err
 	}
 
-	if traceOut != nil {
-		sb := strings.Builder{}
-		if traceOutDot {
-			if _, err := p.writeToDot(&sb, callerName); err != nil {
-				return err
-			}
-		} else {
-			sb.WriteString(callerName + ":\n")
-			if _, err := p.writeTo(&sb); err != nil {
-				return err
-			}
-			sb.WriteString("----------------\n")
+	if flags := TraceFlags(tracing.Load()); flags != 0 {
+		if flags&TraceSSADot != 0 {
+			trace(func(w io.Writer) {
+				p.writeToDot(w, callerName)
+			})
 		}
-		tracef(sb.String())
+		if flags&TraceSSAText != 0 {
+			trace(func(w io.Writer) {
+				io.WriteString(w, callerName+":\n")
+				p.writeTo(w)
+				io.WriteString(w, "----------------\n")
+			})
+		}
 	}
 
 	dst.vstacksize = c.stack.stackSize()
@@ -4168,7 +4137,16 @@ func (p *prog) compile(dst *bytecode, st *symtab, callerName string) error {
 	dst.savedlit = c.litbuf
 	dst.scratchtotal = reserve
 	dst.restoreScratch(st) // populate everything
-	return dst.finalize()
+	err := dst.finalize()
+	if err != nil {
+		return err
+	}
+	if enabled(TraceBytecodeText) {
+		trace(func(w io.Writer) {
+			io.WriteString(w, dst.String())
+		})
+	}
+	return nil
 }
 
 func (p *prog) compileinto(c *compilestate) error {

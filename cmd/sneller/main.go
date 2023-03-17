@@ -360,7 +360,7 @@ func do(arg string) {
 	}
 
 	if dashbc {
-		vm.Trace(os.Stderr, vm.TraceType(dashg))
+		vm.Trace(os.Stderr, vm.TraceBytecodeText)
 	}
 
 	var stat plan.ExecStats
