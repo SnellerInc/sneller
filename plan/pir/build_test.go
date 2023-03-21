@@ -183,6 +183,11 @@ func TestBuildError(t *testing.T) {
 			input: `SELECT DISTINCT z, x, AVG(y) AS y FROM table GROUP BY x, AVG(y), z`,
 			rx:    `GROUP BY cannot contain aggregate`,
 		},
+		{
+			// regression test: rewriter returned nil
+			input: `SELECT 1 + (SELECT 1 + (SELECT X) FROM table1) FROM table2`,
+			rx:    `path X references an unbound variable`,
+		},
 	}
 	for i := range tests {
 		in := tests[i].input

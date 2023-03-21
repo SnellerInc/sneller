@@ -580,11 +580,11 @@ func (h *hoistwalk) rewriteScalarArg(e expr.Node) expr.Node {
 	t, err := build(h.parent, s, h.env)
 	if err != nil {
 		h.err = err
-		return nil
+		return e
 	}
 	if cols := len(t.FinalBindings()); cols != 1 {
 		h.err = errorf(s, "cannot coerce sub-query with %d columns into a scalar", cols)
-		return nil
+		return e
 	}
 	switch t.Class() {
 	case SizeZero:
