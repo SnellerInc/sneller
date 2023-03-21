@@ -21,13 +21,13 @@ TEXT bcaggapproxcount(SB), NOSPLIT|NOFRAME, $0
     MOVQ R12, bytecode_spillArea(VIRT_BCPTR)
 
     BC_UNPACK_RU32(0, OUT(R15))
-    BC_UNPACK_SLOT(4, OUT(R8))
+    BC_UNPACK_SLOT(BC_AGGSLOT_SIZE, OUT(R8))
     // unpacked out-of-order due to the R12 clobber:
-    BC_UNPACK_SLOT(4 + BC_SLOT_SIZE + 2, OUT(BX))
+    BC_UNPACK_SLOT(BC_AGGSLOT_SIZE + BC_SLOT_SIZE + 2, OUT(BX))
     BC_LOAD_RU16_FROM_SLOT(OUT(R14), IN(BX)) // BX = valid lanes
 
     ADDQ VIRT_VALUES, R8
-    BC_UNPACK_RU16(4 + BC_SLOT_SIZE, OUT(R12))
+    BC_UNPACK_RU16(BC_AGGSLOT_SIZE + BC_SLOT_SIZE, OUT(R12))
 
     // Note: The virtual hash registers are 128-bit ones, we use the higher 64 bits of each.
     ADDQ    AggregateDataBuffer, R15    // R15 -> aggregate buffer of size 1 << precision bytes
@@ -57,7 +57,7 @@ loop_tail:
 next:
     MOVQ bytecode_spillArea(VIRT_BCPTR), R12
 
-    NEXT_ADVANCE(BC_SLOT_SIZE*2 + 4 + 2)
+    NEXT_ADVANCE(BC_SLOT_SIZE*2 + BC_AGGSLOT_SIZE + 2)
 
 // bcaggapproxcountmerge implements buckets filled by bcaggapproxcount opcode.
 //
@@ -74,12 +74,10 @@ TEXT bcaggapproxcountmerge(SB), NOSPLIT|NOFRAME, $0
 
     // bcAggSlot, bcReadS, bcImmU16, bcPredicate
     BC_UNPACK_RU32(0, OUT(AGG_BUFFER_PTR_ORIG))
-    BC_UNPACK_SLOT_RU16_SLOT(4, OUT(BX), OUT(DX), OUT(R8))
+    BC_UNPACK_SLOT_RU16_SLOT(BC_AGGSLOT_SIZE, OUT(BX), OUT(DX), OUT(R8))
 
     BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
     BC_LOAD_SLICE_FROM_SLOT_MASKED(OUT(Z2), OUT(Z3), IN(BX), IN(K1))
-
-    // BC_UNPACK_RU16(4 + BC_SLOT_SIZE, OUT(R12))
 
     /* BUFFER_SIZE = 1 << precision - the expected size of input buffers */
     XORQ    BUFFER_SIZE, BUFFER_SIZE
@@ -133,7 +131,7 @@ skip:
     JNZ     main_loop
 
 end:
-    NEXT_ADVANCE(BC_SLOT_SIZE*2 + 4 + 2)
+    NEXT_ADVANCE(BC_SLOT_SIZE*2 + BC_AGGSLOT_SIZE + 2)
 
 wrong_input:
     FAIL()
@@ -160,12 +158,12 @@ TEXT bcaggslotapproxcount(SB), NOSPLIT|NOFRAME, $0
     VMOVQ R9, X9
     VMOVQ R12, X12
 
-    BC_UNPACK_SLOT(4 + 2*BC_SLOT_SIZE + 2, OUT(BX))
+    BC_UNPACK_SLOT(BC_AGGSLOT_SIZE + 2*BC_SLOT_SIZE + 2, OUT(BX))
     BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(BX))
 
-    BC_UNPACK_SLOT(4, OUT(DX)) // regL slot
-    BC_UNPACK_SLOT(4 + BC_SLOT_SIZE, OUT(HASHMEM_PTR)) // regH slot
-    BC_UNPACK_RU16(4 + 2*BC_SLOT_SIZE, OUT(BITS_PER_HLL_BUCKET))
+    BC_UNPACK_SLOT(BC_AGGSLOT_SIZE, OUT(DX)) // regL slot
+    BC_UNPACK_SLOT(BC_AGGSLOT_SIZE + BC_SLOT_SIZE, OUT(HASHMEM_PTR)) // regH slot
+    BC_UNPACK_RU16(BC_AGGSLOT_SIZE + 2*BC_SLOT_SIZE, OUT(BITS_PER_HLL_BUCKET))
 
     KTESTW  K1, K1
     JZ      next
@@ -241,7 +239,7 @@ skip:
 next:
     VMOVQ X12, R12
     VMOVQ X9, R9
-    NEXT_ADVANCE(BC_SLOT_SIZE*3 + 4 + 2)
+    NEXT_ADVANCE(BC_SLOT_SIZE*3 + BC_AGGSLOT_SIZE + 2)
 
 // bcaggslotapproxcountmerge implements update of HLL state for
 // aggregates executed in GROUP BY
@@ -258,9 +256,9 @@ TEXT bcaggslotapproxcountmerge(SB), NOSPLIT|NOFRAME, $0
 #define VAL_BUFFER_PTR      DX
 
     // bcL
-    BC_UNPACK_SLOT(4, OUT(DX))
+    BC_UNPACK_SLOT(BC_AGGSLOT_SIZE, OUT(DX))
     // bcReadS, bcImmU16, bcPredicate
-    BC_UNPACK_SLOT_RU16_SLOT(4 + BC_SLOT_SIZE, OUT(BX), OUT(CX), OUT(R8))
+    BC_UNPACK_SLOT_RU16_SLOT(BC_AGGSLOT_SIZE + BC_SLOT_SIZE, OUT(BX), OUT(CX), OUT(R8))
 
     BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
     BC_LOAD_SLICE_FROM_SLOT_MASKED(OUT(Z2), OUT(Z3), IN(BX), IN(K1))
@@ -329,7 +327,7 @@ skip:
 #undef VAL_BUFFER_PTR
 
 next:
-    NEXT_ADVANCE(BC_SLOT_SIZE*3 + 4 + 2)
+    NEXT_ADVANCE(BC_SLOT_SIZE*3 + BC_AGGSLOT_SIZE + 2)
 
 
 #undef AggregateDataBuffer
