@@ -6644,14 +6644,14 @@ TEXT bcaggandk(SB), NOSPLIT|NOFRAME, $0
   BC_LOAD_RU16_FROM_SLOT(OUT(BX), IN(BX))
   BC_LOAD_RU16_FROM_SLOT(OUT(CX), IN(CX))
 
-  ORB CX, 8(R10)(DX*1)                 // Mark this aggregation slot if we have non-null lanes
+  ORB CX, 8(VIRT_AGG_BUFFER)(DX*1)     // Mark this aggregation slot if we have non-null lanes
   ANDL CX, BX                          // BX <- Boolean values in non-null lanes
 
   XORL R8, R8                          // If CX != BX it means that at least one lane is active and that not all BOOLs
   CMPL CX, BX                          // in active lanes are TRUE - this would result in FALSE if not already FALSE.
 
   SETEQ R8
-  ANDB R8, 0(R10)(DX*1)
+  ANDB R8, 0(VIRT_AGG_BUFFER)(DX*1)
 
   NEXT_ADVANCE(BC_SLOT_SIZE*2 + BC_AGGSLOT_SIZE)
 
@@ -6662,13 +6662,13 @@ TEXT bcaggork(SB), NOSPLIT|NOFRAME, $0
   BC_LOAD_RU16_FROM_SLOT(OUT(BX), IN(BX))
   BC_LOAD_RU16_FROM_SLOT(OUT(CX), IN(CX))
 
-  ORB CX, 8(R10)(DX*1)                 // Mark this aggregation slot if we have non-null lanes
+  ORB CX, 8(VIRT_AGG_BUFFER)(DX*1)     // Mark this aggregation slot if we have non-null lanes
 
   XORL R8, R8                          // If CX & BX != 0 it means that at least one lane is active and that not all BOOLs
   ANDL CX, BX                          // in active lanes are FALSE - this would result in TRUE if not already TRUE.
 
   SETNE R8
-  ORB R8, 0(R10)(DX*1)
+  ORB R8, 0(VIRT_AGG_BUFFER)(DX*1)
 
   NEXT_ADVANCE(BC_SLOT_SIZE*2 + BC_AGGSLOT_SIZE)
 
@@ -6705,13 +6705,13 @@ TEXT bcaggsumi(SB), NOSPLIT|NOFRAME, $0
 
   BC_UNPACK_RU32(0, OUT(DX))
   VPSHUFD $SHUFFLE_IMM_4x2b(1, 0, 3, 2), X5, X4
-  VMOVQ 0(R10)(DX*1), X6
+  VMOVQ 0(VIRT_AGG_BUFFER)(DX*1), X6
   VPADDQ X4, X5, X5
 
   POPCNTL R15, R15
   VPADDQ X6, X5, X5
-  ADDQ R15, 8(R10)(DX*1)
-  VMOVQ X5, 0(R10)(DX*1)
+  ADDQ R15, 8(VIRT_AGG_BUFFER)(DX*1)
+  VMOVQ X5, 0(VIRT_AGG_BUFFER)(DX*1)
 
   NEXT_ADVANCE(BC_SLOT_SIZE*2 + BC_AGGSLOT_SIZE)
 
@@ -6734,9 +6734,9 @@ TEXT bcaggminf(SB), NOSPLIT|NOFRAME, $0
   VSHUFPD $1, X5, X5, X4
   VMINSD X4, X5, X5
 
-  VMINSD 0(R10)(DX*1), X5, X5
-  ADDQ R15, 8(R10)(DX*1)
-  VMOVSD X5, 0(R10)(DX*1)
+  VMINSD 0(VIRT_AGG_BUFFER)(DX*1), X5, X5
+  ADDQ R15, 8(VIRT_AGG_BUFFER)(DX*1)
+  VMOVSD X5, 0(VIRT_AGG_BUFFER)(DX*1)
 
   NEXT_ADVANCE(BC_SLOT_SIZE*2 + BC_AGGSLOT_SIZE)
 
@@ -6756,13 +6756,13 @@ TEXT bcaggmini(SB), NOSPLIT|NOFRAME, $0
 
   BC_UNPACK_RU32(0, OUT(DX))
   VPMINSQ X4, X5, X5
-  VMOVQ 0(R10)(DX*1), X6
+  VMOVQ 0(VIRT_AGG_BUFFER)(DX*1), X6
   VPSHUFD $SHUFFLE_IMM_4x2b(1, 0, 3, 2), X5, X4
   VPMINSQ X4, X5, X5
 
   VPMINSQ X6, X5, X5
-  ADDQ R15, 8(R10)(DX*1)
-  VMOVQ X5, 0(R10)(DX*1)
+  ADDQ R15, 8(VIRT_AGG_BUFFER)(DX*1)
+  VMOVQ X5, 0(VIRT_AGG_BUFFER)(DX*1)
 
   NEXT_ADVANCE(BC_SLOT_SIZE*2 + BC_AGGSLOT_SIZE)
 
@@ -6785,9 +6785,9 @@ TEXT bcaggmaxf(SB), NOSPLIT|NOFRAME, $0
   VSHUFPD $1, X5, X5, X4
   VMAXSD X4, X5, X5
 
-  VMAXSD 0(R10)(DX*1), X5, X5
-  ADDQ R15, 8(R10)(DX*1)
-  VMOVSD X5, 0(R10)(DX*1)
+  VMAXSD 0(VIRT_AGG_BUFFER)(DX*1), X5, X5
+  ADDQ R15, 8(VIRT_AGG_BUFFER)(DX*1)
+  VMOVSD X5, 0(VIRT_AGG_BUFFER)(DX*1)
 
   NEXT_ADVANCE(BC_SLOT_SIZE*2 + BC_AGGSLOT_SIZE)
 
@@ -6807,13 +6807,13 @@ TEXT bcaggmaxi(SB), NOSPLIT|NOFRAME, $0
 
   BC_UNPACK_RU32(0, OUT(DX))
   VPMAXSQ X4, X5, X5
-  VMOVQ 0(R10)(DX*1), X6
+  VMOVQ 0(VIRT_AGG_BUFFER)(DX*1), X6
   VPSHUFD $SHUFFLE_IMM_4x2b(1, 0, 3, 2), X5, X4
   VPMAXSQ X4, X5, X5
 
   VPMAXSQ X6, X5, X5
-  ADDQ R15, 8(R10)(DX*1)
-  VMOVQ X5, 0(R10)(DX*1)
+  ADDQ R15, 8(VIRT_AGG_BUFFER)(DX*1)
+  VMOVQ X5, 0(VIRT_AGG_BUFFER)(DX*1)
 
   NEXT_ADVANCE(BC_SLOT_SIZE*2 + BC_AGGSLOT_SIZE)
 
@@ -6833,13 +6833,13 @@ TEXT bcaggandi(SB), NOSPLIT|NOFRAME, $0
 
   BC_UNPACK_RU32(0, OUT(DX))
   VPANDQ X4, X5, X5
-  VMOVQ 0(R10)(DX*1), X6
+  VMOVQ 0(VIRT_AGG_BUFFER)(DX*1), X6
   VPSHUFD $SHUFFLE_IMM_4x2b(1, 0, 3, 2), X5, X4
   VPANDQ X4, X5, X5
 
   VPANDQ X6, X5, X5
-  ADDQ R15, 8(R10)(DX*1)
-  VMOVQ X5, 0(R10)(DX*1)
+  ADDQ R15, 8(VIRT_AGG_BUFFER)(DX*1)
+  VMOVQ X5, 0(VIRT_AGG_BUFFER)(DX*1)
 
   NEXT_ADVANCE(BC_SLOT_SIZE*2 + BC_AGGSLOT_SIZE)
 
@@ -6858,13 +6858,13 @@ TEXT bcaggori(SB), NOSPLIT|NOFRAME, $0
 
   BC_UNPACK_RU32(0, OUT(DX))
   VPORQ X4, X5, X5
-  VMOVQ 0(R10)(DX*1), X6
+  VMOVQ 0(VIRT_AGG_BUFFER)(DX*1), X6
   VPSHUFD $SHUFFLE_IMM_4x2b(1, 0, 3, 2), X5, X4
   VPORQ X4, X5, X5
 
   VPORQ X6, X5, X5
-  ADDQ R15, 8(R10)(DX*1)
-  VMOVQ X5, 0(R10)(DX*1)
+  ADDQ R15, 8(VIRT_AGG_BUFFER)(DX*1)
+  VMOVQ X5, 0(VIRT_AGG_BUFFER)(DX*1)
 
   NEXT_ADVANCE(BC_SLOT_SIZE*2 + BC_AGGSLOT_SIZE)
 
@@ -6883,13 +6883,13 @@ TEXT bcaggxori(SB), NOSPLIT|NOFRAME, $0
 
   BC_UNPACK_RU32(0, OUT(DX))
   VPXORQ X4, X5, X5
-  VMOVQ 0(R10)(DX*1), X6
+  VMOVQ 0(VIRT_AGG_BUFFER)(DX*1), X6
   VPSHUFD $SHUFFLE_IMM_4x2b(1, 0, 3, 2), X5, X4
   VPXORQ X4, X5, X5
 
   VPXORQ X6, X5, X5
-  ADDQ R15, 8(R10)(DX*1)
-  VMOVQ X5, 0(R10)(DX*1)
+  ADDQ R15, 8(VIRT_AGG_BUFFER)(DX*1)
+  VMOVQ X5, 0(VIRT_AGG_BUFFER)(DX*1)
 
   NEXT_ADVANCE(BC_SLOT_SIZE*2 + BC_AGGSLOT_SIZE)
 
@@ -6899,7 +6899,7 @@ TEXT bcaggcount(SB), NOSPLIT|NOFRAME, $0
   BC_LOAD_RU16_FROM_SLOT(OUT(BX), IN(BX))
 
   POPCNTQ BX, BX
-  ADDQ BX, 0(R10)(DX*1)
+  ADDQ BX, 0(VIRT_AGG_BUFFER)(DX*1)
 
   NEXT_ADVANCE(BC_SLOT_SIZE*1 + BC_AGGSLOT_SIZE)
 
@@ -6944,7 +6944,7 @@ TEXT bcaggbucket(SB), NOSPLIT|NOFRAME, $0
   VPXORQ        Z7, Z7, Z7         // Z7 = shift count
 
   // load table[0] into Z8 and copy to Z9
-  MOVQ          radixTree64_index(R10), R15
+  MOVQ          radixTree64_index(VIRT_AGG_BUFFER), R15
   VMOVDQU32     0(R15), Z8         // Z8 = initial indices for (hash&mask)
   VMOVDQA32     Z8, Z9             // Z9 = same
 
@@ -7009,7 +7009,7 @@ loop_tail:
   VPXORD        Z8, Z10, K2, Z8 // ^idx = value index
   VPXORD        Z9, Z10, K3, Z9
 
-  MOVQ          radixTree64_values(R10), R15
+  MOVQ          radixTree64_values(VIRT_AGG_BUFFER), R15
 
   // load and test against hash0
   VEXTRACTI32X8 $1, Z8, Y24            // upper 8 indices
@@ -7047,7 +7047,7 @@ loop_tail:
 next:
   // perform a sanity bounds-check on the returned offsets;
   // each offset should be <= len(tree.values)
-  VPCMPD.BCST   $VPCMP_IMM_GT, radixTree64_values+8(R10), Z13, K1, K4
+  VPCMPD.BCST   $VPCMP_IMM_GT, radixTree64_values+8(VIRT_AGG_BUFFER), Z13, K1, K4
   KTESTW        K4, K4
   JNZ           bad_radix_bucket
   VMOVDQU32     Z13, 0(VIRT_VALUES)(DX*1)
@@ -7082,7 +7082,7 @@ bad_radix_bucket:
   /* Load the aggregation data pointer. */                                    \
   MOVL SlotOffset(VIRT_PCREG), R15                                            \
   ADDQ $const_aggregateTagSize, R15                                           \
-  ADDQ radixTree64_values(R10), R15                                           \
+  ADDQ radixTree64_values(VIRT_AGG_BUFFER), R15                               \
                                                                               \
   /* Mark all values that we are gonna update. */                             \
   VPBROADCASTD CONSTD_1(), Z10                                                \
@@ -7160,7 +7160,7 @@ next:
   /* Load the aggregation data pointer. */                                    \
   MOVL  SlotOffset(VIRT_PCREG), R15                                           \
   ADDQ $const_aggregateTagSize, R15                                           \
-  ADDQ radixTree64_values(R10), R15                                           \
+  ADDQ radixTree64_values(VIRT_AGG_BUFFER), R15                               \
                                                                               \
   /* Gather the first low 8 values, which are safe to gather at this point. */\
   KMOVB K1, K2                                                                \
@@ -7353,7 +7353,7 @@ TEXT bcaggslotcount(SB), NOSPLIT|NOFRAME, $0
 
   // Load the aggregation data pointer and prepare high 8 element offsets.
   MOVL 0(VIRT_PCREG), R15
-  ADDQ radixTree64_values(R10), R15
+  ADDQ radixTree64_values(VIRT_AGG_BUFFER), R15
   VEXTRACTI32X8 $1, Z6, Y7
 
   // Z4/Z5 <- gather all 16 lanes representing the current COUNT.
@@ -7405,7 +7405,7 @@ TEXT bcaggslotcount_v2(SB), NOSPLIT|NOFRAME, $0
 
   // Load the aggregation data pointer and prepare high 8 element offsets.
   MOVL 0(VIRT_PCREG), R15
-  ADDQ radixTree64_values(R10), R15
+  ADDQ radixTree64_values(VIRT_AGG_BUFFER), R15
   VEXTRACTI32X8 $1, Z6, Y7
 
   // Z4/Z5 <- gather all 16 lanes representing the current COUNT.

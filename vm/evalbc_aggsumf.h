@@ -145,7 +145,7 @@ TEXT bcaggslotsumf(SB), NOSPLIT|NOFRAME, $0
   // Load the aggregation data pointer.
   BC_UNPACK_RU32(0, OUT(R15))
   ADDQ $const_aggregateTagSize, R15
-  ADDQ radixTree64_values(R10), R15
+  ADDQ radixTree64_values(VIRT_AGG_BUFFER), R15
 
   /* Load constants */
   BC_FILL_ONES(Z6)                              // = 0xffffff

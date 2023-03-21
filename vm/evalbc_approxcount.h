@@ -14,9 +14,6 @@
 
 // This file contains the implementation of APPROX_COUNT_DISTINCT opcode
 
-// See evalaggregate_amd64.s
-#define AggregateDataBuffer R10
-
 TEXT bcaggapproxcount(SB), NOSPLIT|NOFRAME, $0
     MOVQ R12, bytecode_spillArea(VIRT_BCPTR)
 
@@ -30,7 +27,7 @@ TEXT bcaggapproxcount(SB), NOSPLIT|NOFRAME, $0
     BC_UNPACK_RU16(BC_AGGSLOT_SIZE + BC_SLOT_SIZE, OUT(R12))
 
     // Note: The virtual hash registers are 128-bit ones, we use the higher 64 bits of each.
-    ADDQ    AggregateDataBuffer, R15    // R15 -> aggregate buffer of size 1 << precision bytes
+    ADDQ    VIRT_AGG_BUFFER, R15        // R15 -> aggregate buffer of size 1 << precision bytes
     MOVQ    $64, R13
     SUBQ    R12, R13                    // R13 = 64 - R12 - hash bits
 
@@ -98,7 +95,7 @@ TEXT bcaggapproxcountmerge(SB), NOSPLIT|NOFRAME, $0
     VMOVDQU32   Z2, (VAL_OFFSETS)
 
     /* Aggregate buffer pointer */
-    ADDQ    AggregateDataBuffer, AGG_BUFFER_PTR_ORIG
+    ADDQ    VIRT_AGG_BUFFER, AGG_BUFFER_PTR_ORIG
 
     KMOVW   K1, ACTIVE_MASK
 
@@ -193,7 +190,7 @@ iter_rows:
     MOVL    (BYTEBUCKET_PTR), AGG_BUFFER_PTR
     ADDQ    DX, AGG_BUFFER_PTR
     ADDQ    $const_aggregateTagSize, AGG_BUFFER_PTR
-    ADDQ    radixTree64_values(R10), AGG_BUFFER_PTR
+    ADDQ    radixTree64_values(VIRT_AGG_BUFFER), AGG_BUFFER_PTR
 
     // Calculate HLL hash and its bucket ID
     // HLL_HASH is lower BITS_PER_HLL_HASH of 64 higher bits of the 128-bit hash
@@ -271,7 +268,7 @@ TEXT bcaggslotapproxcountmerge(SB), NOSPLIT|NOFRAME, $0
 
     BC_UNPACK_RU32(0, OUT(BX))
     ADDQ $const_aggregateTagSize, BX
-    ADDQ radixTree64_values(R10), BX
+    ADDQ radixTree64_values(VIRT_AGG_BUFFER), BX
     MOVQ BX, AGG_BUFFER_PTR_ORIG
 
     // Get parameters for the HLL algorithm
@@ -328,6 +325,3 @@ skip:
 
 next:
     NEXT_ADVANCE(BC_SLOT_SIZE*3 + BC_AGGSLOT_SIZE + 2)
-
-
-#undef AggregateDataBuffer

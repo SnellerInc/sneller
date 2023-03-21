@@ -24,7 +24,7 @@
 #define VIRT_BCPTR  DI
 #define VIRT_BASE   SI
 #define VIRT_VALUES R12 // points to a value stack
-#define VIRT_AGG_BUFFER R10 // points to aggregate data buffer
+#define VIRT_AGG_BUFFER R10 // points to aggregate data buffer (or a tree, in the case of hash aggregates)
 
 #define BC_VSTACK_PTR(Slot, Offset) (Offset)(VIRT_VALUES)(Slot*1)
 

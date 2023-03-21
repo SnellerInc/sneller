@@ -24,7 +24,7 @@ TEXT ·evalhashagg(SB), NOSPLIT, $8
   MOVQ bc+0(FP), VIRT_BCPTR
   MOVQ ·vmm+0(SB), VIRT_BASE
   XORQ R9, R9           // R9 = rows consumed
-  MOVQ tree+32(FP), R10 // R10 = tree pointer
+  MOVQ tree+32(FP), VIRT_AGG_BUFFER
   MOVQ abort+40(FP), R8
   MOVW $0, 0(R8)        // initially, abort = 0
 
