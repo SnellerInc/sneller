@@ -235,40 +235,15 @@ datum_or_parens
 }
 | AGGREGATE '(' ')' optional_filter maybe_window
 {
-  agg, err := toAggregate(expr.AggregateOp($1), nil, false, $4, $5)
+  agg, err := toAggregate(expr.AggregateOp($1), false, nil, $4, $5)
   if err != nil {
     yylex.Error(err.Error())
   }
   $$ = agg
 }
-| AGGREGATE '(' maybe_distinct expr ')' optional_filter maybe_window
+| AGGREGATE '(' maybe_distinct value_list ')' optional_filter maybe_window
 {
-  agg, err := toAggregate(expr.AggregateOp($1), $4, $3, $6, $7)
-  if err != nil {
-    yylex.Error(err.Error())
-  }
-  $$ = agg
-}
-| AGGREGATE '(' '*' ')' optional_filter maybe_window // realistically only COUNT(*)
-{
-  distinct := false
-  agg, err := toAggregate(expr.AggregateOp($1), expr.Star{}, distinct, $5, $6)
-  if err != nil {
-    yylex.Error(err.Error())
-  }
-  $$ = agg
-}
-| APPROX_COUNT_DISTINCT '(' expr ')' optional_filter maybe_window
-{
-  agg, err := createApproxCountDistinct($3, expr.ApproxCountDistinctDefaultPrecision, $5, $6)
-  if err != nil {
-    yylex.Error(err.Error())
-  }
-  $$ = agg
-}
-| APPROX_COUNT_DISTINCT '(' expr ',' literal_int ')' optional_filter maybe_window
-{
-  agg, err := createApproxCountDistinct($3, $5, $7, $8)
+  agg, err := toAggregate(expr.AggregateOp($1), $3, $4, $6, $7)
   if err != nil {
     yylex.Error(err.Error())
   }

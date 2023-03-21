@@ -635,33 +635,71 @@ func (e *LexerError) Error() string {
 
 var exprstar = expr.Star{}
 
-func toAggregate(op expr.AggregateOp, body expr.Node, distinct bool, filter expr.Node, over *expr.Window) (*expr.Aggregate, error) {
+func toAggregate(op expr.AggregateOp, distinct bool, args []expr.Node, filter expr.Node, over *expr.Window) (*expr.Aggregate, error) {
+	agg, err := toAggregateAux(op, distinct, args, filter, over)
+	if err != nil {
+		return nil, fmt.Errorf("%v: %s", op, err)
+	}
+
+	return agg, nil
+}
+
+func toAggregateAux(op expr.AggregateOp, distinct bool, args []expr.Node, filter expr.Node, over *expr.Window) (*expr.Aggregate, error) {
+	var body expr.Node
+	if len(args) > 0 {
+		body = args[0]
+		args = args[1:]
+	}
+
 	if distinct {
 		if op == expr.OpCount {
 			op = expr.OpCountDistinct
 		}
 		if !op.AcceptDistinct() {
-			return nil, fmt.Errorf("cannot use DISTINCT with %v", op)
+			return nil, fmt.Errorf("does not accept DISTINCT")
 		}
 	}
 
 	if expr.Equal(body, exprstar) {
 		if !op.AcceptStar() {
-			return nil, fmt.Errorf("cannot use * with %v", op)
+			return nil, fmt.Errorf("does not accept '*'")
 		}
 	} else {
 		if !op.AcceptExpression() {
-			return nil, fmt.Errorf("%v accepts only *", op)
+			return nil, fmt.Errorf("accepts only *")
 		}
 	}
 
-	return &expr.Aggregate{Op: op, Inner: body, Over: over, Filter: filter}, nil
+	switch op {
+	case expr.OpApproxCountDistinct:
+		return createApproxCountDistinct(body, args, filter, over)
+
+	default:
+		if len(args) > 0 {
+			return nil, fmt.Errorf("does not accept arguments")
+		}
+
+		return &expr.Aggregate{Op: op, Inner: body, Over: over, Filter: filter}, nil
+	}
 }
 
-func createApproxCountDistinct(body expr.Node, precision int, filter expr.Node, over *expr.Window) (*expr.Aggregate, error) {
-	if precision < expr.ApproxCountDistinctMinPrecision || precision > expr.ApproxCountDistinctMaxPrecision {
-		return nil, fmt.Errorf("precision has to be in range [%d, %d]",
-			expr.ApproxCountDistinctMinPrecision, expr.ApproxCountDistinctMaxPrecision)
+func createApproxCountDistinct(body expr.Node, args []expr.Node, filter expr.Node, over *expr.Window) (*expr.Aggregate, error) {
+	if len(args) > 1 {
+		return nil, fmt.Errorf("accepts at most 1 argument")
+	}
+
+	precision := expr.ApproxCountDistinctDefaultPrecision
+	if len(args) == 1 {
+		precisionExpr, ok := args[0].(expr.Integer)
+		if !ok {
+			return nil, fmt.Errorf("precision has to be a constant integer")
+		}
+
+		precision = int(precisionExpr)
+		if precision < expr.ApproxCountDistinctMinPrecision || precision > expr.ApproxCountDistinctMaxPrecision {
+			return nil, fmt.Errorf("precision has to be in range [%d, %d]",
+				expr.ApproxCountDistinctMinPrecision, expr.ApproxCountDistinctMaxPrecision)
+		}
 	}
 
 	return &expr.Aggregate{

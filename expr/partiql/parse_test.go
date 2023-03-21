@@ -429,31 +429,31 @@ func TestParseErrors(t *testing.T) {
 		},
 		{
 			query: `SELECT SUM(DISTINCT x)`,
-			msg:   `cannot use DISTINCT with SUM`,
+			msg:   `SUM: does not accept DISTINCT`,
 		},
 		{
 			query: `SELECT AVG(DISTINCT x)`,
-			msg:   `cannot use DISTINCT with AVG`,
+			msg:   `AVG: does not accept DISTINCT`,
 		},
 		{
 			query: `SELECT BOOL_OR(DISTINCT x)`,
-			msg:   `cannot use DISTINCT with BOOL_OR`,
+			msg:   `BOOL_OR: does not accept DISTINCT`,
 		},
 		{
 			query: `SELECT BOOL_AND(DISTINCT x)`,
-			msg:   `cannot use DISTINCT with BOOL_AND`,
+			msg:   `BOOL_AND: does not accept DISTINCT`,
 		},
 		{
 			query: `SELECT BIT_AND(DISTINCT x)`,
-			msg:   `cannot use DISTINCT with BIT_AND`,
+			msg:   `BIT_AND: does not accept DISTINCT`,
 		},
 		{
 			query: `SELECT BIT_OR(DISTINCT x)`,
-			msg:   `cannot use DISTINCT with BIT_OR`,
+			msg:   `BIT_OR: does not accept DISTINCT`,
 		},
 		{
 			query: `SELECT BIT_XOR(DISTINCT x)`,
-			msg:   `cannot use DISTINCT with BIT_XOR`,
+			msg:   `BIT_XOR: does not accept DISTINCT`,
 		},
 		{
 			query: `SELECT APPROX_COUNT_DISTINCT(x, -5)`,
@@ -465,39 +465,51 @@ func TestParseErrors(t *testing.T) {
 		},
 		{
 			query: `SELECT SUM(*)`,
-			msg:   `cannot use * with SUM`,
+			msg:   `SUM: does not accept '*'`,
+		},
+		{
+			query: `SELECT AVG(*)`,
+			msg:   `AVG: does not accept '*'`,
 		},
 		{
 			query: `SELECT MIN(*)`,
-			msg:   `cannot use * with MIN`,
+			msg:   `MIN: does not accept '*'`,
 		},
 		{
 			query: `SELECT MAX(*)`,
-			msg:   `cannot use * with MAX`,
+			msg:   `MAX: does not accept '*'`,
 		},
 		{
 			query: `SELECT BOOL_OR(*)`,
-			msg:   `cannot use * with BOOL_OR`,
+			msg:   `BOOL_OR: does not accept '*'`,
 		},
 		{
 			query: `SELECT BOOL_AND(*)`,
-			msg:   `cannot use * with BOOL_AND`,
+			msg:   `BOOL_AND: does not accept '*'`,
 		},
 		{
 			query: `SELECT BIT_AND(*)`,
-			msg:   `cannot use * with BIT_AND`,
+			msg:   `BIT_AND: does not accept '*'`,
 		},
 		{
 			query: `SELECT BIT_OR(*)`,
-			msg:   `cannot use * with BIT_OR`,
+			msg:   `BIT_OR: does not accept '*'`,
 		},
 		{
 			query: `SELECT BIT_XOR(*)`,
-			msg:   `cannot use * with BIT_XOR`,
+			msg:   `BIT_XOR: does not accept '*'`,
 		},
 		{
 			query: `SELECT sneller_datashape(x) FROM table`,
-			msg:   `accepts only *`,
+			msg:   `SNELLER_DATASHAPE: accepts only *`,
+		},
+		{
+			query: `SELECT SUM(x, 'test') FROM table`,
+			msg:   `SUM: does not accept arguments`,
+		},
+		{
+			query: `SELECT APPROX_COUNT_DISTINCT(x, 'test') FROM table`,
+			msg:   `precision has to be a constant integer`,
 		},
 		{
 			query: `SELECT 1.test`,

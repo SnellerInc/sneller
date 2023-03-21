@@ -259,25 +259,20 @@ func (t termlist) contains(s string) bool {
 	return idx < len(t) && t[idx].selfcode == code
 }
 
-var approxkw = []byte("APPROX_COUNT_DISTINCT")
-
 func lookupKeyword(buf []byte) int {
-	term := kwterms.get(buf)
-	if term == -1 {
-		if equalsci(buf, approxkw) {
-			return APPROX_COUNT_DISTINCT
-		}
-	}
-
-	return term
+	return kwterms.get(buf)
 }
 
 var datashapeagg = []byte("SNELLER_DATASHAPE")
+var approxagg = []byte("APPROX_COUNT_DISTINCT")
 
 func lookupAggregate(buf []byte) int {
 	term := aggterms.get(buf)
 	if term == -1 {
-		if equalsci(buf, datashapeagg) {
+		switch {
+		case equalsci(buf, approxagg):
+			return int(expr.OpApproxCountDistinct)
+		case equalsci(buf, datashapeagg):
 			return int(expr.OpSystemDatashape)
 		}
 	}
