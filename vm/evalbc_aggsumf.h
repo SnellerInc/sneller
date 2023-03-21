@@ -117,6 +117,7 @@ Algorithm:
   VADDPD        a, c, c  /* c += a */
 
 
+// _ = aggslotsum.f64(a[0], l[1], s[2]).k[3]
 TEXT bcaggslotsumf(SB), NOSPLIT|NOFRAME, $0
 #define ones        Z2
 

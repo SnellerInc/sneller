@@ -28,9 +28,9 @@ const (
 	opcvtfloorf64toi64       bcop = 22
 	opcvtceilf64toi64        bcop = 23
 	opcvti64tostr            bcop = 24
-	opsortcmpvnf             bcop = 25
-	opsortcmpvnl             bcop = 26
-	opcmpv                   bcop = 27
+	opcmpv                   bcop = 25
+	opsortcmpvnf             bcop = 26
+	opsortcmpvnl             bcop = 27
 	opcmpvk                  bcop = 28
 	opcmpvkimm               bcop = 29
 	opcmpvi64                bcop = 30
@@ -330,4 +330,4 @@ var patchAVX512Level2 []opreplace = []opreplace{
 	{from: opbitcounti64, to: opbitcounti64_v2},
 }
 
-// checksum: 7fd20e1aafba0437ba8a5f613816e583
+// checksum: 492711155dcdfd03600836ab3db87491

@@ -361,15 +361,23 @@
   RET
 
 // this is the 'unimplemented!' op
+//
+// _ = trap()
 TEXT bctrap(SB), NOSPLIT|NOFRAME, $0
   BYTE $0xCC
   RET
 
 // the 'return' instruction
+//
+// _ = ret()
+//
 TEXT bcret(SB), NOSPLIT|NOFRAME, $0
   BC_RETURN_SUCCESS()
 
 // return k[0] in K1
+//
+// _ = ret.k(k[0])
+//
 TEXT bcretk(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_SLOT(0, OUT(BX))
   BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(BX))
@@ -377,6 +385,9 @@ TEXT bcretk(SB), NOSPLIT|NOFRAME, $0
   BC_RETURN_SUCCESS()
 
 // return b[0] in Z0:Z1 and k[1] in K1
+//
+// _ = ret.b.k(b[0], k[1])
+//
 TEXT bcretbk(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_2xSLOT(0, OUT(BX), OUT(CX))
 
@@ -386,6 +397,9 @@ TEXT bcretbk(SB), NOSPLIT|NOFRAME, $0
   BC_RETURN_SUCCESS()
 
 // return s[0] in Z2:Z3 and k[1] in K1
+//
+// _ = ret.s.k(s[0], k[1])
+//
 TEXT bcretsk(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_2xSLOT(0, OUT(BX), OUT(CX))
 
@@ -395,6 +409,9 @@ TEXT bcretsk(SB), NOSPLIT|NOFRAME, $0
   BC_RETURN_SUCCESS()
 
 // return b[0] in Z0:Z1 and k[2] in K1 (h[1] is ignored atm, it's just for SSA)
+//
+// _ = ret.b.h.k(b[0], h[1], k[2])
+//
 TEXT bcretbhk(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_SLOT(0, OUT(BX))
   BC_UNPACK_SLOT(BC_SLOT_SIZE*2, OUT(CX))
@@ -405,6 +422,9 @@ TEXT bcretbhk(SB), NOSPLIT|NOFRAME, $0
   BC_RETURN_SUCCESS()
 
 // Temporary instruction to save registers alive at entry to stack slots.
+//
+// b[0].k[1] = init()
+//
 TEXT bcinit(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_2xSLOT(0, DX, R8)
   MOVQ bytecode_symtab+0(VIRT_BCPTR), BX // BC <- symbol table base
@@ -425,18 +445,27 @@ TEXT bcinit(SB), NOSPLIT|NOFRAME, $0
 // -----------------
 
 // k[0] = 0
+//
+// k[0] = broadcast0.k()
+//
 TEXT bcbroadcast0k(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_SLOT(0, OUT(DX))
   MOVW $0, 0(VIRT_VALUES)(DX*1)
   NEXT_ADVANCE(BC_SLOT_SIZE*1)
 
 // k[0] = 1 & ValidLanes
+//
+// k[0] = broadcast1.k()
+//
 TEXT bcbroadcast1k(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_SLOT(0, OUT(DX))
   BC_STORE_K_TO_SLOT(IN(K7), IN(DX))
   NEXT_ADVANCE(BC_SLOT_SIZE*1)
 
 // v[0].k[1] = 0
+//
+// v[0].k[1] = false.k()
+//
 TEXT bcfalse(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_2xSLOT(0, OUT(DX), OUT(CX))
   VPXORD X0, X0, X0
@@ -447,6 +476,9 @@ TEXT bcfalse(SB), NOSPLIT|NOFRAME, $0
   NEXT_ADVANCE(BC_SLOT_SIZE*2)
 
 // k[0] = !k[1] & ValidLanes
+//
+// k[0] = not.k(k[1])
+//
 TEXT bcnotk(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_2xSLOT(0, OUT(DX), OUT(BX))
 
@@ -458,6 +490,9 @@ TEXT bcnotk(SB), NOSPLIT|NOFRAME, $0
   NEXT_ADVANCE(BC_SLOT_SIZE*2)
 
 // k[0] = k[1] & k[2] (never sets invalid lanes)
+//
+// k[0] = and.k(k[1], k[2])
+//
 TEXT bcandk(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_2xSLOT(BC_SLOT_SIZE*1, OUT(BX), OUT(CX))
   MOVWLZX 0(VIRT_VALUES)(BX*1), BX
@@ -469,6 +504,9 @@ TEXT bcandk(SB), NOSPLIT|NOFRAME, $0
   NEXT_ADVANCE(BC_SLOT_SIZE*3)
 
 // k[0] = !k[1] & k[2] (never sets invalid lanes)
+//
+// k[0] = andn.k(k[1], k[2])
+//
 TEXT bcandnk(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_2xSLOT(BC_SLOT_SIZE*1, OUT(BX), OUT(CX))
   BC_LOAD_RU16_FROM_SLOT(OUT(BX), IN(BX))
@@ -481,6 +519,9 @@ TEXT bcandnk(SB), NOSPLIT|NOFRAME, $0
   NEXT_ADVANCE(BC_SLOT_SIZE*3)
 
 // k[0] = k[1] | k[2] (never sets invalid lanes)
+//
+// k[0] = or.k(k[1], k[2])
+//
 TEXT bcork(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_2xSLOT(BC_SLOT_SIZE*1, OUT(BX), OUT(CX))
   BC_LOAD_RU16_FROM_SLOT(OUT(BX), IN(BX))
@@ -492,6 +533,9 @@ TEXT bcork(SB), NOSPLIT|NOFRAME, $0
   NEXT_ADVANCE(BC_SLOT_SIZE*3)
 
 // k[0] = k[1] ^ k[2] (never sets invalid lanes)
+//
+// k[0] = xor.k(k[1], k[2])
+//
 TEXT bcxork(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_2xSLOT(BC_SLOT_SIZE*1, OUT(BX), OUT(CX))
   MOVWLZX 0(VIRT_VALUES)(BX*1), BX
@@ -503,6 +547,9 @@ TEXT bcxork(SB), NOSPLIT|NOFRAME, $0
   NEXT_ADVANCE(BC_SLOT_SIZE*3)
 
 // k[0] = (!(k[1] ^ k[2])) & ValidLanes
+//
+// k[0] = xnor.k(k[1], k[2])
+//
 TEXT bcxnork(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_2xSLOT(BC_SLOT_SIZE*1, OUT(BX), OUT(CX))
   KMOVW 0(VIRT_VALUES)(BX*1), K1
@@ -519,6 +566,9 @@ TEXT bcxnork(SB), NOSPLIT|NOFRAME, $0
 // -----------------------
 
 // f64[0] = k[1] ? 1.0 : 0.0
+//
+// f64[0] = cvt.ktof64(k[1])
+//
 TEXT bccvtktof64(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_2xSLOT(0, OUT(DX), OUT(BX))
 
@@ -532,6 +582,9 @@ TEXT bccvtktof64(SB), NOSPLIT|NOFRAME, $0
   NEXT_ADVANCE(BC_SLOT_SIZE*2)
 
 // i64[0] = k[1] ? 1 : 0
+//
+// i64[0] = cvt.ktoi64(k[1])
+//
 TEXT bccvtktoi64(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_2xSLOT(0, OUT(DX), OUT(BX))
 
@@ -545,6 +598,9 @@ TEXT bccvtktoi64(SB), NOSPLIT|NOFRAME, $0
   NEXT_ADVANCE(BC_SLOT_SIZE*2)
 
 // k[0] = (i64[1] ? 1 : 0).k[2]
+//
+// k[0] = cvt.i64tok(i64[1]).k[2]
+//
 TEXT bccvti64tok(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_3xSLOT(0, OUT(DX), OUT(BX), OUT(R8))
 
@@ -560,6 +616,9 @@ TEXT bccvti64tok(SB), NOSPLIT|NOFRAME, $0
   NEXT_ADVANCE(BC_SLOT_SIZE*3)
 
 // k[0] = (f64[1] ? 1 : 0).k[2]
+//
+// k[0] = cvt.f64tok(i64[1]).k[2]
+//
 TEXT bccvtf64tok(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_3xSLOT(0, OUT(DX), OUT(BX), OUT(R8))
   VPXORQ X4, X4, X4
@@ -572,7 +631,7 @@ TEXT bccvtf64tok(SB), NOSPLIT|NOFRAME, $0
   BC_STORE_K_TO_SLOT(IN(K1), IN(DX))
   NEXT_ADVANCE(BC_SLOT_SIZE*3)
 
-// f64[0].k[1] = f64(i64[2]).k[3]
+// f64[0].k[1] = cvt.i64tof64(i64[2]).k[3]
 TEXT bccvti64tof64(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_2xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R8))
   BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
@@ -586,7 +645,7 @@ TEXT bccvti64tof64(SB), NOSPLIT|NOFRAME, $0
 
   NEXT_ADVANCE(BC_SLOT_SIZE*4)
 
-// f64[0].k[1] = trunc_i64(f64[2]).k[3]
+// f64[0].k[1] = cvttrunc.f64toi64(f64[2]).k[3]
 TEXT bccvttruncf64toi64(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_2xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R8))
   BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
@@ -600,7 +659,7 @@ TEXT bccvttruncf64toi64(SB), NOSPLIT|NOFRAME, $0
 
   NEXT_ADVANCE(BC_SLOT_SIZE*4)
 
-// f64[0].k[1] = floor_i64(f64[2]).k[3]
+// f64[0].k[1] = cvtfloor.f64toi64(f64[2]).k[3]
 TEXT bccvtfloorf64toi64(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_2xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R8))
 
@@ -616,7 +675,7 @@ TEXT bccvtfloorf64toi64(SB), NOSPLIT|NOFRAME, $0
 
   NEXT_ADVANCE(BC_SLOT_SIZE*4)
 
-// f64[0].k[1] = ceil_i64(f64[2]).k[3]
+// f64[0].k[1] = cvtceil.f64toi64(f64[2]).k[3]
 TEXT bccvtceilf64toi64(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_2xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R8))
 
@@ -632,7 +691,9 @@ TEXT bccvtceilf64toi64(SB), NOSPLIT|NOFRAME, $0
 
   NEXT_ADVANCE(BC_SLOT_SIZE*4)
 
-// s[0].k[1] = i64_to_string(i64[2]).k[3]
+// s[0].k[1] = cvt.i64tostr(i64[2]).k[3]
+//
+// scratch: 20 * 16
 //
 // Converts a signed 64-bit integer to a string slice.
 //
@@ -1043,14 +1104,17 @@ abort:
 
 #include "evalbc_cmpv_impl.h"
 
+// s[0].k[1] = cmpv(v[2], v[3], k[4])
 TEXT bccmpv(SB), NOSPLIT|NOFRAME, $0
   VBROADCASTI32X4 CONST_GET_PTR(cmpv_predicate_matching_type, 0), Z16
   JMP cmpv_tail(SB)
 
+// s[0].k[1] = sortcmpv@nf(v[2], v[3], k[4])
 TEXT bcsortcmpvnf(SB), NOSPLIT|NOFRAME, $0
   VBROADCASTI32X4 CONST_GET_PTR(cmpv_predicate_sort_nulls_first, 0), Z16
   JMP cmpv_tail(SB)
 
+// s[0].k[1] = sortcmpv@nl(v[2], v[3], k[4])
 TEXT bcsortcmpvnl(SB), NOSPLIT|NOFRAME, $0
   VBROADCASTI32X4 CONST_GET_PTR(cmpv_predicate_sort_nulls_last, 0), Z16
   JMP cmpv_tail(SB)
@@ -1091,7 +1155,10 @@ TEXT cmpv_tail(SB), NOSPLIT|NOFRAME, $0
 // Comparison Instructions - Cmp(Value, Bool)
 // ------------------------------------------
 
-// i64[0].k[1] = cmp(v[2], k[3]).k[4] (compares the content of a boxed value and bool)
+// compares the content of a boxed value and bool
+//
+// i64[0].k[1] = cmpv.k(v[2], k[3]).k[4]
+//
 TEXT bccmpvk(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_3xSLOT(BC_SLOT_SIZE*2, BX, CX, R8)
 
@@ -1123,7 +1190,10 @@ TEXT bccmpvk(SB), NOSPLIT|NOFRAME, $0
 
   NEXT_ADVANCE(BC_SLOT_SIZE*5)
 
-// i64[0].k[1] = cmp(v[2], k@imm[3]).k[4] (compares the content of a boxed value and bool (imm))
+// compares the content of a boxed value and bool (imm)
+//
+// i64[0].k[1] = cmpv.k@imm(v[2], k@imm[3]).k[4]
+//
 TEXT bccmpvkimm(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_SLOT(BC_SLOT_SIZE*2, OUT(BX))
   BC_UNPACK_SLOT(BC_SLOT_SIZE*3 + 2, OUT(R8))
@@ -1159,14 +1229,20 @@ TEXT bccmpvkimm(SB), NOSPLIT|NOFRAME, $0
 // Comparison Instructions - Cmp(Value, Int64)
 // -------------------------------------------
 
-// i64[0].k[1] = cmp(v[2], i64[3]).k[4] (compares the content of a boxed value and i64)
+// Compares the content of a boxed value and i64
+//
+// i64[0].k[1] = cmpv.i64(v[2], i64[3]).k[4]
+//
 TEXT bccmpvi64(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_3xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(CX), OUT(R8))
   BC_CALC_ADVANCE(BC_SLOT_SIZE*5, OUT(R15))
   BC_LOAD_I64_FROM_SLOT(OUT(Z6), OUT(Z7), IN(CX))
   JMP cmpvi64_tail(SB)
 
-// i64[0].k[1] = cmp(v[2], i64@imm[3]).k[4] (compares the content of a boxed value and i64)
+// Compares the content of a boxed value and i64 immediate
+//
+// i64[0].k[1] = cmpv.i64@imm(v[2], i64@imm[3]).k[4]
+//
 TEXT bccmpvi64imm(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_SLOT_ZI64_SLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(Z6), OUT(R8))
   BC_CALC_ADVANCE(BC_SLOT_SIZE*4+8, OUT(R15))
@@ -1277,14 +1353,20 @@ skip:
 // Comparison Instructions - Cmp(Value, Float64)
 // ---------------------------------------------
 
-// i64[0].k[1] = cmp(value[2], f64[3]).k[4] (compares the content of a boxed value and f64)
+// Compares the content of a boxed value and f64
+//
+// i64[0].k[1] = cmpv.f64(value[2], f64[3]).k[4]
+//
 TEXT bccmpvf64(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_3xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(CX), OUT(R8))
   BC_CALC_ADVANCE(BC_SLOT_SIZE*5, OUT(R15))
   BC_LOAD_F64_FROM_SLOT(OUT(Z6), OUT(Z7), IN(CX))
   JMP cmpvf64_tail(SB)
 
-// i64[0].k[1] = cmp(value[2], f64@imm[3]).k[4] (compares the content of a boxed value and f64)
+// Compares the content of a boxed value and f64 immediate
+//
+// i64[0].k[1] = cmpv.f64@imm(value[2], f64@imm[3]).k[4]
+//
 TEXT bccmpvf64imm(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_SLOT_ZF64_SLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(Z6), OUT(R8))
   BC_CALC_ADVANCE(BC_SLOT_SIZE*4+8, OUT(R15))
@@ -1395,41 +1477,33 @@ skip:
 // Comparison Instructions - String
 // --------------------------------
 
-/*
-(for our script to pick up the opcodes)
+// k[0] = cmplt.str(str[1], str[2]).k[3]
 TEXT bccmpltstr(SB), NOSPLIT|NOFRAME, $0
-TEXT bccmplestr(SB), NOSPLIT|NOFRAME, $0
-TEXT bccmpgtstr(SB), NOSPLIT|NOFRAME, $0
-TEXT bccmpgestr(SB), NOSPLIT|NOFRAME, $0
-*/
-
-// k[0] = cmp_lt(str[1], str[2]).k[3]
-#define BC_CMP_NAME bccmpltstr
 #define BC_CMP_I_IMM VPCMP_IMM_LT
 #include "evalbc_cmpxxstr_impl.h"
 #undef BC_CMP_I_IMM
-#undef BC_CMP_NAME
+    NEXT()
 
-// k[0] = cmp_le(str[1], str[2]).k[3]
-#define BC_CMP_NAME bccmplestr
+// k[0] = cmple.str(str[1], str[2]).k[3]
+TEXT bccmplestr(SB), NOSPLIT|NOFRAME, $0
 #define BC_CMP_I_IMM VPCMP_IMM_LE
 #include "evalbc_cmpxxstr_impl.h"
 #undef BC_CMP_I_IMM
-#undef BC_CMP_NAME
+    NEXT()
 
-// k[0] = cmp_gt(str[1], str[2]).k[3]
-#define BC_CMP_NAME bccmpgtstr
+// k[0] = cmpgt.str(str[1], str[2]).k[3]
+TEXT bccmpgtstr(SB), NOSPLIT|NOFRAME, $0
 #define BC_CMP_I_IMM VPCMP_IMM_GT
 #include "evalbc_cmpxxstr_impl.h"
 #undef BC_CMP_I_IMM
-#undef BC_CMP_NAME
+    NEXT()
 
-// k[0] = cmp_ge(str[1], str[2]).k[3]
-#define BC_CMP_NAME bccmpgestr
+// k[0] = cmpge.str(str[1], str[2]).k[3]
+TEXT bccmpgestr(SB), NOSPLIT|NOFRAME, $0
 #define BC_CMP_I_IMM VPCMP_IMM_GE
 #include "evalbc_cmpxxstr_impl.h"
 #undef BC_CMP_I_IMM
-#undef BC_CMP_NAME
+    NEXT()
 
 
 // Comparison Instructions - Bool
@@ -1442,7 +1516,7 @@ TEXT bccmpgestr(SB), NOSPLIT|NOFRAME, $0
 // `1 < 0` => 0
 // `1 < 1` => 0
 
-// k[0] = cmp_lt(k[1], k[2]).k[3]
+// k[0] = cmplt.k(k[1], k[2]).k[3]
 TEXT bccmpltk(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_4xSLOT(0, OUT(DX), OUT(BX), OUT(CX), OUT(R8))
 
@@ -1454,7 +1528,7 @@ TEXT bccmpltk(SB), NOSPLIT|NOFRAME, $0
 
   NEXT_ADVANCE(BC_SLOT_SIZE*4)
 
-// k[0] = cmp_lt(k[1], k@imm[2]).k[3]
+// k[0] = cmplt.k@imm(k[1], k@imm[2]).k[3]
 TEXT bccmpltkimm(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_2xSLOT_RU16_SLOT(0, OUT(DX), OUT(BX), OUT(CX), OUT(R8))
 
@@ -1472,7 +1546,7 @@ TEXT bccmpltkimm(SB), NOSPLIT|NOFRAME, $0
 // `1 <= 0` => 0
 // `1 <= 1` => 1
 
-// k[0] = cmp_le(k[1], k[2]).k[3]
+// k[0] = cmple.k(k[1], k[2]).k[3]
 TEXT bccmplek(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_4xSLOT(0, OUT(DX), OUT(BX), OUT(CX), OUT(R8))
 
@@ -1484,7 +1558,7 @@ TEXT bccmplek(SB), NOSPLIT|NOFRAME, $0
 
   NEXT_ADVANCE(BC_SLOT_SIZE*4)
 
-// k[0] = cmp_le(k[1], k@imm[2]).k[3]
+// k[0] = cmple.k@imm(k[1], k@imm[2]).k[3]
 TEXT bccmplekimm(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_2xSLOT_RU16_SLOT(0, OUT(DX), OUT(BX), OUT(CX), OUT(R8))
 
@@ -1503,7 +1577,7 @@ TEXT bccmplekimm(SB), NOSPLIT|NOFRAME, $0
 // `1 > 0` => 1
 // `1 > 1` => 0
 
-// k[0] = cmp_gt(k[1], k[2]).k[3]
+// k[0] = cmpgt.k(k[1], k[2]).k[3]
 TEXT bccmpgtk(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_4xSLOT(0, OUT(DX), OUT(BX), OUT(CX), OUT(R8))
 
@@ -1515,7 +1589,7 @@ TEXT bccmpgtk(SB), NOSPLIT|NOFRAME, $0
 
   NEXT_ADVANCE(BC_SLOT_SIZE*4)
 
-// k[0] = cmp_gt(k[1], k@imm[2]).k[3]
+// k[0] = cmpgt.k@imm(k[1], k@imm[2]).k[3]
 TEXT bccmpgtkimm(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_2xSLOT_RU16_SLOT(0, OUT(DX), OUT(BX), OUT(CX), OUT(R8))
 
@@ -1533,7 +1607,7 @@ TEXT bccmpgtkimm(SB), NOSPLIT|NOFRAME, $0
 // `1 >= 0` => 1
 // `1 >= 1` => 1
 
-// k[0] = cmp_ge(k[1], k[2]).k[3]
+// k[0] = cmpge.k(k[1], k[2]).k[3]
 TEXT bccmpgek(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_4xSLOT(0, OUT(DX), OUT(BX), OUT(CX), OUT(R8))
 
@@ -1545,7 +1619,7 @@ TEXT bccmpgek(SB), NOSPLIT|NOFRAME, $0
 
   NEXT_ADVANCE(BC_SLOT_SIZE*4)
 
-// k[0] = cmp_ge(k[1], k@imm[2]).k[3]
+// k[0] = cmpge.k@imm(k[1], k@imm[2]).k[3]
 TEXT bccmpgekimm(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_2xSLOT_RU16_SLOT(0, OUT(DX), OUT(BX), OUT(CX), OUT(R8))
 
@@ -1597,7 +1671,7 @@ TEXT bccmpgekimm(SB), NOSPLIT|NOFRAME, $0
   KUNPCKBW K1, K2, K1                                                  \
   BC_STORE_K_TO_SLOT(IN(K1), IN(DX))
 
-// k[0] = cmp_eq(f64[1], f64[2]).k[3]
+// k[0] = cmpeq.f64(f64[1], f64[2]).k[3]
 //
 // Floating point equality in the sense that
 // `-0 == 0`, `NaN == NaN`, and `-NaN != NaN`
@@ -1623,6 +1697,9 @@ TEXT bccmpeqf64(SB), NOSPLIT|NOFRAME, $0
   NEXT_ADVANCE(BC_SLOT_SIZE*4)
 
 // current scalar float == f64(imm)
+//
+// k[0] = cmpeq.f64@imm(f64[1], f64@imm[2]).k[3]
+//
 TEXT bccmpeqf64imm(SB), NOSPLIT|NOFRAME, $0
   // We expect that the immediate is not NaN or -0 here. If the immediate
   // value is NaN 'bcisnanf' should be used instead. This gives us the
@@ -1631,12 +1708,14 @@ TEXT bccmpeqf64imm(SB), NOSPLIT|NOFRAME, $0
   BC_CMP_OP_F64_IMM($VCMP_IMM_EQ_OQ)
   NEXT_ADVANCE(BC_SLOT_SIZE*3 + 8)
 
+// Implements `cmp_unordered_lt(a, b) ^ isnan(a)`:
+//   - `val < val` -> result
+//   - `NaN < val` -> false
+//   - `val < NaN` -> true
+//   - `NaN < NaN` -> false
+//
+// k[0] = cmplt.f64(f64[1], f64[2]).k[3]
 TEXT bccmpltf64(SB), NOSPLIT|NOFRAME, $0
-  // Implements `cmp_unordered_lt(a, b) ^ isnan(a)`:
-  //   - `val < val` -> result
-  //   - `NaN < val` -> false
-  //   - `val < NaN` -> true
-  //   - `NaN < NaN` -> false
   BC_UNPACK_4xSLOT(0, OUT(DX), OUT(BX), OUT(CX), OUT(R8))
   BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
   BC_LOAD_F64_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
@@ -1653,18 +1732,24 @@ TEXT bccmpltf64(SB), NOSPLIT|NOFRAME, $0
   BC_STORE_K_TO_SLOT(IN(K1), IN(DX))
   NEXT_ADVANCE(BC_SLOT_SIZE*4)
 
+// `val < imm` -> result
+// `NaN < imm` -> false
+//
+// k[0] = cmplt.f64@imm(f64[1], f64@imm[2]).k[3]
+//
 TEXT bccmpltf64imm(SB), NOSPLIT|NOFRAME, $0
-  // `val < imm` -> result
-  // `NaN < imm` -> false
   BC_CMP_OP_F64_IMM($VCMP_IMM_LT_OQ)
   NEXT_ADVANCE(BC_SLOT_SIZE*3 + 8)
 
+// Implements `cmp_ordered_le(a, b) | isnan(b)`:
+//   - `val <= val` -> result
+//   - `NaN <= val` -> false
+//   - `val <= NaN` -> true
+//   - `NaN <= NaN` -> true
+//
+// k[0] = cmple.f64(f64[1], f64[2]).k[3]
+//
 TEXT bccmplef64(SB), NOSPLIT|NOFRAME, $0
-  // Implements `cmp_ordered_le(a, b) | isnan(b)`:
-  //   - `val <= val` -> result
-  //   - `NaN <= val` -> false
-  //   - `val <= NaN` -> true
-  //   - `NaN <= NaN` -> true
   BC_UNPACK_4xSLOT(0, OUT(DX), OUT(BX), OUT(CX), OUT(R8))
   BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
   BC_LOAD_F64_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
@@ -1682,18 +1767,24 @@ TEXT bccmplef64(SB), NOSPLIT|NOFRAME, $0
   BC_STORE_K_TO_SLOT(IN(K1), IN(DX))
   NEXT_ADVANCE(BC_SLOT_SIZE*4)
 
+// `val <= imm` -> result
+// `NaN <= imm` -> false
+//
+// k[0] = cmple.f64@imm(f64[1], f64@imm[2]).k[3]
+//
 TEXT bccmplef64imm(SB), NOSPLIT|NOFRAME, $0
-  // `val <= imm` -> result
-  // `NaN <= imm` -> false
   BC_CMP_OP_F64_IMM($VCMP_IMM_LE_OQ)
   NEXT_ADVANCE(BC_SLOT_SIZE*3 + 8)
 
+// Implements `cmp_unordered_gt(a, b) ^ isnan(b)`
+//   - `val > val` -> result
+//   - `NaN > val` -> true
+//   - `val > NaN` -> false
+//   - `NaN > NaN` -> false
+//
+// k[0] = cmpgt.f64(f64[1], f64[2]).k[3]
+//
 TEXT bccmpgtf64(SB), NOSPLIT|NOFRAME, $0
-  // Implements `cmp_unordered_gt(a, b) ^ isnan(b)`
-  //   - `val > val` -> result
-  //   - `NaN > val` -> true
-  //   - `val > NaN` -> false
-  //   - `NaN > NaN` -> false
   BC_UNPACK_4xSLOT(0, OUT(DX), OUT(BX), OUT(CX), OUT(R8))
   BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
   BC_LOAD_F64_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
@@ -1711,18 +1802,24 @@ TEXT bccmpgtf64(SB), NOSPLIT|NOFRAME, $0
   BC_STORE_K_TO_SLOT(IN(K1), IN(DX))
   NEXT_ADVANCE(BC_SLOT_SIZE*4)
 
+// `val > imm` -> result
+// `NaN > imm` -> true
+//
+// k[0] = cmpgt.f64@imm(f64[1], f64@imm[2]).k[3]
+//
 TEXT bccmpgtf64imm(SB), NOSPLIT|NOFRAME, $0
-  // `val > imm` -> result
-  // `NaN > imm` -> true
   BC_CMP_OP_F64_IMM($VCMP_IMM_NLE_UQ)
   NEXT_ADVANCE(BC_SLOT_SIZE*3 + 8)
 
+// Implements `cmp_ordered_ge(a, b) | isnan(a)`
+//   - `val >= val` -> result
+//   - `NaN >= val` -> true
+//   - `val >= NaN` -> false
+//   - `NaN >= NaN` -> true
+//
+// k[0] = cmpge.f64(f64[1], f64[2]).k[3]
+//
 TEXT bccmpgef64(SB), NOSPLIT|NOFRAME, $0
-  // Implements `cmp_ordered_ge(a, b) | isnan(a)`
-  //   - `val >= val` -> result
-  //   - `NaN >= val` -> true
-  //   - `val >= NaN` -> false
-  //   - `NaN >= NaN` -> true
   BC_UNPACK_4xSLOT(0, OUT(DX), OUT(BX), OUT(CX), OUT(R8))
   BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
   BC_LOAD_F64_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
@@ -1739,48 +1836,81 @@ TEXT bccmpgef64(SB), NOSPLIT|NOFRAME, $0
   BC_STORE_K_TO_SLOT(IN(K1), IN(DX))
   NEXT_ADVANCE(BC_SLOT_SIZE*4)
 
+// `val >= imm` -> result
+// `NaN >= imm` -> true
+//
+// k[0] = cmpge.f64@imm(f64[1], f64@imm[2]).k[3]
+//
 TEXT bccmpgef64imm(SB), NOSPLIT|NOFRAME, $0
-  // `val >= imm` -> result
-  // `NaN >= imm` -> true
   BC_CMP_OP_F64_IMM($VCMP_IMM_NLT_UQ)
   NEXT_ADVANCE(BC_SLOT_SIZE*3 + 8)
 
+//
+// k[0] = cmpeq.i64(i64[1], i64[2]).k[3]
+//
 TEXT bccmpeqi64(SB), NOSPLIT|NOFRAME, $0
   BC_CMP_OP_I64($VPCMP_IMM_EQ)
   NEXT_ADVANCE(BC_SLOT_SIZE*4)
 
+//
+// k[0] = cmpeq.i64@imm(i64[1], i64@imm[2]).k[3]
+//
 TEXT bccmpeqi64imm(SB), NOSPLIT|NOFRAME, $0
   BC_CMP_OP_I64_IMM($VPCMP_IMM_EQ)
   NEXT_ADVANCE(BC_SLOT_SIZE*3 + 8)
 
+//
+// k[0] = cmplt.i64(i64[1], i64[2]).k[3]
+//
 TEXT bccmplti64(SB), NOSPLIT|NOFRAME, $0
   BC_CMP_OP_I64($VPCMP_IMM_LT)
   NEXT_ADVANCE(BC_SLOT_SIZE*4)
 
+//
+// k[0] = cmplt.i64@imm(i64[1], i64@imm[2]).k[3]
+//
 TEXT bccmplti64imm(SB), NOSPLIT|NOFRAME, $0
   BC_CMP_OP_I64_IMM($VPCMP_IMM_LT)
   NEXT_ADVANCE(BC_SLOT_SIZE*3 + 8)
 
+//
+// k[0] = cmple.i64(i64[1], i64[2]).k[3]
+//
 TEXT bccmplei64(SB), NOSPLIT|NOFRAME, $0
   BC_CMP_OP_I64($VPCMP_IMM_LE)
   NEXT_ADVANCE(BC_SLOT_SIZE*4)
 
+//
+// k[0] = cmple.i64@imm(i64[1], i64@imm[2]).k[3]
+//
 TEXT bccmplei64imm(SB), NOSPLIT|NOFRAME, $0
   BC_CMP_OP_I64_IMM($VPCMP_IMM_LE)
   NEXT_ADVANCE(BC_SLOT_SIZE*3 + 8)
 
+//
+// k[0] = cmpgt.i64(i64[1], i64[2]).k[3]
+//
 TEXT bccmpgti64(SB), NOSPLIT|NOFRAME, $0
   BC_CMP_OP_I64($VPCMP_IMM_GT)
   NEXT_ADVANCE(BC_SLOT_SIZE*4)
 
+//
+// k[0] = cmpgt.i64@imm(i64[1], i64@imm[2]).k[3]
+//
 TEXT bccmpgti64imm(SB), NOSPLIT|NOFRAME, $0
   BC_CMP_OP_I64_IMM($VPCMP_IMM_GT)
   NEXT_ADVANCE(BC_SLOT_SIZE*3 + 8)
 
+//
+// k[0] = cmpge.i64(i64[1], i64[2]).k[3]
+//
 TEXT bccmpgei64(SB), NOSPLIT|NOFRAME, $0
   BC_CMP_OP_I64($VPCMP_IMM_GE)
   NEXT_ADVANCE(BC_SLOT_SIZE*4)
 
+//
+// k[0] = cmpge.i64@imm(i64[1], i64@imm[2]).k[3]
+//
 TEXT bccmpgei64imm(SB), NOSPLIT|NOFRAME, $0
   BC_CMP_OP_I64_IMM($VPCMP_IMM_GE)
   NEXT_ADVANCE(BC_SLOT_SIZE*3 + 8)
@@ -1793,7 +1923,7 @@ TEXT bccmpgei64imm(SB), NOSPLIT|NOFRAME, $0
 // Test Instructions
 // -----------------
 
-// k[0] = isnan(f64[1]).k[2]
+// k[0] = isnan.f(f64[1]).k[2]
 //
 // isnan(x) is the same as x != x
 TEXT bcisnanf(SB), NOSPLIT|NOFRAME, $0
@@ -1875,7 +2005,7 @@ TEXT bctypebits(SB), NOSPLIT|NOFRAME, $0
   BC_STORE_I64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
   NEXT_ADVANCE(BC_SLOT_SIZE*3)
 
-// k[0] = is_null(v[1]).k[2]
+// k[0] = isnull.v(v[1]).k[2]
 //
 // calculated as `(tag & 0xF) == 0xF`
 TEXT bcisnullv(SB), NOSPLIT|NOFRAME, $0
@@ -1893,7 +2023,7 @@ TEXT bcisnullv(SB), NOSPLIT|NOFRAME, $0
   BC_STORE_K_TO_SLOT(IN(K1), IN(DX))
   NEXT_ADVANCE(BC_SLOT_SIZE*3)
 
-// k[0] = !is_null(v[1]).k[2]
+// k[0] = isnotnull.v(v[1]).k[2]
 //
 // calculated as `(tag & 0xF) != 0xF`
 TEXT bcisnotnullv(SB), NOSPLIT|NOFRAME, $0
@@ -1914,7 +2044,7 @@ TEXT bcisnotnullv(SB), NOSPLIT|NOFRAME, $0
 // CONSTD_TRUE_BYTE() = 0x11
 // CONSTD_FALSE_BYTE() = 0x10
 
-// k[0] = is_true(v[1]).k[2]
+// k[0] = istrue.v(v[1]).k[2]
 //
 // calculated as `tag == 0x11`
 TEXT bcistruev(SB), NOSPLIT|NOFRAME, $0
@@ -1930,7 +2060,7 @@ TEXT bcistruev(SB), NOSPLIT|NOFRAME, $0
   BC_STORE_K_TO_SLOT(IN(K1), IN(DX))
   NEXT_ADVANCE(BC_SLOT_SIZE*3)
 
-// k[0] = is_false(v[1]).k[2]
+// k[0] = isfalse.v(v[1]).k[2]
 //
 // calculated as `tag[0] == 0x10`
 TEXT bcisfalsev(SB), NOSPLIT|NOFRAME, $0
@@ -1946,7 +2076,7 @@ TEXT bcisfalsev(SB), NOSPLIT|NOFRAME, $0
   BC_STORE_K_TO_SLOT(IN(K1), IN(DX))
   NEXT_ADVANCE(BC_SLOT_SIZE*3)
 
-// k[0] = cmp_eq(s[1], s[2]).k[3]
+// k[0] = cmpeq.slice(s[1], s[2]).k[3]
 TEXT bccmpeqslice(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_3xSLOT(BC_SLOT_SIZE*1, OUT(BX), OUT(CX), OUT(R8))
   BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
@@ -1959,7 +2089,7 @@ TEXT bccmpeqslice(SB), NOSPLIT|NOFRAME, $0
 
   JMP cmpeq_tail(SB)
 
-// k[0] = cmp_eq(v[1], v[2]).k[3]
+// k[0] = cmpeq.v(v[1], v[2]).k[3]
 TEXT bccmpeqv(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_3xSLOT(BC_SLOT_SIZE*1, OUT(BX), OUT(CX), OUT(R8))
   BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
@@ -1972,7 +2102,7 @@ TEXT bccmpeqv(SB), NOSPLIT|NOFRAME, $0
 
   JMP cmpeq_tail(SB)
 
-// k[0] = cmp_eq(v[1], v@imm[2]).k[3]
+// k[0] = cmpeq.v@imm(v[1], litref[2]).k[3]
 TEXT bccmpeqvimm(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_SLOT(BC_SLOT_SIZE*2 + 10, OUT(R8))
   BC_UNPACK_SLOT(BC_SLOT_SIZE*1, OUT(DX))
@@ -2378,7 +2508,7 @@ next:
 // We don't really need a specific code for adding years, as `year == month * 12`. This
 // means that we can just convert years to months and add `year * 12` months and be done.
 
-// ts[0].k[1] = date_add_month(ts[2], i64[3]).k[4]
+// ts[0].k[1] = dateaddmonth(ts[2], i64[3]).k[4]
 TEXT bcdateaddmonth(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_5xSLOT(0, OUT(DX), OUT(R15), OUT(BX), OUT(CX), OUT(R8))
   BC_LOAD_I64_FROM_SLOT(OUT(Z20), OUT(Z21), IN(CX))
@@ -2386,7 +2516,7 @@ TEXT bcdateaddmonth(SB), NOSPLIT|NOFRAME, $0
   ADDQ $(BC_SLOT_SIZE*5), VIRT_PCREG
   JMP dateaddmonth_tail(SB)
 
-// ts[0].k[1] = date_add_month(ts[2], i64@imm[3]).k[4]
+// ts[0].k[1] = dateaddmonth.imm(ts[2], i64@imm[3]).k[4]
 TEXT bcdateaddmonthimm(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_3xSLOT_ZI64_SLOT(0, OUT(DX), OUT(R15), OUT(BX), OUT(Z20), OUT(R8))
   VMOVDQA64 Z20, Z21
@@ -2394,7 +2524,7 @@ TEXT bcdateaddmonthimm(SB), NOSPLIT|NOFRAME, $0
   ADDQ $(BC_SLOT_SIZE*4+8), VIRT_PCREG
   JMP dateaddmonth_tail(SB)
 
-// ts[0].k[1] = date_add_year(ts[2], i64[3]).k[4]
+// ts[0].k[1] = dateaddyear(ts[2], i64[3]).k[4]
 TEXT bcdateaddyear(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_5xSLOT(0, OUT(DX), OUT(R15), OUT(BX), OUT(CX), OUT(R8))
 
@@ -2409,7 +2539,7 @@ TEXT bcdateaddyear(SB), NOSPLIT|NOFRAME, $0
   ADDQ $(BC_SLOT_SIZE*5), VIRT_PCREG
   JMP dateaddmonth_tail(SB)
 
-// ts[0].k[1] = date_add_quarter(ts[2], i64[3]).k[4]
+// ts[0].k[1] = dateaddquarter(ts[2], i64[3]).k[4]
 TEXT bcdateaddquarter(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_5xSLOT(0, OUT(DX), OUT(R15), OUT(BX), OUT(CX), OUT(R8))
   BC_LOAD_I64_FROM_SLOT(OUT(Z20), OUT(Z21), IN(CX))
@@ -2528,6 +2658,9 @@ TEXT dateaddmonth_tail(SB), NOSPLIT|NOFRAME, $0
 
   NEXT_ADVANCE(0)
 
+//
+// s[0].k[1] = datediffmicrosecond(s[2], s[3]).k[4]
+//
 TEXT bcdatediffmicrosecond(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_3xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(CX), OUT(R8))
   BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
@@ -2542,7 +2675,7 @@ TEXT bcdatediffmicrosecond(SB), NOSPLIT|NOFRAME, $0
 
   NEXT_ADVANCE(BC_SLOT_SIZE*5)
 
-// i64[0].k[1] = date_diff_param(ts[2], ts[3], i64@imm[4]).k[5]
+// i64[0].k[1] = datediffparam(ts[2], ts[3], u64@imm[4]).k[5]
 //
 // DATE_DIFF(DAY|HOUR|MINUTE|SECOND|MILLISECOND, t1, t2)
 TEXT bcdatediffparam(SB), NOSPLIT|NOFRAME, $0
@@ -2576,7 +2709,7 @@ TEXT bcdatediffparam(SB), NOSPLIT|NOFRAME, $0
 
   NEXT_ADVANCE(BC_SLOT_SIZE*5 + 8)
 
-// i64[0].k[1] = date_diff_yqm(ts[2], ts[3], i16@imm[4]).k[5]
+// i64[0].k[1] = datediffmqy(ts[2], ts[3], i16@imm[4]).k[5]
 //
 // DATE_DIFF(MONTH|QUARTER|YEAR, interval, timestamp)
 TEXT bcdatediffmqy(SB), NOSPLIT|NOFRAME, $0
@@ -2708,7 +2841,7 @@ TEXT bcdatediffmqy(SB), NOSPLIT|NOFRAME, $0
   VPTERNLOGQ $TLOG_BLEND_BA, TMP3, IN1, OUT1 /* (A & ~C) | (B & C) */                  \
   VPTERNLOGQ $TLOG_BLEND_BA, TMP3, IN2, OUT2 /* (A & ~C) | (B & C) */
 
-// i64[0] = extract_microsecond(ts[1]).k[2]
+// i64[0] = dateextractmicrosecond(ts[1]).k[2]
 //
 // EXTRACT(MICROSECOND FROM timestamp) - the result includes seconds
 TEXT bcdateextractmicrosecond(SB), NOSPLIT|NOFRAME, $0
@@ -2733,7 +2866,7 @@ TEXT bcdateextractmicrosecond(SB), NOSPLIT|NOFRAME, $0
   BC_STORE_I64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
   NEXT_ADVANCE(BC_SLOT_SIZE*3)
 
-// i64[0] = extract_millisecond(ts[1]).k[2]
+// i64[0] = dateextractmillisecond(ts[1]).k[2]
 //
 // EXTRACT(MILLISECOND FROM timestamp) - the result includes seconds
 TEXT bcdateextractmillisecond(SB), NOSPLIT|NOFRAME, $0
@@ -2760,7 +2893,7 @@ TEXT bcdateextractmillisecond(SB), NOSPLIT|NOFRAME, $0
   BC_STORE_I64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
   NEXT_ADVANCE(BC_SLOT_SIZE*3)
 
-// i64[0] = extract_second(ts[1]).k[2]
+// i64[0] = dateextractsecond(ts[1]).k[2]
 //
 // EXTRACT(SECOND FROM timestamp)
 TEXT bcdateextractsecond(SB), NOSPLIT|NOFRAME, $0
@@ -2787,7 +2920,7 @@ TEXT bcdateextractsecond(SB), NOSPLIT|NOFRAME, $0
   BC_STORE_I64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
   NEXT_ADVANCE(BC_SLOT_SIZE*3)
 
-// i64[0] = extract_minute(ts[1]).k[2]
+// i64[0] = dateextractminute(ts[1]).k[2]
 //
 // EXTRACT(MINUTE FROM timestamp)
 TEXT bcdateextractminute(SB), NOSPLIT|NOFRAME, $0
@@ -2813,7 +2946,7 @@ TEXT bcdateextractminute(SB), NOSPLIT|NOFRAME, $0
   BC_STORE_I64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
   NEXT_ADVANCE(BC_SLOT_SIZE*3)
 
-// i64[0] = extract_hour(ts[1]).k[2]
+// i64[0] = dateextracthour(ts[1]).k[2]
 //
 // EXTRACT(HOUR FROM timestamp)
 TEXT bcdateextracthour(SB), NOSPLIT|NOFRAME, $0
@@ -2833,7 +2966,7 @@ TEXT bcdateextracthour(SB), NOSPLIT|NOFRAME, $0
   BC_STORE_I64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
   NEXT_ADVANCE(BC_SLOT_SIZE*3)
 
-// i64[0] = extract_day(ts[1]).k[2]
+// i64[0] = dateextractday(ts[1]).k[2]
 //
 // EXTRACT(DAY FROM timestamp)
 TEXT bcdateextractday(SB), NOSPLIT|NOFRAME, $0
@@ -2849,7 +2982,7 @@ TEXT bcdateextractday(SB), NOSPLIT|NOFRAME, $0
   BC_STORE_I64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
   NEXT_ADVANCE(BC_SLOT_SIZE*3)
 
-// i64[0] = extract_dow(ts[1]).k[2]
+// i64[0] = dateextractdow(ts[1]).k[2]
 //
 // EXTRACT(DOW FROM timestamp)
 TEXT bcdateextractdow(SB), NOSPLIT|NOFRAME, $0
@@ -2917,7 +3050,7 @@ CONST_DATA_U32(extract_doy_predicate, 56, $0)
 CONST_DATA_U32(extract_doy_predicate, 60, $0)
 CONST_GLOBAL(extract_doy_predicate, $64)
 
-// i64[0] = extract_doy(ts[1]).k[2]
+// i64[0] = dateextractdoy(ts[1]).k[2]
 //
 // EXTRACT(DOY FROM timestamp)
 //
@@ -2954,7 +3087,7 @@ TEXT bcdateextractdoy(SB), NOSPLIT|NOFRAME, $0
   BC_STORE_I64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
   NEXT_ADVANCE(BC_SLOT_SIZE*3)
 
-// i64[0] = extract_month(ts[1]).k[2]
+// i64[0] = dateextractmonth(ts[1]).k[2]
 //
 // EXTRACT(MONTH FROM timestamp)
 TEXT bcdateextractmonth(SB), NOSPLIT|NOFRAME, $0
@@ -2983,7 +3116,7 @@ TEXT bcdateextractmonth(SB), NOSPLIT|NOFRAME, $0
   BC_STORE_I64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
   NEXT_ADVANCE(BC_SLOT_SIZE*3)
 
-// i64[0] = extract_quarter(ts[1]).k[2]
+// i64[0] = dateextractquarter(ts[1]).k[2]
 //
 // EXTRACT(QUARTER FROM timestamp)
 TEXT bcdateextractquarter(SB), NOSPLIT|NOFRAME, $0
@@ -3010,7 +3143,7 @@ TEXT bcdateextractquarter(SB), NOSPLIT|NOFRAME, $0
   BC_STORE_I64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
   NEXT_ADVANCE(BC_SLOT_SIZE*3)
 
-// i64[0] = extract_year(ts[1]).k[2]
+// i64[0] = dateextractyear(ts[1]).k[2]
 //
 // EXTRACT(YEAR FROM timestamp)
 TEXT bcdateextractyear(SB), NOSPLIT|NOFRAME, $0
@@ -3044,7 +3177,9 @@ TEXT bcdateextractyear(SB), NOSPLIT|NOFRAME, $0
   BC_STORE_I64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
   NEXT_ADVANCE(BC_SLOT_SIZE*3)
 
-// i64[0] = date_to_unix_epoch(ts[1]).k[2]
+//
+// i64[0] = datetounixepoch(ts[1]).k[2]
+//
 TEXT bcdatetounixepoch(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_3xSLOT(0, OUT(DX), OUT(BX), OUT(R8))
   BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
@@ -3071,7 +3206,7 @@ TEXT bcdatetounixepoch(SB), NOSPLIT|NOFRAME, $0
   BC_STORE_I64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
   NEXT_ADVANCE(BC_SLOT_SIZE*3)
 
-// i64[0] = date_to_unix_micro(ts[1]).k[2]
+// i64[0] = datetounixmicro(ts[1]).k[2]
 TEXT bcdatetounixmicro(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_3xSLOT(0, OUT(DX), OUT(BX), OUT(R8))
   BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
@@ -3080,7 +3215,7 @@ TEXT bcdatetounixmicro(SB), NOSPLIT|NOFRAME, $0
   BC_STORE_I64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
   NEXT_ADVANCE(BC_SLOT_SIZE*3)
 
-// ts[0] = date_trunc_millisecond(ts[1]).k[2]
+// ts[0] = datetruncmillisecond(ts[1]).k[2]
 TEXT bcdatetruncmillisecond(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_3xSLOT(0, OUT(DX), OUT(BX), OUT(R8))
   BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
@@ -3094,7 +3229,7 @@ TEXT bcdatetruncmillisecond(SB), NOSPLIT|NOFRAME, $0
   BC_STORE_I64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
   NEXT_ADVANCE(BC_SLOT_SIZE*3)
 
-// ts[0] = date_trunc_second(ts[1]).k[2]
+// ts[0] = datetruncsecond(ts[1]).k[2]
 TEXT bcdatetruncsecond(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_3xSLOT(0, OUT(DX), OUT(BX), OUT(R8))
   BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
@@ -3108,7 +3243,7 @@ TEXT bcdatetruncsecond(SB), NOSPLIT|NOFRAME, $0
   BC_STORE_I64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
   NEXT_ADVANCE(BC_SLOT_SIZE*3)
 
-// ts[0] = date_trunc_minute(ts[1]).k[2]
+// ts[0] = datetruncminute(ts[1]).k[2]
 TEXT bcdatetruncminute(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_3xSLOT(0, OUT(DX), OUT(BX), OUT(R8))
   BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
@@ -3122,7 +3257,7 @@ TEXT bcdatetruncminute(SB), NOSPLIT|NOFRAME, $0
   BC_STORE_I64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
   NEXT_ADVANCE(BC_SLOT_SIZE*3)
 
-// ts[0] = date_trunc_hour(ts[1]).k[2]
+// ts[0] = datetrunchour(ts[1]).k[2]
 TEXT bcdatetrunchour(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_3xSLOT(0, OUT(DX), OUT(BX), OUT(R8))
   BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
@@ -3136,7 +3271,7 @@ TEXT bcdatetrunchour(SB), NOSPLIT|NOFRAME, $0
   BC_STORE_I64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
   NEXT_ADVANCE(BC_SLOT_SIZE*3)
 
-// ts[0] = date_trunc_day(ts[1]).k[2]
+// ts[0] = datetruncday(ts[1]).k[2]
 TEXT bcdatetruncday(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_3xSLOT(0, OUT(DX), OUT(BX), OUT(R8))
   BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
@@ -3150,7 +3285,7 @@ TEXT bcdatetruncday(SB), NOSPLIT|NOFRAME, $0
   BC_STORE_I64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
   NEXT_ADVANCE(BC_SLOT_SIZE*3)
 
-// ts[0] = date_trunc_dow(ts[1], i16@imm[2]).k[3]
+// ts[0] = datetruncdow(ts[1], i16@imm[2]).k[3]
 //
 // Truncating a timestamp to a DOW can be implemented the following way:
 //   days = unix_time_in_days(ts)
@@ -3209,7 +3344,7 @@ TEXT bcdatetruncdow(SB), NOSPLIT|NOFRAME, $0
   BC_STORE_I64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
   NEXT_ADVANCE(BC_SLOT_SIZE*3 + 2)
 
-// ts[0] = date_trunc_month(ts[1]).k[2]
+// ts[0] = datetruncmonth(ts[1]).k[2]
 TEXT bcdatetruncmonth(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_3xSLOT(0, OUT(DX), OUT(BX), OUT(R8))
   BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
@@ -3248,7 +3383,7 @@ CONST_DATA_U64(consts_align_month_to_quarter_1_is_march, 0, $0x0404040101010A00)
 CONST_DATA_U64(consts_align_month_to_quarter_1_is_march, 8, $0x0000000A0A070707)
 CONST_GLOBAL(consts_align_month_to_quarter_1_is_march, $16)
 
-// ts[0] = date_trunc_quarter(ts[1]).k[2]
+// ts[0] = datetruncquarter(ts[1]).k[2]
 TEXT bcdatetruncquarter(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_3xSLOT(0, OUT(DX), OUT(BX), OUT(R8))
   BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
@@ -3296,7 +3431,7 @@ TEXT bcdatetruncquarter(SB), NOSPLIT|NOFRAME, $0
   BC_STORE_I64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
   NEXT_ADVANCE(BC_SLOT_SIZE*3)
 
-// ts[0] = date_trunc_year(ts[1]).k[2]
+// ts[0] = datetruncyear(ts[1]).k[2]
 TEXT bcdatetruncyear(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_3xSLOT(0, OUT(DX), OUT(BX), OUT(R8))
   BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
@@ -3337,7 +3472,7 @@ TEXT bcdatetruncyear(SB), NOSPLIT|NOFRAME, $0
   BC_STORE_I64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
   NEXT_ADVANCE(BC_SLOT_SIZE*3)
 
-// ts[0].k[1] = unbox_ts(v[2]).k[3]
+// ts[0].k[1] = unboxts(v[2]).k[3]
 TEXT bcunboxts(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_2xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R8))
 
@@ -3510,7 +3645,9 @@ TEXT bcunboxts(SB), NOSPLIT|NOFRAME, $0
 
   NEXT_ADVANCE(BC_SLOT_SIZE*4)
 
-// v[0] = box_ts(ts[1]).k[2]
+// v[0] = boxts(ts[1]).k[2]
+//
+// scratch: 16 * 16
 TEXT bcboxts(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_2xSLOT(BC_SLOT_SIZE*1, OUT(BX), OUT(R8))
   BC_LOAD_I64_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
@@ -3726,7 +3863,7 @@ abort:
 // Bucket Instructions
 // -------------------
 
-// f64[0] = width_bucket(f64[1], f64[2], f64[3], f64[4]).k[5]
+// f64[0] = widthbucket.f64(f64[1], f64[2], f64[3], f64[4]).k[5]
 //
 // WIDTH_BUCKET semantics is as follows:
 //   - When the input is less than MIN, the output is 0
@@ -3780,7 +3917,7 @@ TEXT bcwidthbucketf64(SB), NOSPLIT|NOFRAME, $0
   BC_STORE_F64_TO_SLOT(OUT(Z2), OUT(Z3), IN(DX))
   NEXT_ADVANCE(BC_SLOT_SIZE*6)
 
-// i64[0] = width_bucket(i64[1], i64[2], i64[3], i64[4]).k[5]
+// i64[0] = widthbucket.i64(i64[1], i64[2], i64[3], i64[4]).k[5]
 //
 // NOTE: This function has some precision loss when the arithmetic exceeds 2^53.
 TEXT bcwidthbucketi64(SB), NOSPLIT|NOFRAME, $0
@@ -3842,7 +3979,7 @@ TEXT bcwidthbucketi64(SB), NOSPLIT|NOFRAME, $0
   BC_STORE_F64_TO_SLOT(OUT(Z2), OUT(Z3), IN(DX))
   NEXT_ADVANCE(BC_SLOT_SIZE*6)
 
-// i64[0] = timebucket(i64[1], i64[2]).k[3]
+// i64[0] = timebucket.ts(i64[1], i64[2]).k[3]
 TEXT bctimebucketts(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_3xSLOT(BC_SLOT_SIZE*1, OUT(BX), OUT(CX), OUT(R8))
   BC_LOAD_I64_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX)) // Timestamp
@@ -3906,7 +4043,9 @@ TEXT bctimebucketts(SB), NOSPLIT|NOFRAME, $0
   VPADDQ TMP_0, DST_LON_A, DST_LON_A                           \
   VPADDQ TMP_0, DST_LON_B, DST_LON_B
 
-// s[0] = geo_hash(f64[1], f64[2], i64[3]).k[4]
+// s[0] = geohash(f64[1], f64[2], i64[3]).k[4]
+//
+// scratch: 16 * 16
 //
 // GEO_HASH is a string representing longitude, latitude, and precision as "HASH" where each
 // 5 bits of interleaved latitude and longitude data are encoded by a single ASCII character.
@@ -3920,6 +4059,9 @@ TEXT bcgeohash(SB), NOSPLIT|NOFRAME, $0
 
   JMP geohash_tail(SB)
 
+// s[0] = geohashimm(f64[1], f64[2], u16@imm[3]).k[4]
+//
+// scratch: 16 * 16
 TEXT bcgeohashimm(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_3xSLOT_RU16_SLOT(0, OUT(DX), OUT(BX), OUT(CX), OUT(R15), OUT(R8))
   ADDQ $(BC_SLOT_SIZE*4 + 2), VIRT_PCREG
@@ -4088,7 +4230,7 @@ abort:
 
 // GEO_TILE_X and GEO_TILE_Y functions project latitude and logitude by using Mercator.
 
-// i64[0] = geo_tile_x(f64[1], i64[2]).k[3]
+// i64[0] = geotilex(f64[1], i64[2]).k[3]
 //
 // X = FLOOR( (longitude + 180.0) / 360.0 * (1 << zoom) )
 //   = FLOOR( [(1 << 48) / 2] + FMA(longitude * [(1 << 48) / 360]) >> (48 - precision)
@@ -4128,7 +4270,7 @@ TEXT bcgeotilex(SB), NOSPLIT|NOFRAME, $0
   BC_STORE_I64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
   NEXT_ADVANCE(BC_SLOT_SIZE*4)
 
-// i64[0] = geo_tile_y(f64[1], i64[2]).k[3]
+// i64[0] = geotiley(f64[1], i64[2]).k[3]
 //
 // Y = FLOOR( {0.5 - [LN((1 + SIN(lat)) / (1 - SIN(lat))] / (4*PI)} * (1 << precision) );
 //   = FLOOR( [1 << 48) / 2] - [LN((1 + SIN(lat)) / (1 - SIN(lat)) * (1 << 48) / (4*PI)] ) >> (48 - precision));
@@ -4216,7 +4358,9 @@ CONST_DATA_U64(const_geotilees_extract_u16_bswap, 32, $0xFFFFFFFFFFFF0405)
 CONST_DATA_U64(const_geotilees_extract_u16_bswap, 40, $0xFFFFFFFFFFFF0C0D)
 CONST_GLOBAL(const_geotilees_extract_u16_bswap, $48)
 
-// str[0] = geo_tile_es(f64[1], f64[2], i64[3]).k[4]
+// str[0] = geotilees(f64[1], f64[2], i64[3]).k[4]
+//
+// scratch: 32 * 16
 TEXT bcgeotilees(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_5xSLOT(0, OUT(DX), OUT(BX), OUT(CX), OUT(R15), OUT(R8))
   BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
@@ -4225,7 +4369,9 @@ TEXT bcgeotilees(SB), NOSPLIT|NOFRAME, $0
   ADDQ $(BC_SLOT_SIZE*5), VIRT_PCREG
   JMP geotilees_tail(SB)
 
-// str[0] = geo_tile_es(f64[1], f64[2], i16@imm[3]).k[4]
+// str[0] = geotilees.imm(f64[1], f64[2], i16@imm[3]).k[4]
+//
+// scratch: 32 * 16
 TEXT bcgeotileesimm(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_3xSLOT_RU16_SLOT(0, OUT(DX), OUT(BX), OUT(CX), OUT(R15), OUT(R8))
   BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
@@ -4594,7 +4740,7 @@ abort:
   MOVL $const_bcerrMoreScratch, bytecode_err(VIRT_BCPTR)
   RET_ABORT()
 
-// f64[0].k[1] = geo_distance(f64[2], f64[3], f64[4], f64[5]).k[6]
+// f64[0].k[1] = geodistance(f64[2], f64[3], f64[4], f64[5]).k[6]
 TEXT bcgeodistance(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_5xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(CX), OUT(DX), OUT(R15), OUT(R8))
   BC_LOAD_F64_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
@@ -4677,7 +4823,9 @@ TEXT bcgeodistance(SB), NOSPLIT|NOFRAME, $0
 // Alloc
 // -----
 
-// v[0].k[1] = alloc(i64[2]).k[3]
+// slice[0].k[1] = alloc(i64[2]).k[3]
+//
+// scratch: PageSize
 //
 // Allocate a data slice, which can be used for any purpose, the length is described by INT64 elements
 TEXT bcalloc(SB), NOSPLIT|NOFRAME, $0
@@ -4707,7 +4855,9 @@ TEXT bcalloc(SB), NOSPLIT|NOFRAME, $0
 // String - Concat
 // ---------------
 
-// v[0].k[1] = concat_str(str[...])
+// slice[0].k[1] = concatstr(varargs(str[0].k[1]))
+//
+// scratch: PageSize
 TEXT bcconcatstr(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_RU32(BC_SLOT_SIZE*2, OUT(CX))              // CX <- number of variable arguments
   ADDQ $(BC_SLOT_SIZE*2 + 4), VIRT_PCREG               // VIRT_PCREG <- the current va base
@@ -4845,7 +4995,7 @@ done:
 // Find Symbol Instructions
 // ------------------------
 
-// v[0].k[1] = find_symbol(b[2], SymbolID[3]).k[4]
+// v[0].k[1] = findsym(b[2], symbol[3]).k[4]
 TEXT bcfindsym(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_SLOT(BC_SLOT_SIZE*2, OUT(BX))
   BC_UNPACK_ZI32(BC_SLOT_SIZE*3, OUT(Z27))             // Z27 <- encoded symbol to match
@@ -4865,7 +5015,7 @@ TEXT bcfindsym(SB), NOSPLIT|NOFRAME, $0
   ADDQ $(BC_SLOT_SIZE*4 + 4), VIRT_PCREG
   JMP findsym_tail(SB)
 
-// v[0].k[1] = find_symbol(b[2], v[3], k[4], SymbolID[5]).k[6]
+// v[0].k[1] = findsym2(b[2], v[3], k[4], symbol[5]).k[6]
 TEXT bcfindsym2(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_SLOT(BC_SLOT_SIZE*2, OUT(BX))
   BC_UNPACK_ZI32(BC_SLOT_SIZE*5, OUT(Z27))             // Z27 <- encoded symbol to match
@@ -5084,7 +5234,7 @@ no_symbols:
 // The lanes in x[4] described by k[5] are blended with lanes in x[2].k[3] and the
 // resulting mask k[1] is the combination of `k[3] | k[5]`
 
-// v[0].k[1] = blend(v[2].k[3], v[4].k[5])
+// v[0].k[1] = blend.v(v[2], k[3], v[4], k[5])
 TEXT bcblendv(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_2xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(DX))
   BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(DX))
@@ -5111,7 +5261,7 @@ TEXT bcblendv(SB), NOSPLIT|NOFRAME, $0
 
   NEXT_ADVANCE(BC_SLOT_SIZE*6)
 
-// f64[0].k[1] = blend(f64[2].k[3], f64[4].k[5])
+// f64[0].k[1] = blend.f64(f64[2], k[3], f64[4], k[5])
 TEXT bcblendf64(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_2xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R8))
   BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
@@ -5210,7 +5360,7 @@ next:
   BC_STORE_VALUE_TO_SLOT(IN(Z0), IN(Z1), IN(Z2), IN(Z3), IN(DX))
   NEXT_ADVANCE(BC_SLOT_SIZE*3)
 
-// i64[0].k[1] = unbox_bool(v[2]).k[3]
+// i64[0].k[1] = unbox.k@i64(v[2]).k[3]
 //
 // NOTE: This opcode was designed in a way to be followed by cvti64tok, because we
 // don't have a way to describe a bool output combined with a predicate in our SSA.
@@ -5235,7 +5385,7 @@ TEXT bcunboxktoi64(SB), NOSPLIT|NOFRAME, $0
 
   NEXT_ADVANCE(BC_SLOT_SIZE*4)
 
-// f64[0].k[1] = unbox_coerce_f64(v[2]).k[3]
+// f64[0].k[1] = unbox.coerce.f64(v[2]).k[3]
 TEXT bcunboxcoercef64(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_2xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R8))
   BC_LOAD_VALUE_TYPEL_FROM_SLOT(OUT(Z4), IN(BX))
@@ -5293,7 +5443,7 @@ next:
 
   NEXT_ADVANCE(BC_SLOT_SIZE*4)
 
-// f64[0].k[1] = unbox_coerce_i64(v[2]).k[3]
+// f64[0].k[1] = unbox.coerce.i64(v[2]).k[3]
 TEXT bcunboxcoercei64(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_2xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R8))
   BC_LOAD_VALUE_TYPEL_FROM_SLOT(OUT(Z4), IN(BX))
@@ -5354,7 +5504,7 @@ next:
 
   NEXT_ADVANCE(BC_SLOT_SIZE*4)
 
-// f64[0].k[1] = unbox_cast_f64(v[2]).k[3]
+// f64[0].k[1] = unbox.cvt.f64(v[2]).k[3]
 //
 // A little trick is used to cast bool to i64/f64 - if a value type is bool, we assign
 // 0x01 to its binary representation - then if the value is false all bytes are cleared
@@ -5427,7 +5577,7 @@ next:
 
   NEXT_ADVANCE(BC_SLOT_SIZE*4)
 
-// f64[0].k[1] = unbox_cast_i64(v[2]).k[3]
+// f64[0].k[1] = unbox.cvt.i64(v[2]).k[3]
 TEXT bcunboxcvti64(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_2xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R8))
   BC_LOAD_VALUE_TYPEL_FROM_SLOT(OUT(Z4), IN(BX))
@@ -5513,7 +5663,9 @@ CONST_DATA_U64(box_fast_i64_bswap64_7_bytes, 0, $0x01020304050607FF)
 CONST_DATA_U64(box_fast_i64_bswap64_7_bytes, 8, $0x090A0B0C0D0E0FFF)
 CONST_GLOBAL(box_fast_i64_bswap64_7_bytes, $16)
 
-// v[0] = box_f64(f64[1]).k[2]
+// v[0] = box.f64(f64[1]).k[2]
+//
+// scratch: 9 * 16
 TEXT bcboxf64(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_2xSLOT(BC_SLOT_SIZE*1, OUT(BX), OUT(R8))
   BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
@@ -5622,7 +5774,9 @@ box_fast_i64:
 
   _BC_ERROR_HANDLER_MORE_SCRATCH()
 
-// v[0] = box_i64(f64[1]).k[2]
+// v[0] = box.i64(f64[1]).k[2]
+//
+// scratch: 9 * 16
 TEXT bcboxi64(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_2xSLOT(BC_SLOT_SIZE*1, OUT(BX), OUT(R8))
 
@@ -5717,7 +5871,9 @@ box_fast_i64:
 
   _BC_ERROR_HANDLER_MORE_SCRATCH()
 
-// v[0] = box_k(k[1]).k[2]
+// v[0] = box.k(k[1]).k[2]
+//
+// scratch: 16
 //
 // store (up to) 16 booleans
 //
@@ -5755,12 +5911,16 @@ TEXT bcboxk(SB), NOSPLIT|NOFRAME, $0
 
   _BC_ERROR_HANDLER_MORE_SCRATCH()
 
-// v[0] = box_str(slice[1]).k[2]
+// v[0] = box.str(slice[1]).k[2]
+//
+// scratch: PageSize
 TEXT bcboxstr(SB), NOSPLIT|NOFRAME, $0
   VPSLLD.BCST $4, CONSTD_8(), Z20 // ION type of a boxed string is 0x8
   JMP boxslice_tail(SB)
 
-// v[0] = box_list(slice[1]).k[2]
+// v[0] = box.list(slice[1]).k[2]
+//
+// scratch: PageSize
 TEXT bcboxlist(SB), NOSPLIT|NOFRAME, $0
   VPSLLD.BCST $4, CONSTD_0x0B(), Z20 // ION type of a boxed list is 0xB
   JMP boxslice_tail(SB)
@@ -6107,24 +6267,33 @@ abort:
 // Make List / Struct
 // ------------------
 
-/*
-(for our script to pick up the opcodes)
+// Boxes a list/struct composed of boxed values (va)
+//
+// v[0].k[1] = makelist(varargs(v[0].k[1])).k[2]
+//
+// scratch: PageSize
 TEXT bcmakelist(SB), NOSPLIT|NOFRAME, $0
-TEXT bcmakestruct(SB), NOSPLIT|NOFRAME, $0
-*/
-
 #define BC_GENERATE_MAKE_LIST
 #include "evalbc_make_object_impl.h"
 #undef BC_GENERATE_MAKE_LIST
+    RET
 
+// Boxes a list/struct composed of boxed values (va)
+//
+// v[0].k[1] = makestruct(varargs(symbol[0], v[1], k[2])).k[2]
+//
+// scratch: PageSize
+TEXT bcmakestruct(SB), NOSPLIT|NOFRAME, $0
 #define BC_GENERATE_MAKE_STRUCT
 #include "evalbc_make_object_impl.h"
 #undef BC_GENERATE_MAKE_STRUCT
+    RET
 
 
 // Hash Instructions
 // -----------------
 
+// h[0] = hashvalue(v[1]).k[2]
 TEXT bchashvalue(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_2xSLOT(BC_SLOT_SIZE*1, OUT(BX), OUT(R8))
   BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
@@ -6145,6 +6314,7 @@ TEXT bchashvalue(SB), NOSPLIT|NOFRAME, $0
 
   JMP hashimpl_tail(SB)
 
+// h[0] = hashvalue+(h[1], v[2]).k[3]
 TEXT bchashvalueplus(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_2xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R8))
   BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
@@ -6334,7 +6504,7 @@ rounds:
 done:
   RET
 
-// k[0] = hash_member(h[1], imm16[2]).k[3]
+// k[0] = hashmember(h[1], imm16[2]).k[3]
 //
 // given input hash[1], determine if there are members in tree[imm16[2]]
 TEXT bchashmember(SB), NOSPLIT|NOFRAME, $0
@@ -6470,7 +6640,7 @@ next:
 
   NEXT_ADVANCE(BC_SLOT_SIZE*3 + 2)
 
-// v[0].k[1] = hash_lookup(h[2], imm16[3]).k[4]
+// v[0].k[1] = hashlookup(h[2], imm16[3]).k[4]
 //
 // given input hash[imm0], determine
 // if there are members in tree[imm1]
@@ -6637,6 +6807,7 @@ next:
 // Simple Aggregation Instructions
 // -------------------------------
 
+// _ = aggand.k(a[0], k[1]).k[2]
 TEXT bcaggandk(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_2xSLOT(BC_AGGSLOT_SIZE, OUT(BX), OUT(CX))
   BC_UNPACK_RU32(0, OUT(DX))
@@ -6655,6 +6826,7 @@ TEXT bcaggandk(SB), NOSPLIT|NOFRAME, $0
 
   NEXT_ADVANCE(BC_SLOT_SIZE*2 + BC_AGGSLOT_SIZE)
 
+// _ = aggor.k(a[0], k[1]).k[2]
 TEXT bcaggork(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_2xSLOT(BC_AGGSLOT_SIZE, OUT(BX), OUT(CX))
   BC_UNPACK_RU32(0, OUT(DX))
@@ -6674,6 +6846,7 @@ TEXT bcaggork(SB), NOSPLIT|NOFRAME, $0
 
 #include "evalbc_aggsumf.h"
 
+// _ = aggsum.f64(a[0], s[1]).k[2]
 TEXT bcaggsumf(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_2xSLOT(BC_AGGSLOT_SIZE, OUT(BX), OUT(R8))
   BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
@@ -6690,7 +6863,7 @@ TEXT bcaggsumf(SB), NOSPLIT|NOFRAME, $0
 
   NEXT_ADVANCE(BC_SLOT_SIZE*2 + BC_AGGSLOT_SIZE)
 
-
+// _ = aggsum.i64(a[0], s[1]).k[2]
 TEXT bcaggsumi(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_2xSLOT(BC_AGGSLOT_SIZE, OUT(BX), OUT(R8))
   BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
@@ -6715,6 +6888,7 @@ TEXT bcaggsumi(SB), NOSPLIT|NOFRAME, $0
 
   NEXT_ADVANCE(BC_SLOT_SIZE*2 + BC_AGGSLOT_SIZE)
 
+// _ = aggmin.f64(a[0], s[1]).k[2]
 TEXT bcaggminf(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_2xSLOT(BC_AGGSLOT_SIZE, OUT(BX), OUT(R8))
   VBROADCASTSD CONSTF64_POSITIVE_INF(), Z5
@@ -6740,6 +6914,7 @@ TEXT bcaggminf(SB), NOSPLIT|NOFRAME, $0
 
   NEXT_ADVANCE(BC_SLOT_SIZE*2 + BC_AGGSLOT_SIZE)
 
+// _ = aggmin.i64(a[0], s[1]).k[2]
 TEXT bcaggmini(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_2xSLOT(BC_AGGSLOT_SIZE, OUT(BX), OUT(R8))
   VPBROADCASTQ CONSTQ_0x7FFFFFFFFFFFFFFF(), Z5
@@ -6766,6 +6941,7 @@ TEXT bcaggmini(SB), NOSPLIT|NOFRAME, $0
 
   NEXT_ADVANCE(BC_SLOT_SIZE*2 + BC_AGGSLOT_SIZE)
 
+// _ = aggmax.f64(a[0], s[1]).k[2]
 TEXT bcaggmaxf(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_2xSLOT(BC_AGGSLOT_SIZE, OUT(BX), OUT(R8))
   VBROADCASTSD CONSTF64_NEGATIVE_INF(), Z5
@@ -6791,6 +6967,7 @@ TEXT bcaggmaxf(SB), NOSPLIT|NOFRAME, $0
 
   NEXT_ADVANCE(BC_SLOT_SIZE*2 + BC_AGGSLOT_SIZE)
 
+// _ = aggmax.i64(a[0], s[1]).k[2]
 TEXT bcaggmaxi(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_2xSLOT(BC_AGGSLOT_SIZE, OUT(BX), OUT(R8))
   VPBROADCASTQ CONSTQ_0x8000000000000000(), Z5
@@ -6817,6 +6994,7 @@ TEXT bcaggmaxi(SB), NOSPLIT|NOFRAME, $0
 
   NEXT_ADVANCE(BC_SLOT_SIZE*2 + BC_AGGSLOT_SIZE)
 
+// _ = aggand.i64(a[0], s[1]).k[2]
 TEXT bcaggandi(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_2xSLOT(BC_AGGSLOT_SIZE, OUT(BX), OUT(R8))
   VPBROADCASTQ CONSTQ_0xFFFFFFFFFFFFFFFF(), Z5
@@ -6843,6 +7021,7 @@ TEXT bcaggandi(SB), NOSPLIT|NOFRAME, $0
 
   NEXT_ADVANCE(BC_SLOT_SIZE*2 + BC_AGGSLOT_SIZE)
 
+// _ = aggor.i64(a[0], s[1]).k[2]
 TEXT bcaggori(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_2xSLOT(BC_AGGSLOT_SIZE, OUT(BX), OUT(R8))
   BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
@@ -6868,6 +7047,7 @@ TEXT bcaggori(SB), NOSPLIT|NOFRAME, $0
 
   NEXT_ADVANCE(BC_SLOT_SIZE*2 + BC_AGGSLOT_SIZE)
 
+// _ = aggxor.i64(a[0], s[1]).k[2]
 TEXT bcaggxori(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_2xSLOT(BC_AGGSLOT_SIZE, OUT(BX), OUT(R8))
   BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
@@ -6893,6 +7073,7 @@ TEXT bcaggxori(SB), NOSPLIT|NOFRAME, $0
 
   NEXT_ADVANCE(BC_SLOT_SIZE*2 + BC_AGGSLOT_SIZE)
 
+// _ = aggcount(a[0]).k[1]
 TEXT bcaggcount(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_SLOT(BC_AGGSLOT_SIZE, OUT(BX))
   BC_UNPACK_RU32(0, OUT(DX))
@@ -6912,6 +7093,8 @@ TEXT bcaggcount(SB), NOSPLIT|NOFRAME, $0
 // each hash (for each lane where K1!=0);
 //
 // returns early if it cannot locate all of K1
+//
+// l[0] = aggbucket(h[1]).k[2]
 TEXT bcaggbucket(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_3xSLOT(0, OUT(DX), OUT(R8), OUT(R15))
   BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R15))
@@ -7247,6 +7430,7 @@ resolved:                                                                     \
                                                                               \
 next:
 
+// _ = aggslotand.k(a[0], l[1], k[2], k[3])
 TEXT bcaggslotandk(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_3xSLOT(BC_AGGSLOT_SIZE, OUT(DX), OUT(BX), OUT(R8))
   BC_LOAD_K1_K2_FROM_SLOT(OUT(K4), OUT(K5), IN(BX))
@@ -7257,6 +7441,7 @@ TEXT bcaggslotandk(SB), NOSPLIT|NOFRAME, $0
   BC_AGGREGATE_SLOT_MARK_OP(0, VPANDQ)
   NEXT_ADVANCE(BC_SLOT_SIZE*3 + BC_AGGSLOT_SIZE)
 
+// _ = aggslotor.k(a[0], l[1], k[2], k[3])
 TEXT bcaggslotork(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_3xSLOT(BC_AGGSLOT_SIZE, OUT(DX), OUT(BX), OUT(R8))
   BC_LOAD_K1_K2_FROM_SLOT(OUT(K4), OUT(K5), IN(BX))
@@ -7267,6 +7452,7 @@ TEXT bcaggslotork(SB), NOSPLIT|NOFRAME, $0
   BC_AGGREGATE_SLOT_MARK_OP(0, VPORQ)
   NEXT_ADVANCE(BC_SLOT_SIZE*3 + BC_AGGSLOT_SIZE)
 
+// _ = aggslotsum.i64(a[0], l[1], s[2], k[3])
 TEXT bcaggslotsumi(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_3xSLOT(BC_AGGSLOT_SIZE, OUT(DX), OUT(BX), OUT(R8))
   BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K6), IN(R8))
@@ -7275,9 +7461,12 @@ TEXT bcaggslotsumi(SB), NOSPLIT|NOFRAME, $0
   BC_AGGREGATE_SLOT_MARK_OP(0, VPADDQ)
   NEXT_ADVANCE(BC_SLOT_SIZE*3 + BC_AGGSLOT_SIZE)
 
+// _ = aggslotavg.f64(a[0], l[1], s[2], k[3])
 TEXT bcaggslotavgf(SB), NOSPLIT|NOFRAME, $0
   JMP bcaggslotsumf(SB)
+  RET
 
+// _ = aggslotavg.i64(a[0], l[1], s[2], k[3])
 TEXT bcaggslotavgi(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_3xSLOT(BC_AGGSLOT_SIZE, OUT(DX), OUT(BX), OUT(R8))
   BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K6), IN(R8))
@@ -7286,6 +7475,7 @@ TEXT bcaggslotavgi(SB), NOSPLIT|NOFRAME, $0
   BC_AGGREGATE_SLOT_COUNT_OP(0, VPADDQ)
   NEXT_ADVANCE(BC_SLOT_SIZE*3 + BC_AGGSLOT_SIZE)
 
+// _ = aggslotmin.f64(a[0], l[1], s[2], k[3])
 TEXT bcaggslotminf(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_3xSLOT(BC_AGGSLOT_SIZE, OUT(DX), OUT(BX), OUT(R8))
   BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K6), IN(R8))
@@ -7294,6 +7484,7 @@ TEXT bcaggslotminf(SB), NOSPLIT|NOFRAME, $0
   BC_AGGREGATE_SLOT_MARK_OP(0, VMINPD)
   NEXT_ADVANCE(BC_SLOT_SIZE*3 + BC_AGGSLOT_SIZE)
 
+// _ = aggslotmin.i64(a[0], l[1], s[2], k[3])
 TEXT bcaggslotmini(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_3xSLOT(BC_AGGSLOT_SIZE, OUT(DX), OUT(BX), OUT(R8))
   BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K6), IN(R8))
@@ -7302,6 +7493,7 @@ TEXT bcaggslotmini(SB), NOSPLIT|NOFRAME, $0
   BC_AGGREGATE_SLOT_MARK_OP(0, VPMINSQ)
   NEXT_ADVANCE(BC_SLOT_SIZE*3 + BC_AGGSLOT_SIZE)
 
+// _ = aggslotmax.f64(a[0], l[1], s[2], k[3])
 TEXT bcaggslotmaxf(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_3xSLOT(BC_AGGSLOT_SIZE, OUT(DX), OUT(BX), OUT(R8))
   BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K6), IN(R8))
@@ -7310,6 +7502,7 @@ TEXT bcaggslotmaxf(SB), NOSPLIT|NOFRAME, $0
   BC_AGGREGATE_SLOT_MARK_OP(0, VMAXPD)
   NEXT_ADVANCE(BC_SLOT_SIZE*3 + BC_AGGSLOT_SIZE)
 
+// _ = aggslotmax.i64(a[0], l[1], s[2], k[3])
 TEXT bcaggslotmaxi(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_3xSLOT(BC_AGGSLOT_SIZE, OUT(DX), OUT(BX), OUT(R8))
   BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K6), IN(R8))
@@ -7318,6 +7511,7 @@ TEXT bcaggslotmaxi(SB), NOSPLIT|NOFRAME, $0
   BC_AGGREGATE_SLOT_MARK_OP(0, VPMAXSQ)
   NEXT_ADVANCE(BC_SLOT_SIZE*3 + BC_AGGSLOT_SIZE)
 
+// _ = aggslotand.i64(a[0], l[1], s[2], k[3])
 TEXT bcaggslotandi(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_3xSLOT(BC_AGGSLOT_SIZE, OUT(DX), OUT(BX), OUT(R8))
   BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K6), IN(R8))
@@ -7326,6 +7520,7 @@ TEXT bcaggslotandi(SB), NOSPLIT|NOFRAME, $0
   BC_AGGREGATE_SLOT_MARK_OP(0, VPANDQ)
   NEXT_ADVANCE(BC_SLOT_SIZE*3 + BC_AGGSLOT_SIZE)
 
+// _ = aggslotor.i64(a[0], l[1], s[2], k[3])
 TEXT bcaggslotori(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_3xSLOT(BC_AGGSLOT_SIZE, OUT(DX), OUT(BX), OUT(R8))
   BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K6), IN(R8))
@@ -7334,6 +7529,7 @@ TEXT bcaggslotori(SB), NOSPLIT|NOFRAME, $0
   BC_AGGREGATE_SLOT_MARK_OP(0, VPORQ)
   NEXT_ADVANCE(BC_SLOT_SIZE*3 + BC_AGGSLOT_SIZE)
 
+// _ = aggslotxor.i64(a[0], l[1], s[2], k[3])
 TEXT bcaggslotxori(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_3xSLOT(BC_AGGSLOT_SIZE, OUT(DX), OUT(BX), OUT(R8))
   BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K6), IN(R8))
@@ -7345,6 +7541,8 @@ TEXT bcaggslotxori(SB), NOSPLIT|NOFRAME, $0
 // COUNT is a special aggregation function that just counts active lanes stored
 // in K1. This is the simplest aggregation, which only requres a basic conflict
 // resolution that doesn't require to loop over conflicting lanes.
+//
+// _ = aggslotcount(a[0], l[1], k[2])
 TEXT bcaggslotcount(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_2xSLOT(BC_AGGSLOT_SIZE, OUT(DX), OUT(BX))
   BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(BX))
@@ -7438,6 +7636,8 @@ TEXT bcaggslotcount_v2(SB), NOSPLIT|NOFRAME, $0
 // --------------------------
 
 // take two immediate offsets into the scratch buffer and broadcast them into registers
+//
+// v[0] = litref(d[1])
 TEXT bclitref(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_SLOT(0, OUT(DX))
 
@@ -7450,6 +7650,7 @@ TEXT bclitref(SB), NOSPLIT|NOFRAME, $0
   BC_STORE_VALUE_TO_SLOT_X(IN(Z2), IN(Z3), IN(X4), IN(X5), IN(DX))
   NEXT_ADVANCE(BC_SLOT_SIZE + 10)
 
+// v[0].k[1] = auxval(p[2])
 TEXT bcauxval(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_RU16(BC_SLOT_SIZE*2, OUT(BX))
   IMULQ $24, BX
@@ -7486,7 +7687,7 @@ TEXT bcauxval(SB), NOSPLIT|NOFRAME, $0
 
   NEXT_ADVANCE(BC_SLOT_SIZE*2 + 2)
 
-// {v[0], s[1]}.k[2] = split(s[3]).k[4]
+// v[0], s[1].k[2] = split(s[3]).k[4]
 //
 // Take the list slice in s[3] and put the first object slice
 // in v[0], then update s[1] to point to the rest of the list.
@@ -7548,7 +7749,7 @@ empty:
 
   NEXT_ADVANCE(BC_SLOT_SIZE*5)
 
-// b[0].k[1] = unbox_struct(v[2]).k[3]
+// b[0].k[1] = tuple(v[2]).k[3]
 //
 // take v[0] and parse it as struct, returning offset + length in b[0]
 TEXT bctuple(SB), NOSPLIT|NOFRAME, $0
@@ -7573,14 +7774,14 @@ TEXT bctuple(SB), NOSPLIT|NOFRAME, $0
 
   NEXT_ADVANCE(BC_SLOT_SIZE*4)
 
-// k[0] = k[1]
+// k[0] = mov.k(k[1])
 TEXT bcmovk(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_2xSLOT(0, OUT(DX), OUT(BX))
   BC_LOAD_RU16_FROM_SLOT(OUT(BX), IN(BX))
   BC_STORE_RU16_TO_SLOT(IN(BX), IN(DX))
   NEXT_ADVANCE(BC_SLOT_SIZE*2)
 
-// v[0] = 0
+// v[0] = zero.v()
 //
 // zero a slot (this is effectively the constprop'd version of saving MISSING everywhere)
 TEXT bczerov(SB), NOSPLIT|NOFRAME, $0
@@ -7591,7 +7792,7 @@ TEXT bczerov(SB), NOSPLIT|NOFRAME, $0
   VMOVDQU32 Y2, BC_VSTACK_PTR(DX, 128)
   NEXT_ADVANCE(BC_SLOT_SIZE*1)
 
-// v[0] = v[1].k[2]
+// v[0] = mov.v(v[1]).k[2]
 TEXT bcmovv(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_SLOT(BC_SLOT_SIZE*2, OUT(R8))
   BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
@@ -7609,7 +7810,7 @@ TEXT bcmovv(SB), NOSPLIT|NOFRAME, $0
 
   NEXT_ADVANCE(BC_SLOT_SIZE*3)
 
-// v[0].k[1] = v[2].k[3]
+// v[0].k[1] = mov.v.k(v[2]).k[3]
 TEXT bcmovvk(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_SLOT(BC_SLOT_SIZE*3, OUT(R8))
   BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
@@ -7629,7 +7830,7 @@ TEXT bcmovvk(SB), NOSPLIT|NOFRAME, $0
 
   NEXT_ADVANCE(BC_SLOT_SIZE*3)
 
-// f64[0] = f64[1].k[2]
+// f64[0] = mov.f64(f64[1]).k[2]
 TEXT bcmovf64(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_3xSLOT(0, OUT(DX), OUT(BX), OUT(R8))
 
@@ -7639,7 +7840,7 @@ TEXT bcmovf64(SB), NOSPLIT|NOFRAME, $0
 
   NEXT_ADVANCE(BC_SLOT_SIZE*3)
 
-// i64[0] = i64[1].k[2]
+// i64[0] = mov.i64(i64[1]).k[2]
 TEXT bcmovi64(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_3xSLOT(0, OUT(DX), OUT(BX), OUT(R8))
 
@@ -7649,7 +7850,7 @@ TEXT bcmovi64(SB), NOSPLIT|NOFRAME, $0
 
   NEXT_ADVANCE(BC_SLOT_SIZE*3)
 
-// i64[0].k[1] = object_size(val[2]).k[3]
+// i64[0].k[1] = objectsize(v[2]).k[3]
 //
 // SIZE(x) function - returns the number of items
 // in a struct or list, missing otherwise.
@@ -7782,7 +7983,7 @@ tail_to_array_size:
   ADDQ $(BC_SLOT_SIZE*4), VIRT_PCREG
   JMP arraysize_tail(SB)
 
-// i64[0] = array_size(array[1]).k[2]
+// i64[0] = arraysize(s[1]).k[2]
 TEXT bcarraysize(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_2xSLOT(BC_SLOT_SIZE*1, OUT(BX), OUT(R8))
   BC_LOAD_SLICE_FROM_SLOT(OUT(Z0), OUT(Z1), IN(BX))
@@ -7904,11 +8105,11 @@ varuint_length:
   JNZ loop
   JMP done
 
-// i64[0].k[1] = array_position(array[2], val[3]).k[4]
+// i64[0].k[1] = arrayposition(s[2], v[3]).k[4]
 //
 // Legend:
 //   - 'A' - refers to v[3] (the item to match)
-//   - 'B' - refers to values stored in array[2]
+//   - 'B' - refers to values stored in s[2]
 //
 // NOTES:
 //   - This function requires A to be already unsymbolized.
@@ -8141,7 +8342,7 @@ done:
 // -------------------
 
 /*
-    UTF-8 constants.
+    Common UTF-8 constants:
 
     CONSTD_UTF8_2B_MASK() = 0b10000000110000000000000000000000
     CONSTD_UTF8_3B_MASK() = 0b10000000100000001110000000000000
@@ -8156,7 +8357,8 @@ done:
 //; #region string methods
 
 //; #region bcCmpStrEqCs
-//; k[0] = func(slice[1], dict[2]).k[3]
+//
+// k[0] = cmp_str_eq_cs(s[1], x[2]).k[3]
 TEXT bcCmpStrEqCs(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_SLOT_DICT_SLOT(BC_SLOT_SIZE*1, OUT(BX), OUT(R14), OUT(R8))
   BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
@@ -8201,7 +8403,8 @@ next:
 //; #endregion bcCmpStrEqCs
 
 //; #region bcCmpStrEqCi
-//; k[0] = func(slice[1], dict[2]).k[3]
+//
+// k[0] = cmp_str_eq_ci(slice[1], dict[2]).k[3]
 TEXT bcCmpStrEqCi(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_SLOT_DICT_SLOT(BC_SLOT_SIZE*1, OUT(BX), OUT(R14), OUT(R8))
   BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
@@ -8259,8 +8462,9 @@ next:
 //; #endregion bcCmpStrEqCi
 
 //; #region bcCmpStrEqUTF8Ci
-//; k[0] = func(slice[1], dict[2]).k[3]
 //; empty needles or empty data always result in a dead lane
+//
+// k[0] = cmp_str_eq_utf8_ci(s[1], x[2]).k[3]
 TEXT bcCmpStrEqUTF8Ci(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_SLOT_DICT_SLOT(BC_SLOT_SIZE*1, OUT(BX), OUT(R14), OUT(R8))
   BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
@@ -8354,7 +8558,8 @@ next:
 //; #endregion bcCmpStrEqUTF8Ci
 
 //; #region bcCmpStrFuzzyA3
-//; k[0] = func(slice[1], i64[2], dict[3]).k[4]
+//
+// k[0] = cmp_str_fuzzy_A3(slice[1], i64[2], dict[3]).k[4]
 TEXT bcCmpStrFuzzyA3(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_2xSLOT_DICT_SLOT(BC_SLOT_SIZE*1, OUT(BX), OUT(CX), OUT(R15), OUT(R8))
   BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
@@ -8473,7 +8678,8 @@ next:
 //; #endregion bcCmpStrFuzzyA3
 
 //; #region bcCmpStrFuzzyUnicodeA3
-//; k[0] = func(slice[1], i64[2], dict[3]).k[4]
+//
+// k[0] = cmp_str_fuzzy_unicode_A3(slice[1], i64[2], dict[3]).k[4]
 TEXT bcCmpStrFuzzyUnicodeA3(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_2xSLOT_DICT_SLOT(BC_SLOT_SIZE*1, OUT(BX), OUT(CX), OUT(R15), OUT(R8))
   BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
@@ -8671,7 +8877,7 @@ next:
 //; #endregion bcCmpStrFuzzyUnicodeA3
 
 //; #region bcHasSubstrFuzzyA3
-//; k[0] = func(slice[1], i64[2], dict[3]).k[4]
+// k[0] = contains_fuzzy_A3(slice[1], i64[2], dict[3]).k[4]
 TEXT bcHasSubstrFuzzyA3(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_2xSLOT_DICT_SLOT(BC_SLOT_SIZE*1, OUT(BX), OUT(CX), OUT(R15), OUT(R8))
   BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
@@ -8808,7 +9014,8 @@ next:
 //; #endregion bcHasSubstrFuzzyA3
 
 //; #region bcHasSubstrFuzzyUnicodeA3
-//; k[0] = func(slice[1], i64[2], dict[3]).k[4]
+//
+// k[0] = contains_fuzzy_unicode_A3(slice[1], i64[2], dict[3]).k[4]
 TEXT bcHasSubstrFuzzyUnicodeA3(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_2xSLOT_DICT_SLOT(BC_SLOT_SIZE*1, OUT(BX), OUT(CX), OUT(R15), OUT(R8))
   BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
@@ -9022,8 +9229,9 @@ next:
 //; #endregion bcHasSubstrFuzzyUnicodeA3
 
 //; #region bcSkip1charLeft
-//; slice[0].k[1] = func(slice[2]).k[3]
 //; skip the first UTF-8 codepoint in Z2:Z3
+//
+// slice[0].k[1] = skip_1char_left(slice[2]).k[3]
 TEXT bcSkip1charLeft(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_2xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R8))
   BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
@@ -9049,8 +9257,9 @@ next:
 //; #endregion bcSkip1charLeft
 
 //; #region bcSkip1charRight
-//; slice[0].k[1] = func(slice[2]).k[3]
 //; skip the last UTF-8 codepoint in Z2:Z3
+//
+// slice[0].k[1] = skip_1char_right(slice[2]).k[3]
 TEXT bcSkip1charRight(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_2xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R8))
   BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
@@ -9101,8 +9310,9 @@ next:
 //; #endregion bcSkip1charRight
 
 //; #region bcSkipNcharLeft
-//; slice[0].k[1] = func(slice[2], i64[3]).k[4]
 //; skip the first n UTF-8 code-points in Z2:Z3
+//
+// slice[0].k[1] = skip_nchar_left(slice[2], i64[3]).k[4]
 TEXT bcSkipNcharLeft(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_3xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(CX), OUT(R8))
   BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
@@ -9146,8 +9356,9 @@ next:
 //; #endregion bcSkipNcharLeft
 
 //; #region bcSkipNcharRight
-//; slice[0].k[1] = func(slice[2], i64[3]).k[4]
 //; skip the last n UTF-8 code-points in Z2:Z3
+//
+// slice[0].k[1] = skip_nchar_right(slice[2], i64[3]).k[4]
 TEXT bcSkipNcharRight(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_3xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(CX), OUT(R8))
   BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
@@ -9213,7 +9424,8 @@ next:
 //; #endregion bcSkipNcharRight
 
 //; #region bcTrimWsLeft
-//; slice[0] = func(slice[1]).k[2]
+//
+// slice[0] = trim_ws_left(slice[1]).k[2]
 TEXT bcTrimWsLeft(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_2xSLOT(BC_SLOT_SIZE*1, OUT(BX), OUT(R8))
   BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
@@ -9267,7 +9479,8 @@ next:
 //; #endregion bcTrimWsLeft
 
 //; #region bcTrimWsRight
-//; slice[0] = func(slice[1]).k[2]
+//
+// slice[0] = trim_ws_right(slice[1]).k[2]
 TEXT bcTrimWsRight(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_2xSLOT(BC_SLOT_SIZE*1, OUT(BX), OUT(R8))
   BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
@@ -9322,7 +9535,8 @@ next:
 //; #endregion bcTrimWsRight
 
 //; #region bcTrim4charLeft
-//; slice[0] = func(slice[1], dict[2]).k[3]
+//
+// slice[0] = trim_char_left(slice[1], dict[2]).k[3]
 TEXT bcTrim4charLeft(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_SLOT_DICT_SLOT(BC_SLOT_SIZE*1, OUT(BX), OUT(R14), OUT(R8))
   BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
@@ -9378,7 +9592,8 @@ next:
 //; #endregion bcTrim4charLeft
 
 //; #region bcTrim4charRight
-//; slice[0] = func(slice[1], dict[2]).k[3]
+//
+// slice[0] = trim_char_right(slice[1], dict[2]).k[3]
 TEXT bcTrim4charRight(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_SLOT_DICT_SLOT(BC_SLOT_SIZE*1, OUT(BX), OUT(R14), OUT(R8))
   BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
@@ -9438,7 +9653,7 @@ next:
   NEXT_ADVANCE(BC_SLOT_SIZE*3 + BC_DICT_SIZE)
 //; #endregion bcTrim4charRight
 
-// i64[0] = octet_length(slice[1]).k[2]
+// i64[0] = octetlength(slice[1]).k[2]
 TEXT bcoctetlength(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_2xSLOT(BC_SLOT_SIZE*1, OUT(BX), OUT(R8))
   BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
@@ -9453,7 +9668,7 @@ TEXT bcoctetlength(SB), NOSPLIT|NOFRAME, $0
   BC_STORE_I64_TO_SLOT(IN(Z0), IN(Z1), IN(DX))
   NEXT_ADVANCE(BC_SLOT_SIZE*3)
 
-// i64[0] = char_length(slice[1]).k[2]
+// i64[0] = characterlength(slice[1]).k[2]
 //
 // The length of **a valid UTF-8 string** can be calculated in the following way:
 //
@@ -9521,11 +9736,12 @@ next:
   NEXT_ADVANCE(BC_SLOT_SIZE*3)
 
 //; #region bcSubstr
-//; slice[0] = func(slice[1], i64[2], i64[3]).k[4]
 //; Get a substring of UTF-8 code-points in Z2:Z3 (str interpretation). The substring starts
 //; from the specified start-index and ends at the specified length or at the last character
 //; of the string (which ever is first). The start-index is 1-based! The first index of the
 //; string starts at 1. The substring is stored in Z2:Z3 (str interpretation)
+//
+// slice[0] = substr(slice[1], i64[2], i64[3]).k[4]
 TEXT bcSubstr(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_4xSLOT(BC_SLOT_SIZE*1, OUT(BX), OUT(CX), OUT(DX), OUT(R8))
   BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
@@ -9601,7 +9817,8 @@ test2:
 
 //; #region bcSplitPart
 //; NOTE: the delimiter cannot be byte 0
-//; slice[0].k[1] = func(slice[2], dict[3], i64[4]).k[5]
+//
+// slice[0].k[1] = split_part(slice[2], dict[3], i64[4]).k[5]
 TEXT bcSplitPart(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_SLOT(BC_SLOT_SIZE*2, OUT(BX))
   BC_UNPACK_DICT(BC_SLOT_SIZE*3, OUT(R14))
@@ -9692,7 +9909,8 @@ next:
 //; #endregion bcSplitPart
 
 //; #region bcContainsPrefixCs
-//; k[0] = func(slice[1], dict[2]).k[3]
+//
+// s[0].k[0] = contains_prefix_cs(slice[2], dict[3]).k[4]
 TEXT bcContainsPrefixCs(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_SLOT_DICT_SLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R14), OUT(R8))
   BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
@@ -9745,7 +9963,8 @@ next:
 //; #endregion bcContainsPrefixCs
 
 //; #region bcContainsPrefixCi
-//; k[0] = func(slice[1], dict[2]).k[3]
+//
+// s[0].k[1] = contains_prefix_ci(slice[2], dict[3]).k[4]
 TEXT bcContainsPrefixCi(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_SLOT_DICT_SLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R14), OUT(R8))
   BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
@@ -9811,8 +10030,9 @@ next:
 //; #endregion bcContainsPrefixCi
 
 //; #region bcContainsPrefixUTF8Ci
-//; k[0] = func(slice[1], dict[2]).k[3]
 //; empty needles or empty data always result in a dead lane
+//
+// s[0].k[1] = contains_prefix_utf8_ci(slice[2], dict[3]).k[4]
 TEXT bcContainsPrefixUTF8Ci(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_SLOT_DICT_SLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R14), OUT(R8))
   BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
@@ -9908,7 +10128,8 @@ next:
 //; #endregion bcContainsPrefixUTF8Ci
 
 //; #region bcContainsSuffixCs
-//; k[0] = func(slice[1], dict[2]).k[3]
+//
+// s[0].k[1] = contains_suffix_cs(slice[2], dict[3]).k[4]
 TEXT bcContainsSuffixCs(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_SLOT_DICT_SLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R14), OUT(R8))
   BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
@@ -9966,7 +10187,8 @@ next:
 //; #endregion bcContainsSuffixCs
 
 //; #region bcContainsSuffixCi
-//; k[0] = func(slice[1], dict[2]).k[3]
+//
+// s[0].k[1] = contains_suffix_ci(slice[2], dict[3]).k[4]
 TEXT bcContainsSuffixCi(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_SLOT_DICT_SLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R14), OUT(R8))
   BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
@@ -10038,7 +10260,8 @@ next:
 //; #endregion bcContainsSuffixCi
 
 //; #region bcContainsSuffixUTF8Ci
-//; k[0] = func(slice[1], dict[2]).k[3]
+//
+// s[0].k[1] = contains_suffix_utf8_ci(slice[2], dict[3]).k[4]
 TEXT bcContainsSuffixUTF8Ci(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_SLOT_DICT_SLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R14), OUT(R8))
   BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
@@ -10150,7 +10373,8 @@ next:
 //; #endregion bcContainsSuffixUTF8Ci
 
 //; #region bcContainsSubstrCs
-//; k[0] = func(slice[1], dict[2]).k[3]
+//
+// s[0].k[1] = contains_substr_cs(slice[2], dict[3]).k[4]
 TEXT bcContainsSubstrCs(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_SLOT_DICT_SLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R14), OUT(R8))
   BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
@@ -10256,7 +10480,8 @@ next:
 //; #endregion bcContainsSubstrCs
 
 //; #region bcContainsSubstrCi
-//; k[0] = func(slice[1], dict[2]).k[3]
+//
+// s[0].k[1] = contains_substr_ci(slice[2], dict[3]).k[4]
 TEXT bcContainsSubstrCi(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_SLOT_DICT_SLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R14), OUT(R8))
   BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
@@ -10395,6 +10620,8 @@ next:
 //; #endregion bcContainsSubstrCi
 
 //; #region bcContainsSubstrUTF8Ci
+//
+// s[0].k[1] = contains_substr_utf8_ci(slice[2], dict[3]).k[4]
 TEXT bcContainsSubstrUTF8Ci(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_SLOT_DICT_SLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R14), OUT(R8))
   BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
@@ -10508,6 +10735,8 @@ next:
 //; #endregion bcContainsSubstrUTF8Ci
 
 //; #region bcEqPatternCs
+//
+// s[0].k[1] = eq_pattern_cs(slice[2], dict[3]).k[4]
 TEXT bcEqPatternCs(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_SLOT_DICT_SLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R14), OUT(R8))
   BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
@@ -10608,6 +10837,8 @@ unicode_match:                            //;B1B3AECE a wildcard has matched wit
 //; #endregion bcEqPatternCs
 
 //; #region bcEqPatternCi
+//
+// s[0].k[1] = eq_pattern_ci(slice[2], dict[3]).k[4]
 TEXT bcEqPatternCi(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_SLOT_DICT_SLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R14), OUT(R8))
   BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
@@ -10726,8 +10957,9 @@ unicode_match:                            //;B1B3AECE a wildcard has matched wit
 //; #endregion bcEqPatternCi
 
 //; #region bcEqPatternUTF8Ci
-//; k[0] = func(slice[1], dict[2]).k[3]
 //; empty needles or empty data always result in a dead lane
+//
+// s[0].k[1] = eq_pattern_utf8_ci(slice[2], dict[3]).k[4]
 TEXT bcEqPatternUTF8Ci(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_SLOT_DICT_SLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R14), OUT(R8))
   BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
@@ -10789,7 +11021,8 @@ next:
 //; #endregion bcEqPatternUTF8Ci
 
 //; #region bcContainsPatternCs
-//; k[0] = func(slice[1], dict[2]).k[3]
+//
+// s[0].k[1] = contains_pattern_cs(slice[2], dict[3]).k[4]
 TEXT bcContainsPatternCs(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_SLOT_DICT_SLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R14), OUT(R8))
   BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
@@ -10947,7 +11180,8 @@ unicode_match:                            //;B1B3AECE a wildcard has matched wit
 //; #endregion bcContainsPatternCs
 
 //; #region bcContainsPatternCi
-//; k[0] = func(slice[1], dict[2]).k[3]
+//
+// s[0].k[1] = contains_pattern_ci(slice[2], dict[3]).k[4]
 TEXT bcContainsPatternCi(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_SLOT_DICT_SLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R14), OUT(R8))
   BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
@@ -11138,6 +11372,8 @@ unicode_match:                            //;B1B3AECE a wildcard has matched wit
 //; #endregion bcContainsPatternCi
 
 //; #region bcContainsPatternUTF8Ci
+//
+// s[0].k[1] = contains_pattern_utf8_ci(slice[2], dict[3]).k[4]
 TEXT bcContainsPatternUTF8Ci(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_SLOT_DICT_SLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R14), OUT(R8))
   BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
@@ -11259,9 +11495,10 @@ next:
 //; #endregion bcContainsPatternUTF8Ci
 
 //; #region bcIsSubnetOfIP4
-//; k[0] = func(slice[1], dict[2]).k[3]
 //; Determine whether the string at Z2:Z3 is an IP address between the 4 provided bytewise min/max values
 //; To prevent parsing of the IP string into an integer, every component is compared with a BCD min/max values
+//
+// k[0] = is_subnet_of_ip4(slice[1], dict[2]).k[3]
 TEXT bcIsSubnetOfIP4(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_SLOT_DICT_SLOT(BC_SLOT_SIZE*1, OUT(BX), OUT(R14), OUT(R8))
   BC_LOAD_I64_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
@@ -11367,8 +11604,9 @@ next:
 //; #endregion bcIsSubnetOfIP4
 
 //; #region bcDfaT6
-//; k[0] = func(slice[1], dict[2]).k[3]
 //; DfaT6 Deterministic Finite Automaton (DFA) with 6-bits lookup-key and unicode wildcard
+//
+// k[0] = dfa_tiny6(slice[1], dict[2]).k[3]
 TEXT bcDfaT6(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_SLOT_DICT_SLOT(BC_SLOT_SIZE*1, OUT(BX), OUT(R14), OUT(R8))
   BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
@@ -11466,8 +11704,9 @@ skip_wildcard:
 //; #endregion bcDfaT6
 
 //; #region bcDfaT7
-//; k[0] = func(slice[1], dict[2]).k[3]
 //; DfaT7 Deterministic Finite Automaton (DFA) with 7-bits lookup-key and unicode wildcard
+//
+// k[0] = dfa_tiny7(slice[1], dict[2]).k[3]
 TEXT bcDfaT7(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_SLOT_DICT_SLOT(BC_SLOT_SIZE*1, OUT(BX), OUT(R14), OUT(R8))
   BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
@@ -11566,8 +11805,9 @@ skip_wildcard:
 //; #endregion bcDfaT7
 
 //; #region bcDfaT8
-//; k[0] = func(slice[1], dict[2]).k[3]
 //; DfaT8 Deterministic Finite Automaton (DFA) with 8-bits lookup-key
+//
+// k[0] = dfa_tiny8(slice[1], dict[2]).k[3]
 TEXT bcDfaT8(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_SLOT_DICT_SLOT(BC_SLOT_SIZE*1, OUT(BX), OUT(R14), OUT(R8))
   BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
@@ -11689,8 +11929,9 @@ skip_wildcard:
 //; #endregion bcDfaT8
 
 //; #region bcDfaT6Z
-//; k[0] = func(slice[1], dict[2]).k[3]
 //; DfaT6Z Deterministic Finite Automaton (DFA) with 6-bits lookup-key and Zero length remaining assertion
+//
+// k[0] = dfa_tiny6Z(slice[1], dict[2]).k[3]
 TEXT bcDfaT6Z(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_SLOT_DICT_SLOT(BC_SLOT_SIZE*1, OUT(BX), OUT(R14), OUT(R8))
   BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
@@ -11805,8 +12046,9 @@ skip_wildcard:
 //; #endregion bcDfaT6Z
 
 //; #region bcDfaT7Z
-//; k[0] = func(slice[1], dict[2]).k[3]
 //; DfaT7Z Deterministic Finite Automaton (DFA) with 7-bits lookup-key and Zero length remaining assertion
+//
+// k[0] = dfa_tiny7Z(slice[1], dict[2]).k[3]
 TEXT bcDfaT7Z(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_SLOT_DICT_SLOT(BC_SLOT_SIZE*1, OUT(BX), OUT(R14), OUT(R8))
   BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
@@ -11922,8 +12164,9 @@ skip_wildcard:
 //; #endregion bcDfaT7Z
 
 //; #region bcDfaT8Z
-//; k[0] = func(slice[1], dict[2]).k[3]
 //; DfaT8Z Deterministic Finite Automaton 8-bits with Zero length remaining assertion
+//
+// k[0] = dfa_tiny8Z(slice[1], dict[2]).k[3]
 TEXT bcDfaT8Z(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_SLOT_DICT_SLOT(BC_SLOT_SIZE*1, OUT(BX), OUT(R14), OUT(R8))
   BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
@@ -12061,8 +12304,9 @@ skip_wildcard:
 //; #endregion bcDfaT8Z
 
 //; #region bcDfaLZ
-//; k[0] = func(slice[1], dict[2]).k[3]
 //; DfaLZ Deterministic Finite Automaton(DFA) with unlimited capacity (Large) and Remaining Length Zero Assertion (RLZA)
+//
+// k[0] = dfa_largeZ(slice[1], dict[2]).k[3]
 TEXT bcDfaLZ(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_SLOT_DICT_SLOT(BC_SLOT_SIZE*1, OUT(BX), OUT(R14), OUT(R8))
   BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
@@ -12230,7 +12474,7 @@ zero:                                                                          \
     VMOVDQA64   Z21, Z3
 
 
-// f64[0] = pow(f64[1], int64[2]).k[3]
+// f64[0] = powuint.f64(f64[1], i64@imm[2]).k[3]
 TEXT bcpowuintf64(SB), NOSPLIT|NOFRAME, $0
     BC_UNPACK_SLOT(BC_SLOT_SIZE, OUT(DX))
     BC_UNPACK_RU64(BC_SLOT_SIZE*2, OUT(BX))

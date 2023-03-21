@@ -18,8 +18,7 @@
 //   - BC_CMP_NAME  - name of the bc instruction
 //   - BC_CMP_I_IMM - predicate for integer comparison (VPCMPx instruction)
 
-// k[0] = cmp_xx(str[1], str[2]).k[3]
-TEXT BC_CMP_NAME(SB), NOSPLIT|NOFRAME, $0
+//TEXT bc...(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_3xSLOT(BC_SLOT_SIZE*1, OUT(BX), OUT(CX), OUT(R8))
   BC_LOAD_K1_FROM_SLOT(OUT(K3), IN(R8))
 

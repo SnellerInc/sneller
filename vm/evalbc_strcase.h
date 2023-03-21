@@ -355,7 +355,9 @@ BC_STR_DEF_CONSTD(utf32_change_case_lookup_mask, $0x1ff)
     1111:  4  // 4-byte char */
 BC_STR_DEF_VPSHUFB_LANE_CONST(utf8_length, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 2, 2, 3, 4)
 
-
+// s[0].k[1] = slower(slice[2]).k[3]
+//
+// scratch: PageSize
 TEXT bcslower(SB), NOSPLIT|NOFRAME, $0
     // 0x3f = 128 - ord('A')
     // 0x25 = 128 - ord('Z') - 1
@@ -363,6 +365,9 @@ TEXT bcslower(SB), NOSPLIT|NOFRAME, $0
 
     _BC_ERROR_HANDLER_MORE_SCRATCH()
 
+// s[0].k[1] = supper(slice[2]).k[3]
+//
+// scratch: PageSize
 TEXT bcsupper(SB), NOSPLIT|NOFRAME, $0
     // 0x1f = 128 - ord('a')
     // 0x05 = 128 - ord('z') - 1

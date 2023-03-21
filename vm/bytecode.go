@@ -28,6 +28,8 @@ import (
 //go:generate go run _generate/genops.go
 //go:generate gofmt -w ops_gen.go
 //go:generate go run _generate/genconst.go -i evalbc_amd64.s -o bc_constant_gen.h
+//go:generate go run ./_generate/genbytecode/ -i evalbc_amd64.s -o bytecode_gen.go
+//go:generate gofmt -w bytecode_gen.go
 
 // --- How to Add an Instruction ---
 //  - define a new TEXT label in evalbc_{arch}.s
@@ -163,6 +165,57 @@ type bcopinfo struct {
 	scratch int // desired scratch space (up to PageSize)
 }
 
+func char2bcarg(c rune) bcArgType {
+	var t bcArgType
+	switch c {
+	case 'k':
+		t = bcK
+	case 's':
+		t = bcS
+	case 'v':
+		t = bcV
+	case 'b':
+		t = bcB
+	case 'h':
+		t = bcH
+	case 'l':
+		t = bcL
+	case 'i': // Integer
+		t = bcImmI64
+	case 'f': // Float
+		t = bcImmF64
+	case 'd': // Datum
+		t = bcLitRef
+	case '2': // 2-byte immediate
+		t = bcImmU16
+	case '4': // 4-byte immediate
+		t = bcImmU32
+	case '8': // 8-byte immediate
+		t = bcImmU64
+	case 'y': // sYmbol
+		t = bcSymbolID
+	case 'a': // Aggregate
+		t = bcAggSlot
+	case 'p': // Param
+		t = bcAuxSlot
+	case 'x':
+		t = bcDictSlot
+	default:
+		panic("bad char:" + string(c))
+	}
+
+	return t
+}
+
+func str2bcarg(s string) []bcArgType {
+	ret := make([]bcArgType, len(s))
+	for i, c := range s {
+		ret[i] = char2bcarg(c)
+	}
+
+	return ret
+}
+
 func bcmakeopinfo() [_maxbcop]bcopinfo {
 	sharedArgs := make(map[string][]bcArgType)
 
@@ -171,47 +224,7 @@ func bcmakeopinfo() [_maxbcop]bcopinfo {
 		if ret, ok := sharedArgs[s]; ok {
 			return ret
 		}
-		ret := make([]bcArgType, len(s))
-		for i, c := range s {
-			var t bcArgType
-			switch c {
-			case 'k':
-				t = bcK
-			case 's':
-				t = bcS
-			case 'v':
-				t = bcV
-			case 'b':
-				t = bcB
-			case 'h':
-				t = bcH
-			case 'l':
-				t = bcL
-			case 'i': // Integer
-				t = bcImmI64
-			case 'f': // Float
-				t = bcImmF64
-			case 'd': // Datum
-				t = bcLitRef
-			case '2': // 2-byte immediate
-				t = bcImmU16
-			case '4': // 4-byte immediate
-				t = bcImmU32
-			case '8': // 8-byte immediate
-				t = bcImmU64
-			case 'y': // sYmbol
-				t = bcSymbolID
-			case 'a': // Aggregate
-				t = bcAggSlot
-			case 'p': // Param
-				t = bcAuxSlot
-			case 'x':
-				t = bcDictSlot
-			default:
-				panic("bad char:" + string(c))
-			}
-			ret[i] = t
-		}
+		ret := str2bcarg(s)
 		sharedArgs[s] = ret
 		return ret
 	}

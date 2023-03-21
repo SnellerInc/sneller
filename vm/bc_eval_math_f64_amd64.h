@@ -125,7 +125,7 @@
 // Floating Point Math Instructions - Broadcast
 // --------------------------------------------
 
-// f64[0] = f64@imm[1]
+// f64[0] = broadcast.f64(f64@imm[1])
 TEXT bcbroadcastf64(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_SLOT(0, OUT(DX))
   BC_UNPACK_ZF64(BC_SLOT_SIZE, OUT(Z2))
@@ -138,7 +138,7 @@ TEXT bcbroadcastf64(SB), NOSPLIT|NOFRAME, $0
 // Floating Point Math Instructions - Abs
 // --------------------------------------
 
-// f64[0].k[1] = abs(f64[2]).k[3]
+// f64[0].k[1] = abs.f64(f64[2]).k[3]
 TEXT bcabsf64(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_2xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R8))
 
@@ -157,7 +157,7 @@ TEXT bcabsf64(SB), NOSPLIT|NOFRAME, $0
 // Floating Point Math Instructions - Neg
 // --------------------------------------
 
-// f64[0].k[1] = -f64[2].k[3]
+// f64[0].k[1] = neg.f64(f64[2]).k[3]
 TEXT bcnegf64(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_2xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R8))
 
@@ -176,7 +176,7 @@ TEXT bcnegf64(SB), NOSPLIT|NOFRAME, $0
 // Floating Point Math Instructions - Sign
 // ---------------------------------------
 
-// f64[0].k[1] = sign(f64[2]).k[3]
+// f64[0].k[1] = sign.f64(f64[2]).k[3]
 TEXT bcsignf64(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_2xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R8))
 
@@ -203,7 +203,7 @@ TEXT bcsignf64(SB), NOSPLIT|NOFRAME, $0
 // Floating Point Math Instructions - Square
 // -----------------------------------------
 
-// f64[0] = square(f64[1]).k[2]
+// f64[0] = square.f64(f64[1]).k[2]
 TEXT bcsquaref64(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_3xSLOT(0, OUT(DX), OUT(BX), OUT(R8))
   BC_LOAD_F64_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
@@ -218,7 +218,7 @@ TEXT bcsquaref64(SB), NOSPLIT|NOFRAME, $0
 // Floating Point Math Instructions - Rounding
 // -------------------------------------------
 
-// f64[0] = round(f64[1]).k[2]
+// f64[0] = round.f64(f64[1]).k[2]
 TEXT bcroundf64(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_2xSLOT(BC_SLOT_SIZE*1, OUT(BX), OUT(R8))
 
@@ -243,22 +243,22 @@ TEXT bcroundf64(SB), NOSPLIT|NOFRAME, $0
   BC_STORE_F64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
   NEXT_ADVANCE(BC_SLOT_SIZE*3)
 
-// f64[0] = round_even(f64[1]).k[2]
+// f64[0] = roundeven.f64(f64[1]).k[2]
 TEXT bcroundevenf64(SB), NOSPLIT|NOFRAME, $0
   BC_ROUND_OP_F64_IMPL(VROUND_IMM_NEAREST_SAE)
   NEXT_ADVANCE(BC_SLOT_SIZE*3)
 
-// f64[0] = trunc(f64[1]).k[2]
+// f64[0] = trunc.f64(f64[1]).k[2]
 TEXT bctruncf64(SB), NOSPLIT|NOFRAME, $0
   BC_ROUND_OP_F64_IMPL(VROUND_IMM_TRUNC_SAE)
   NEXT_ADVANCE(BC_SLOT_SIZE*3)
 
-// f64[0] = floor(f64[1]).k[2]
+// f64[0] = floor.f64(f64[1]).k[2]
 TEXT bcfloorf64(SB), NOSPLIT|NOFRAME, $0
   BC_ROUND_OP_F64_IMPL(VROUND_IMM_DOWN_SAE)
   NEXT_ADVANCE(BC_SLOT_SIZE*3)
 
-// f64[0] = ceil(f64[1]).k[2]
+// f64[0] = ceil.f64(f64[1]).k[2]
 TEXT bcceilf64(SB), NOSPLIT|NOFRAME, $0
   BC_ROUND_OP_F64_IMPL(VROUND_IMM_UP_SAE)
   NEXT_ADVANCE(BC_SLOT_SIZE*3)
@@ -266,12 +266,12 @@ TEXT bcceilf64(SB), NOSPLIT|NOFRAME, $0
 // Floating Point Math Instructions - Add
 // --------------------------------------
 
-// f64[0].k[1] = add(f64[2], f64[3]).k[4]
+// f64[0].k[1] = add.f64(f64[2], f64[3]).k[4]
 TEXT bcaddf64(SB), NOSPLIT|NOFRAME, $0
   BC_ARITH_OP_F64_IMPL_K(VADDPD)
   NEXT_ADVANCE(BC_SLOT_SIZE*5)
 
-// f64[0].k[1] = add(f64[2], f64@imm[3]).k[4]
+// f64[0].k[1] = add.f64@imm(f64[2], f64@imm[3]).k[4]
 TEXT bcaddf64imm(SB), NOSPLIT|NOFRAME, $0
   BC_ARITH_REVERSE_OP_F64_IMM_IMPL(VADDPD)
   NEXT_ADVANCE(BC_SLOT_SIZE*4 + 8)
@@ -279,17 +279,17 @@ TEXT bcaddf64imm(SB), NOSPLIT|NOFRAME, $0
 // Floating Point Math Instructions - Sub
 // --------------------------------------
 
-// f64[0].k[1] = sub(f64[2], f64[3]).k[4]
+// f64[0].k[1] = sub.f64(f64[2], f64[3]).k[4]
 TEXT bcsubf64(SB), NOSPLIT|NOFRAME, $0
   BC_ARITH_OP_F64_IMPL_K(VSUBPD)
   NEXT_ADVANCE(BC_SLOT_SIZE*5)
 
-// f64[0].k[1] = sub(f64[2], f64@imm[3]).k[4]
+// f64[0].k[1] = sub.f64@imm(f64[2], f64@imm[3]).k[4]
 TEXT bcsubf64imm(SB), NOSPLIT|NOFRAME, $0
   BC_ARITH_OP_F64_IMM_IMPL_K(VSUBPD)
   NEXT_ADVANCE(BC_SLOT_SIZE*4 + 8)
 
-// f64[0].k[1] = sub(f64@imm[3] - f64[2]).k[4]
+// f64[0].k[1] = rsub.f64@imm(f64@imm[3], f64[2]).k[4]
 TEXT bcrsubf64imm(SB), NOSPLIT|NOFRAME, $0
   BC_ARITH_REVERSE_OP_F64_IMM_IMPL(VSUBPD)
   NEXT_ADVANCE(BC_SLOT_SIZE*4 + 8)
@@ -297,12 +297,12 @@ TEXT bcrsubf64imm(SB), NOSPLIT|NOFRAME, $0
 // Floating Point Math Instructions - Mul
 // --------------------------------------
 
-// f64[0].k[1] = mul(f64[2], f64[3]).k[4]
+// f64[0].k[1] = mul.f64(f64[2], f64[3]).k[4]
 TEXT bcmulf64(SB), NOSPLIT|NOFRAME, $0
   BC_ARITH_OP_F64_IMPL_K(VMULPD)
   NEXT_ADVANCE(BC_SLOT_SIZE*5)
 
-// f64[0].k[1] = mul(f64[2], f64@imm[3]).k[4]
+// f64[0].k[1] = mul.f64@imm(f64[2], f64@imm[3]).k[4]
 TEXT bcmulf64imm(SB), NOSPLIT|NOFRAME, $0
   BC_ARITH_OP_F64_IMM_IMPL_K(VMULPD)
   NEXT_ADVANCE(BC_SLOT_SIZE*4 + 8)
@@ -310,17 +310,17 @@ TEXT bcmulf64imm(SB), NOSPLIT|NOFRAME, $0
 // Floating Point Math Instructions - Div
 // --------------------------------------
 
-// f64[0].k[1] = div(f64[2], f64[3]).k[4]
+// f64[0].k[1] = div.f64(f64[2], f64[3]).k[4]
 TEXT bcdivf64(SB), NOSPLIT|NOFRAME, $0
   BC_ARITH_OP_F64_IMPL_K(VDIVPD)
   NEXT_ADVANCE(BC_SLOT_SIZE*5)
 
-// f64[0].k[1] = div(f64[2], f64@imm[3]).k[4]
+// f64[0].k[1] = div.f64@imm(f64[2], f64@imm[3]).k[4]
 TEXT bcdivf64imm(SB), NOSPLIT|NOFRAME, $0
   BC_ARITH_OP_F64_IMM_IMPL_K(VDIVPD)
   NEXT_ADVANCE(BC_SLOT_SIZE*4 + 8)
 
-// f64[0].k[1] = div(f64@imm[3], f64[2]).k[4]
+// f64[0].k[1] = rdiv.f64@imm(f64@imm[3], f64[2]).k[4]
 TEXT bcrdivf64imm(SB), NOSPLIT|NOFRAME, $0
   BC_ARITH_REVERSE_OP_F64_IMM_IMPL(VDIVPD)
   NEXT_ADVANCE(BC_SLOT_SIZE*4 + 8)
@@ -328,7 +328,7 @@ TEXT bcrdivf64imm(SB), NOSPLIT|NOFRAME, $0
 // Floating Point Math Instructions - Mod
 // --------------------------------------
 
-// f64[0].k[1] = mod(f64[2], f64[3]).k[4]
+// f64[0].k[1] = mod.f64(f64[2], f64[3]).k[4]
 TEXT bcmodf64(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_3xSLOT(BC_SLOT_SIZE*4, OUT(BX), OUT(CX), OUT(R8))
   BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
@@ -346,7 +346,7 @@ TEXT bcmodf64(SB), NOSPLIT|NOFRAME, $0
 
   NEXT_ADVANCE(BC_SLOT_SIZE*5)
 
-// f64[0].k[1] = mod(f64[2], f64@imm[3]).k[4]
+// f64[0].k[1] = mod.f64@imm(f64[2], f64@imm[3]).k[4]
 TEXT bcmodf64imm(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_SLOT_ZF64_SLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(Z4), OUT(R8))
   BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
@@ -362,7 +362,7 @@ TEXT bcmodf64imm(SB), NOSPLIT|NOFRAME, $0
 
   NEXT_ADVANCE(BC_SLOT_SIZE*4 + 8)
 
-// f64[0].k[1] = mod(f64@imm[3], f64[2]).k[4]
+// f64[0].k[1] = rmod.f64@imm(f64@imm[3], f64[2]).k[4]
 TEXT bcrmodf64imm(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_SLOT_ZF64_SLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(Z2), OUT(R8))
   BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
@@ -381,12 +381,12 @@ TEXT bcrmodf64imm(SB), NOSPLIT|NOFRAME, $0
 // Floating Point Math Instructions - Min
 // --------------------------------------
 
-// f64[0] = min(f64[1], f64[2]).k[3]
+// f64[0] = minvalue.f64(f64[1], f64[2]).k[3]
 TEXT bcminvaluef64(SB), NOSPLIT|NOFRAME, $0
   BC_ARITH_OP_F64_IMPL(VMINPD)
   NEXT_ADVANCE(BC_SLOT_SIZE*4)
 
-// f64[0] = min(f64[1], f64@imm[2]).k[3]
+// f64[0] = minvalue.f64@imm(f64[1], f64@imm[2]).k[3]
 TEXT bcminvaluef64imm(SB), NOSPLIT|NOFRAME, $0
   BC_ARITH_OP_F64_IMM_IMPL(VMINPD)
   NEXT_ADVANCE(BC_SLOT_SIZE*3 + 8)
@@ -394,12 +394,12 @@ TEXT bcminvaluef64imm(SB), NOSPLIT|NOFRAME, $0
 // Floating Point Math Instructions - Max
 // --------------------------------------
 
-// f64[0] = max(f64[1], f64[2]).k[3]
+// f64[0] = maxvalue.f64(f64[1], f64[2]).k[3]
 TEXT bcmaxvaluef64(SB), NOSPLIT|NOFRAME, $0
   BC_ARITH_OP_F64_IMPL(VMAXPD)
   NEXT_ADVANCE(BC_SLOT_SIZE*4)
 
-// f64[0] = min(f64[1], f64@imm[2]).k[3]
+// f64[0] = maxvalue.f64@imm(f64[1], f64@imm[2]).k[3]
 TEXT bcmaxvaluef64imm(SB), NOSPLIT|NOFRAME, $0
   BC_ARITH_OP_F64_IMM_IMPL(VMAXPD)
   NEXT_ADVANCE(BC_SLOT_SIZE*3 + 8)
@@ -407,7 +407,7 @@ TEXT bcmaxvaluef64imm(SB), NOSPLIT|NOFRAME, $0
 // Floating Point Math Instructions - sqrt(x)
 // ------------------------------------------
 
-// f64[0].k[1] = sqrt(f64[2]).k[3]
+// f64[0].k[1] = sqrt.f64(f64[2]).k[3]
 TEXT bcsqrtf64(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_2xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R8))
   BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
@@ -444,7 +444,7 @@ CONST_DATA_U32(const_cbrt, 120, $0x2) // i32(2)
 CONST_DATA_U32(const_cbrt, 124, $0xfffff800) // i32(4294965248)
 CONST_GLOBAL(const_cbrt, $128)
 
-// f64[0].k[1] = cbrt(f64[2]).k[3]
+// f64[0].k[1] = cbrt.f64(f64[2]).k[3]
 TEXT bccbrtf64(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_2xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R8))
   BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
@@ -706,7 +706,7 @@ CONST_DATA_U64(const_exp, 112, $0xc08f400000000000) // f64(-1000)
 CONST_DATA_U32(const_exp, 120, $0x3ff00000) // i32(1072693248)
 CONST_GLOBAL(const_exp, $124)
 
-// f64[0].k[1] = exp(f64[2]).k[3]
+// f64[0].k[1] = exp.f64(f64[2]).k[3]
 TEXT bcexpf64(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_2xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R8))
   BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
@@ -847,7 +847,7 @@ CONST_DATA_U64(const_exp2,  96, $0xc09f400000000000) // f64(-2000)
 CONST_DATA_U32(const_exp2, 104, $0x3ff00000) // i32(1072693248)
 CONST_GLOBAL(const_exp2, $108)
 
-// f64[0].k[1] = exp2(f64[2]).k[3]
+// f64[0].k[1] = exp2.f64(f64[2]).k[3]
 TEXT bcexp2f64(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_2xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R8))
   BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
@@ -979,7 +979,7 @@ CONST_DATA_U64(const_exp10, 120, $0xc075e00000000000) // f64(-350)
 CONST_DATA_U32(const_exp10, 128, $0x3ff00000) // i32(1072693248)
 CONST_GLOBAL(const_exp10, $132)
 
-// f64[0].k[1] = exp10(f64[2]).k[3]
+// f64[0].k[1] = exp10.f64(f64[2]).k[3]
 TEXT bcexp10f64(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_2xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R8))
   BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
@@ -1110,7 +1110,7 @@ CONST_DATA_U64(const_expm1, 136, $0xc0425e4f7b2737fa) // f64(-36.736800569677101
 CONST_DATA_U32(const_expm1, 144, $0x3ff00000) // i32(1072693248)
 CONST_GLOBAL(const_expm1, $148)
 
-// f64[0].k[1] = expm1(f64[2]).k[3]
+// f64[0].k[1] = expm1.f64(f64[2]).k[3]
 TEXT bcexpm1f64(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_2xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R8))
   BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
@@ -1388,7 +1388,7 @@ CONST_DATA_U64(const_ln, 88, $0x3c7abc9e3b39803f) // f64(2.3190468138462996E-17)
 CONST_DATA_U64(const_ln, 96, $0x0253040002530400) // i64(167482009228346368)
 CONST_GLOBAL(const_ln, $104)
 
-// f64[0].k[1] = ln(f64[2]).k[3]
+// f64[0].k[1] = ln.f64(f64[2]).k[3]
 TEXT bclnf64(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_2xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R8))
   BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
@@ -1555,7 +1555,7 @@ CONST_DATA_U64(const_log1p,  96, $0x3fe55555555557ae) // f64(0.66666666666673335
 CONST_DATA_U64(const_log1p, 104, $0x7fac7b1f3cac7433) // f64(9.9999999999999999E+306)
 CONST_GLOBAL(const_log1p, $112)
 
-// f64[0].k[1] = ln1p(f64[2]).k[3]
+// f64[0].k[1] = ln1p.f64(f64[2]).k[3]
 TEXT bcln1pf64(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_2xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R8))
   BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
@@ -1736,7 +1736,7 @@ CONST_DATA_U64(const_ln2, 88, $0x3c5bedda32ebbcb1) // f64(6.0561604995516738E-18
 CONST_DATA_U64(const_ln2, 96, $0x0253040002530400) // i64(167482009228346368)
 CONST_GLOBAL(const_ln2, $104)
 
-// f64[0].k[1] = log2(f64[2]).k[3]
+// f64[0].k[1] = log2.f64(f64[2]).k[3]
 TEXT bclog2f64(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_2xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R8))
   BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
@@ -1910,7 +1910,7 @@ CONST_DATA_U64(const_ln10, 104, $0x3c6a5b1dc915f38f) // f64(1.1430059694096389E-
 CONST_DATA_U64(const_ln10, 112, $0x0253040002530400) // i64(167482009228346368)
 CONST_GLOBAL(const_ln10, $120)
 
-// f64[0].k[1] = log10(f64[2]).k[3]
+// f64[0].k[1] = log10.f64(f64[2]).k[3]
 TEXT bclog10f64(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_2xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R8))
   BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
@@ -2117,7 +2117,7 @@ CONST_DATA_U32(const_sin, 236, $0x00000002) // i32(2)
 CONST_DATA_U32(const_sin, 240, $0x00000001) // i32(1)
 CONST_GLOBAL(const_sin, $244)
 
-// f64[0].k[1] = sin(f64[2]).k[3]
+// f64[0].k[1] = sin.f64(f64[2]).k[3]
 TEXT bcsinf64(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_2xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R8))
   BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
@@ -2700,7 +2700,7 @@ CONST_DATA_U32(const_cos, 272, $0x00000008) // i32(8)
 CONST_DATA_U32(const_cos, 276, $0x00000007) // i32(7)
 CONST_GLOBAL(const_cos, $280)
 
-// f64[0].k[1] = cos(f64[2]).k[3]
+// f64[0].k[1] = cos.f64(f64[2]).k[3]
 TEXT bccosf64(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_2xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R8))
   BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
@@ -3304,7 +3304,7 @@ CONST_DATA_U32(const_tan, 252, $0xffffffc0) // i32(4294967232)
 CONST_DATA_U32(const_tan, 256, $0x00000001) // i32(1)
 CONST_GLOBAL(const_tan, $260)
 
-// f64[0].k[1] = tan(f64[2]).k[3]
+// f64[0].k[1] = tan.f64(f64[2]).k[3]
 TEXT bctanf64(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_2xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R8))
   BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
@@ -3876,7 +3876,7 @@ CONST_DATA_U64(const_asin,  96, $0x3fe921fb54442d18) // f64(0.78539816339744828)
 CONST_DATA_U64(const_asin, 104, $0x3c81a62633145c07) // f64(3.061616997868383E-17)
 CONST_GLOBAL(const_asin, $112)
 
-// f64[0].k[1] = asin(f64[2]).k[3]
+// f64[0].k[1] = asin.f64(f64[2]).k[3]
 TEXT bcasinf64(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_2xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R8))
   BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
@@ -4058,7 +4058,7 @@ CONST_DATA_U64(const_acos, 112, $0x400921fb54442d18) // f64(3.1415926535897931)
 CONST_DATA_U64(const_acos, 120, $0x3ca1a62633145c07) // f64(1.2246467991473532E-16)
 CONST_GLOBAL(const_acos, $128)
 
-// f64[0].k[1] = acos(f64[2]).k[3]
+// f64[0].k[1] = acos.f64(f64[2]).k[3]
 TEXT bcacosf64(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_2xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R8))
   BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
@@ -4274,7 +4274,7 @@ CONST_DATA_U64(const_atan, 168, $0x3ff921fb54442d18) // f64(1.5707963267948966)
 CONST_DATA_U64(const_atan, 176, $0x3c91a62633145c07) // f64(6.123233995736766E-17)
 CONST_GLOBAL(const_atan, $184)
 
-// f64[0].k[1] = atan(f64[2]).k[3]
+// f64[0].k[1] = atan.f64(f64[2]).k[3]
 TEXT bcatanf64(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_2xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R8))
   BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
@@ -4503,7 +4503,7 @@ CONST_DATA_U64(const_atan2, 208, $0x400921fb54442d18) // i64(4614256656552045848
 CONST_DATA_U32(const_atan2, 216, $0xfffffffe) // i32(4294967294)
 CONST_GLOBAL(const_atan2, $220)
 
-// f64[0].k[1] = atan2(f64[2], f64[3]).k[4]
+// f64[0].k[1] = atan2.f64(f64[2], f64[3]).k[4]
 TEXT bcatan2f64(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_3xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(CX), OUT(R8))
   BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
@@ -4784,7 +4784,7 @@ CONST_DATA_U64(const_hypot, 0, $0x0010000000000000) // f64(2.2250738585072014E-3
 CONST_DATA_U64(const_hypot, 8, $0x4350000000000000) // f64(18014398509481984)
 CONST_GLOBAL(const_hypot, $16)
 
-// f64[0].k[1] = hypot(f64[2], f64[3]).k[4]
+// f64[0].k[1] = hypot.f64(f64[2], f64[3]).k[4]
 TEXT bchypotf64(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_3xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(CX), OUT(R8))
   BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
@@ -4981,7 +4981,7 @@ CONST_DATA_U64(const_pow, 240, $0x40862e42fe102c83) // f64(709.78271114955749)
 CONST_DATA_U32(const_pow, 248, $0x3ff00000) // i32(1072693248)
 CONST_GLOBAL(const_pow, $252)
 
-// f64[0].k[1] = pow(f64[2], f64[3]).k[4]
+// f64[0].k[1] = pow.f64(f64[2], f64[3]).k[4]
 TEXT bcpowf64(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_3xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(CX), OUT(R8))
   BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))

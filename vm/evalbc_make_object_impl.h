@@ -22,7 +22,6 @@
 //   - BC_GENERATE_MAKE_STRUCT - defined to generate 'bcmakestruct' instruction
 
 #ifdef BC_GENERATE_MAKE_LIST
-#define BC_INSTRUCTION_NAME bcmakelist
 #define BC_ION_OBJECT_TYPE CONSTD_0xB0()
 #define BC_VA_TUPLE_SIZE 4
 #define BC_VA_VALUE_STACK_SLOT 0
@@ -30,18 +29,13 @@
 #endif
 
 #ifdef BC_GENERATE_MAKE_STRUCT
-#define BC_INSTRUCTION_NAME bcmakestruct
 #define BC_ION_OBJECT_TYPE CONSTD_0xD0()
 #define BC_VA_TUPLE_SIZE 8
 #define BC_VA_VALUE_STACK_SLOT 4
 #define BC_VA_PREDICATE_STACK_SLOT 6
 #endif
 
-// v[0].k[1] = make_list(va...).k[2]
-// v[0].k[1] = make_struct(va...).k[2]
-//
-// Boxes a list/struct composed of boxed values (va)
-TEXT BC_INSTRUCTION_NAME(SB), NOSPLIT|NOFRAME, $0
+// TEXT BC_INSTRUCTION_NAME(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_SLOT(BC_SLOT_SIZE*2, OUT(R8))
   BC_UNPACK_RU32(BC_SLOT_SIZE*3, OUT(CX))              // CX <- count of variable arguments
 
@@ -321,4 +315,3 @@ abort:
 #undef BC_VA_VALUE_STACK_SLOT
 #undef BC_VA_TUPLE_SIZE
 #undef BC_ION_OBJECT_TYPE
-#undef BC_INSTRUCTION_NAME

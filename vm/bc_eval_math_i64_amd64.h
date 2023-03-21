@@ -73,7 +73,7 @@
 // Integer Math Instructions - Broadcast
 // -------------------------------------
 
-// i64[0] = f64@imm[1]
+// i64[0] = broadcast.i64(i64@imm[1])
 TEXT bcbroadcasti64(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_SLOT(0, OUT(DX))
   BC_UNPACK_ZI64(BC_SLOT_SIZE, OUT(Z2))
@@ -86,7 +86,10 @@ TEXT bcbroadcasti64(SB), NOSPLIT|NOFRAME, $0
 // Integer Math Instructions - Abs
 // -------------------------------
 
-// i64[0].k[1] = abs(i64[2].k[2]) (lanes in k[1] are cleared on overflow)
+// bcabsi64 calculates absolute value of an int64.
+// lanes in k[1] are cleared on overflow
+//
+// i64[0].k[1] = abs.i64(i64[2]).k[3]
 TEXT bcabsi64(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_2xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R8))
 
@@ -109,7 +112,9 @@ TEXT bcabsi64(SB), NOSPLIT|NOFRAME, $0
 // Integer Math Instructions - Neg
 // -------------------------------
 
-// i64[0].k[1] = -i64[2].k[3] (lanes in k[1] are cleared on overflow)
+// lanes in k[1] are cleared on overflow
+//
+// i64[0].k[1] = neg.i64(i64[2]).k[3]
 TEXT bcnegi64(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_2xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R8))
 
@@ -134,13 +139,13 @@ TEXT bcnegi64(SB), NOSPLIT|NOFRAME, $0
 // Integer Math Instructions - Sign
 // --------------------------------
 
-// i64[0].k[1] = sign(i64[2]).k[3]
+// i64[0].k[1] = sign.i64(i64[2]).k[3]
 TEXT bcsigni64(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_2xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R8))
   BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
 
-  BC_FILL_ONES(Z5)     // Z5 = -1
-  VPABSQ Z5, Z4 // Z4 = 1
+  BC_FILL_ONES(Z5)  // Z5 = -1
+  VPABSQ Z5, Z4     // Z4 = 1
   VPMAXSQ 0(VIRT_VALUES)(BX*1), Z5, Z2
   VPMAXSQ 64(VIRT_VALUES)(BX*1), Z5, Z3
   VPMINSQ.Z Z2, Z4, K1, Z2
@@ -155,7 +160,7 @@ TEXT bcsigni64(SB), NOSPLIT|NOFRAME, $0
 // Integer Math Instructions - Square
 // ----------------------------------
 
-// i64[0].k[1] = square(i64[2]).k[3]
+// i64[0].k[1] = square.i64(i64[2]).k[3]
 TEXT bcsquarei64(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_2xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R8))
 
@@ -184,7 +189,7 @@ TEXT bcsquarei64(SB), NOSPLIT|NOFRAME, $0
 // Integer Math Instructions - BitNot
 // ----------------------------------
 
-// i64[0] = ~i64[2].k[3]
+// i64[0] = bitnot.i64(i64[2]).k[3]
 TEXT bcbitnoti64(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_2xSLOT(BC_SLOT_SIZE*1, OUT(BX), OUT(R8))
 
@@ -200,7 +205,7 @@ TEXT bcbitnoti64(SB), NOSPLIT|NOFRAME, $0
 // Integer Math Instructions - BitCount
 // ------------------------------------
 
-// i64[0] = bit_count(i64[1]).k[2]
+// i64[0] = bitcount.i64(i64[1]).k[2]
 TEXT bcbitcounti64(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_2xSLOT(BC_SLOT_SIZE*1, OUT(BX), OUT(R8))
   BC_LOAD_I64_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
@@ -231,7 +236,6 @@ TEXT bcbitcounti64(SB), NOSPLIT|NOFRAME, $0
   BC_STORE_I64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
   NEXT_ADVANCE(BC_SLOT_SIZE*3)
 
-// i64[0] = bit_count(i64[1]).k[2]
 TEXT bcbitcounti64_v2(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_2xSLOT(BC_SLOT_SIZE*1, OUT(BX), OUT(R8))
   BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
@@ -246,12 +250,12 @@ TEXT bcbitcounti64_v2(SB), NOSPLIT|NOFRAME, $0
 // Integer Math Instructions - Add
 // -------------------------------
 
-// i64[0].k[1] = add(i64[2], i64[3]).k[4]
+// i64[0].k[1] = add.i64(i64[2], i64[3]).k[4]
 TEXT bcaddi64(SB), NOSPLIT|NOFRAME, $0
   BC_ARITH_OP_I64_IMPL_K(VPADDQ)
   NEXT_ADVANCE(BC_SLOT_SIZE*5)
 
-// i64[0].k[1] = add(i64[2], i64@imm[3]).k[4]
+// i64[0].k[1] = add.i64@imm(i64[2], i64@imm[3]).k[4]
 TEXT bcaddi64imm(SB), NOSPLIT|NOFRAME, $0
   BC_ARITH_REVERSE_OP_I64_IMM_IMPL(VPADDQ)
   NEXT_ADVANCE(BC_SLOT_SIZE*4 + 8)
@@ -259,17 +263,17 @@ TEXT bcaddi64imm(SB), NOSPLIT|NOFRAME, $0
 // Integer Math Instructions - Sub
 // -------------------------------
 
-// i64[0].k[1] = sub(i64[2], i64[3]).k[4]
+// i64[0].k[1] = sub.i64(i64[2], i64[3]).k[4]
 TEXT bcsubi64(SB), NOSPLIT|NOFRAME, $0
   BC_ARITH_OP_I64_IMPL_K(VPSUBQ)
   NEXT_ADVANCE(BC_SLOT_SIZE*5)
 
-// i64[0].k[1] = sub(i64[2], i64@imm[3]).k[4]
+// i64[0].k[1] = sub.i64@imm(i64[2], i64@imm[3]).k[4]
 TEXT bcsubi64imm(SB), NOSPLIT|NOFRAME, $0
   BC_ARITH_OP_I64_IMM_IMPL_K(VPSUBQ)
   NEXT_ADVANCE(BC_SLOT_SIZE*4 + 8)
 
-// i64[0].k[1] = sub(i64@imm[3], i64[2]).k[4]
+// i64[0].k[1] = rsub.i64@imm(i64@imm[3], i64[2]).k[4]
 TEXT bcrsubi64imm(SB), NOSPLIT|NOFRAME, $0
   BC_ARITH_REVERSE_OP_I64_IMM_IMPL(VPSUBQ)
   NEXT_ADVANCE(BC_SLOT_SIZE*4 + 8)
@@ -277,12 +281,12 @@ TEXT bcrsubi64imm(SB), NOSPLIT|NOFRAME, $0
 // Integer Math Instructions - Mul
 // -------------------------------
 
-// i64[0].k[1] = mul(i64[2], i64[3]).k[4]
+// i64[0].k[1] = mul.i64(i64[2], i64[3]).k[4]
 TEXT bcmuli64(SB), NOSPLIT|NOFRAME, $0
   BC_ARITH_OP_I64_IMPL_K(VPMULLQ)
   NEXT_ADVANCE(BC_SLOT_SIZE*5)
 
-// i64[0].k[1] = mul(i64[2], i64@imm[3]).k[4]
+// i64[0].k[1] = mul.i64@imm(i64[2], i64@imm[3]).k[4]
 TEXT bcmuli64imm(SB), NOSPLIT|NOFRAME, $0
   BC_ARITH_OP_I64_IMM_IMPL_K(VPMULLQ)
   NEXT_ADVANCE(BC_SLOT_SIZE*4 + 8)
@@ -290,7 +294,7 @@ TEXT bcmuli64imm(SB), NOSPLIT|NOFRAME, $0
 // Integer Math Instructions - Div
 // -------------------------------
 
-// i64[0].k[1] = div(i64[2], i64[3]).k[4]
+// i64[0].k[1] = div.i64(i64[2], i64[3]).k[4]
 TEXT bcdivi64(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_3xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(CX), OUT(R8))
   BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
@@ -308,7 +312,7 @@ TEXT bcdivi64(SB), NOSPLIT|NOFRAME, $0
 
   NEXT_ADVANCE(BC_SLOT_SIZE*5)
 
-// i64[0].k[1] = div(i64[2], i64@imm[3]).k[4]
+// i64[0].k[1] = div.i64@imm(i64[2], i64@imm[3]).k[4]
 TEXT bcdivi64imm(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_SLOT_ZI64_SLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(Z4), OUT(R8))
   BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
@@ -324,7 +328,7 @@ TEXT bcdivi64imm(SB), NOSPLIT|NOFRAME, $0
 
   NEXT_ADVANCE(BC_SLOT_SIZE*4 + 8)
 
-// i64[0].k[1] = div(i64@imm[3], i64[2]).k[4]
+// i64[0].k[1] = rdiv.i64@imm(i64@imm[3], i64[2]).k[4]
 TEXT bcrdivi64imm(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_SLOT_ZI64_SLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(Z2), OUT(R8))
   BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
@@ -343,7 +347,7 @@ TEXT bcrdivi64imm(SB), NOSPLIT|NOFRAME, $0
 // Integer Math Instructions - Mod
 // -------------------------------
 
-// i64[0].k[1] = mod(i64[2], i64[3]).k[4]
+// i64[0].k[1] = mod.i64(i64[2], i64[3]).k[4]
 TEXT bcmodi64(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_3xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(CX), OUT(R8))
   BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
@@ -361,7 +365,7 @@ TEXT bcmodi64(SB), NOSPLIT|NOFRAME, $0
 
   NEXT_ADVANCE(BC_SLOT_SIZE*5)
 
-// i64[0].k[1] = mod(i64[2], i64@imm[3]).k[4]
+// i64[0].k[1] = mod.i64@imm(i64[2], i64@imm[3]).k[4]
 TEXT bcmodi64imm(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_SLOT_ZI64_SLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(Z4), OUT(R8))
   BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
@@ -377,7 +381,7 @@ TEXT bcmodi64imm(SB), NOSPLIT|NOFRAME, $0
 
   NEXT_ADVANCE(BC_SLOT_SIZE*4 + 8)
 
-// i64[0].k[1] = mod(i64@imm[3], i64[2]).k[4]
+// i64[0].k[1] = rmod.i64@imm(i64@imm[3], i64[2]).k[4]
 TEXT bcrmodi64imm(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_SLOT_ZI64_SLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(Z2), OUT(R8))
   BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
@@ -396,7 +400,7 @@ TEXT bcrmodi64imm(SB), NOSPLIT|NOFRAME, $0
 // Integer Math Instructions - FMA
 // -------------------------------
 
-// i64[0].k[1] = (i64[2] + i64[3] * i64@imm[4]).k[5]
+// i64[0].k[1] = addmul.i64@imm(i64[2], i64[3], i64@imm[4]).k[5]
 TEXT bcaddmuli64imm(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_2xSLOT_ZI64_SLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(CX), OUT(Z4), OUT(R8))
 
@@ -417,22 +421,22 @@ TEXT bcaddmuli64imm(SB), NOSPLIT|NOFRAME, $0
 // Integer Math Instructions - Min / Max
 // -------------------------------------
 
-// i64[0] = min(i64[1], i64[2]).k[3]
+// i64[0] = minvalue.i64(i64[1], i64[2]).k[3]
 TEXT bcminvaluei64(SB), NOSPLIT|NOFRAME, $0
   BC_ARITH_OP_I64_IMPL(VPMINSQ)
   NEXT_ADVANCE(BC_SLOT_SIZE*4)
 
-// i64[0] = min(i64[1], i64@imm[2]).k[3]
+// i64[0] = minvalue.i64@imm(i64[1], i64@imm[2]).k[3]
 TEXT bcminvaluei64imm(SB), NOSPLIT|NOFRAME, $0
   BC_ARITH_OP_I64_IMM_IMPL(VPMINSQ)
   NEXT_ADVANCE(BC_SLOT_SIZE*3 + 8)
 
-// i64[0] = min(i64[1], i64[2]).k[3]
+// i64[0] = maxvalue.i64(i64[1], i64[2]).k[3]
 TEXT bcmaxvaluei64(SB), NOSPLIT|NOFRAME, $0
   BC_ARITH_OP_I64_IMPL(VPMAXSQ)
   NEXT_ADVANCE(BC_SLOT_SIZE*4)
 
-// i64[0] = min(i64[1], i64@imm[2]).k[3]
+// i64[0] = maxvalue.i64@imm(i64[1], i64@imm[2]).k[3]
 TEXT bcmaxvaluei64imm(SB), NOSPLIT|NOFRAME, $0
   BC_ARITH_OP_I64_IMM_IMPL(VPMAXSQ)
   NEXT_ADVANCE(BC_SLOT_SIZE*3 + 8)
@@ -440,12 +444,12 @@ TEXT bcmaxvaluei64imm(SB), NOSPLIT|NOFRAME, $0
 // Integer Math Instructions - And
 // -------------------------------
 
-// i64[0] = and(i64[1], i64[2]).k[3]
+// i64[0] = and.i64(i64[1], i64[2]).k[3]
 TEXT bcandi64(SB), NOSPLIT|NOFRAME, $0
   BC_ARITH_OP_I64_IMPL(VPANDQ)
   NEXT_ADVANCE(BC_SLOT_SIZE*4)
 
-// i64[0] = and(i64[1], i64@imm[2]).k[3]
+// i64[0] = and.i64@imm(i64[1], i64@imm[2]).k[3]
 TEXT bcandi64imm(SB), NOSPLIT|NOFRAME, $0
   BC_ARITH_OP_I64_IMM_IMPL(VPANDQ)
   NEXT_ADVANCE(BC_SLOT_SIZE*3 + 8)
@@ -453,12 +457,12 @@ TEXT bcandi64imm(SB), NOSPLIT|NOFRAME, $0
 // Integer Math Instructions - Or
 // ------------------------------
 
-// i64[0] = or(i64[1], i64[2]).k[3]
+// i64[0] = or.i64(i64[1], i64[2]).k[3]
 TEXT bcori64(SB), NOSPLIT|NOFRAME, $0
   BC_ARITH_OP_I64_IMPL(VPORQ)
   NEXT_ADVANCE(BC_SLOT_SIZE*4)
 
-// i64[0] = or(i64[1], i64@imm[2]).k[3]
+// i64[0] = or.i64@imm(i64[1], i64@imm[2]).k[3]
 TEXT bcori64imm(SB), NOSPLIT|NOFRAME, $0
   BC_ARITH_OP_I64_IMM_IMPL(VPORQ)
   NEXT_ADVANCE(BC_SLOT_SIZE*3 + 8)
@@ -466,12 +470,12 @@ TEXT bcori64imm(SB), NOSPLIT|NOFRAME, $0
 // Integer Math Instructions - Xor
 // -------------------------------
 
-// i64[0] = xor(i64[1], i64[2]).k[3]
+// i64[0] = xor.i64(i64[1], i64[2]).k[3]
 TEXT bcxori64(SB), NOSPLIT|NOFRAME, $0
   BC_ARITH_OP_I64_IMPL(VPXORQ)
   NEXT_ADVANCE(BC_SLOT_SIZE*4)
 
-// i64[0] = xor(i64[1], i64@imm[2]).k[3]
+// i64[0] = xor.i64@imm(i64[1], i64@imm[2]).k[3]
 TEXT bcxori64imm(SB), NOSPLIT|NOFRAME, $0
   BC_ARITH_OP_I64_IMM_IMPL(VPXORQ)
   NEXT_ADVANCE(BC_SLOT_SIZE*3 + 8)
@@ -479,12 +483,12 @@ TEXT bcxori64imm(SB), NOSPLIT|NOFRAME, $0
 // Integer Math Instructions - SLL
 // -------------------------------
 
-// i64[0] = sll(i64[1], i64[2]).k[3]
+// i64[0] = sll.i64(i64[1], i64[2]).k[3]
 TEXT bcslli64(SB), NOSPLIT|NOFRAME, $0
   BC_ARITH_OP_I64_IMPL(VPSLLVQ)
   NEXT_ADVANCE(BC_SLOT_SIZE*4)
 
-// i64[0] = sll(i64[1], i64@imm[2]).k[3]
+// i64[0] = sll.i64@imm(i64[1], i64@imm[2]).k[3]
 TEXT bcslli64imm(SB), NOSPLIT|NOFRAME, $0
   BC_ARITH_OP_I64_IMM_IMPL(VPSLLVQ)
   NEXT_ADVANCE(BC_SLOT_SIZE*3 + 8)
@@ -492,12 +496,12 @@ TEXT bcslli64imm(SB), NOSPLIT|NOFRAME, $0
 // Integer Math Instructions - SRA
 // -------------------------------
 
-// i64[0] = sra(i64[1], i64[2]).k[3]
+// i64[0] = sra.i64(i64[1], i64[2]).k[3]
 TEXT bcsrai64(SB), NOSPLIT|NOFRAME, $0
   BC_ARITH_OP_I64_IMPL(VPSRAVQ)
   NEXT_ADVANCE(BC_SLOT_SIZE*4)
 
-// i64[0] = sra(i64[1], i64@imm[2]).k[3]
+// i64[0] = sra.i64@imm(i64[1], i64@imm[2]).k[3]
 TEXT bcsrai64imm(SB), NOSPLIT|NOFRAME, $0
   BC_ARITH_OP_I64_IMM_IMPL(VPSRAVQ)
   NEXT_ADVANCE(BC_SLOT_SIZE*3 + 8)
@@ -505,12 +509,12 @@ TEXT bcsrai64imm(SB), NOSPLIT|NOFRAME, $0
 // Integer Math Instructions - SRL
 // -------------------------------
 
-// i64[0] = srl(i64[1], i64[2]).k[3]
+// i64[0] = srl.i64(i64[1], i64[2]).k[3]
 TEXT bcsrli64(SB), NOSPLIT|NOFRAME, $0
   BC_ARITH_OP_I64_IMPL(VPSRLVQ)
   NEXT_ADVANCE(BC_SLOT_SIZE*4)
 
-// i64[0] = srl(i64[1], i64@imm[2]).k[3]
+// i64[0] = srl.i64@imm(i64[1], i64@imm[2]).k[3]
 TEXT bcsrli64imm(SB), NOSPLIT|NOFRAME, $0
   BC_ARITH_OP_I64_IMM_IMPL(VPSRLVQ)
   NEXT_ADVANCE(BC_SLOT_SIZE*3 + 8)

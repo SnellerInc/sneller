@@ -14,6 +14,7 @@
 
 // This file contains the implementation of APPROX_COUNT_DISTINCT opcode
 
+// _ = aggapproxcount(a[0], h[1], u16@imm[2]).k[3]
 TEXT bcaggapproxcount(SB), NOSPLIT|NOFRAME, $0
     MOVQ R12, bytecode_spillArea(VIRT_BCPTR)
 
@@ -60,6 +61,8 @@ next:
 //
 // The merge operation is merely a max operation - please see
 // aggApproxCountDistinctUpdateBuckets function from aggcountdistinct.go.
+//
+// _ = aggapproxcountmerge(a[0], s[1], u16@imm[2]).k[3]
 TEXT bcaggapproxcountmerge(SB), NOSPLIT|NOFRAME, $0
 #define BUFFER_SIZE             BX
 #define AGG_BUFFER_PTR_ORIG     CX
@@ -141,16 +144,18 @@ wrong_input:
 #undef COUNTER
 
 
-// bcaggslotapproxcount implements update of HLL state for
-// aggregates executed in GROUP BY
-//
-// The main algorithm is exactly the same as in bcaggapproxcount.
 #define CURRENT_MASK        R9
 #define HASHMEM_PTR         R8
 #define BYTEBUCKET_PTR      R12
 #define BITS_PER_HLL_BUCKET R14
 #define BITS_PER_HLL_HASH   R13
 
+// bcaggslotapproxcount implements update of HLL state for
+// aggregates executed in GROUP BY
+//
+// The main algorithm is exactly the same as in bcaggapproxcount.
+//
+// _ = aggslotapproxcount(a[0], l[1], h[2], u16@imm[3]).k[4]
 TEXT bcaggslotapproxcount(SB), NOSPLIT|NOFRAME, $0
     VMOVQ R9, X9
     VMOVQ R12, X12
@@ -242,6 +247,8 @@ next:
 // aggregates executed in GROUP BY
 //
 // The main algorithm is exactly the same as in bcaggapproxcountmerge.
+//
+// _ = aggslotapproxcountmerge(a[0], l[1], s[2], u16@imm[3]).k[4]
 TEXT bcaggslotapproxcountmerge(SB), NOSPLIT|NOFRAME, $0
 #define CURRENT_MASK        R8
 #define BUFFER_SIZE         R13
