@@ -7081,7 +7081,7 @@ bad_radix_bucket:
                                                                               \
   /* Load the aggregation data pointer. */                                    \
   MOVL SlotOffset(VIRT_PCREG), R15                                            \
-  ADDQ $8, R15                                                                \
+  ADDQ $const_aggregateTagSize, R15                                           \
   ADDQ radixTree64_values(R10), R15                                           \
                                                                               \
   /* Mark all values that we are gonna update. */                             \
@@ -7159,7 +7159,7 @@ next:
                                                                               \
   /* Load the aggregation data pointer. */                                    \
   MOVL  SlotOffset(VIRT_PCREG), R15                                           \
-  ADDQ $8, R15                                                                \
+  ADDQ $const_aggregateTagSize, R15                                           \
   ADDQ radixTree64_values(R10), R15                                           \
                                                                               \
   /* Gather the first low 8 values, which are safe to gather at this point. */\
