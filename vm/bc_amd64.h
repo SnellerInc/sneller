@@ -410,6 +410,28 @@ error_null_symtab:                                             \
   /* HLenZ <- increase header length if the Length is encoded as 1 byte or more */  \
   VPADDD ConstD_1, HLenZ, TmpMsk, HLenZ
 
+#define BC_CALC_VALUE_HLEN_ALT(HLenZ, VLenZ, Msk, ConstD_Neg1, ConstD_14, TmpZ1, TmpMsk) \
+  /* HLenZ <- updated header lengths to 1 (counting TLV byte) */                    \
+  VPABSD.Z ConstD_Neg1, Msk, HLenZ                                                  \
+  /* TmpMsk <- value length >= 16388 (at least 3-byte Length field) */              \
+  VPCMPUD.BCST $VPCMP_IMM_GE, CONSTD_16388(), VLenZ, Msk, TmpMsk                    \
+                                                                                    \
+  /* HLenZ <- increase header length if the Length is encoded as 3 bytes or more */ \
+  VPSUBD ConstD_Neg1, HLenZ, TmpMsk, HLenZ                                          \
+  /* TmpMsk <- value length >= 131 (at least 2-byte Length field) */                \
+  VPCMPUD.BCST $VPCMP_IMM_GE, CONSTD_131(), VLenZ, Msk, TmpMsk                      \
+  /* TmpZ1 <- value length - 1 */                                                   \
+  VPADDD ConstD_Neg1, VLenZ, TmpZ1                                                  \
+  /* HLenZ <- increase header length if the Length is encoded as 2 bytes or more */ \
+  VPSUBD ConstD_Neg1, HLenZ, TmpMsk, HLenZ                                          \
+                                                                                    \
+  /* TmpMsk <- (value length - 1) >= 14 (at least 1-byte Length field) */           \
+  VPCMPUD $VPCMP_IMM_GE, ConstD_14, TmpZ1, Msk, TmpMsk                              \
+  /* TmpZ1 <- min(value length - 1, 14) */                                          \
+  VPMINUD ConstD_14, TmpZ1, TmpZ1                                                   \
+  /* HLenZ <- increase header length if the Length is encoded as 1 byte or more */  \
+  VPSUBD ConstD_Neg1, HLenZ, TmpMsk, HLenZ
+
 #define BC_CALC_STRING_TLV_AND_HLEN(TlvZ, HLenZ, VLenZ, Msk, ConstD_1, ConstD_14, TmpZ1, TmpMsk) \
   /* TlvZ <- merged TLV byte with symbols replaced with strings (partial) */        \
   VPSLLD $7, ConstD_1, Msk, TlvZ                                                    \

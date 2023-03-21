@@ -1041,37 +1041,52 @@ abort:
 // Comparison Instructions - [Sort]Cmp(Value, Value)
 // -------------------------------------------------
 
-CONST_DATA_U64(ion_value_cmp_predicate_nulls_first, 0, $0x0403000202020100)
-CONST_DATA_U64(ion_value_cmp_predicate_nulls_first, 8, $0xFFFFFFFFFFFFFF04)
-CONST_GLOBAL(ion_value_cmp_predicate_nulls_first, $16)
+#include "evalbc_cmpv_impl.h"
 
-CONST_DATA_U64(ion_value_cmp_predicate_nulls_last, 0, $0x040300020202010F)
-CONST_DATA_U64(ion_value_cmp_predicate_nulls_last, 8, $0xFFFFFFFFFFFFFF04)
-CONST_GLOBAL(ion_value_cmp_predicate_nulls_last, $16)
+TEXT bccmpv(SB), NOSPLIT|NOFRAME, $0
+  VBROADCASTI32X4 CONST_GET_PTR(cmpv_predicate_matching_type, 0), Z16
+  JMP cmpv_tail(SB)
 
 TEXT bcsortcmpvnf(SB), NOSPLIT|NOFRAME, $0
-  VBROADCASTI32X4 CONST_GET_PTR(ion_value_cmp_predicate_nulls_first, 0), Z7
-  JMP sortcmpv_tail(SB)
+  VBROADCASTI32X4 CONST_GET_PTR(cmpv_predicate_sort_nulls_first, 0), Z16
+  JMP cmpv_tail(SB)
 
 TEXT bcsortcmpvnl(SB), NOSPLIT|NOFRAME, $0
-  VBROADCASTI32X4 CONST_GET_PTR(ion_value_cmp_predicate_nulls_last, 0), Z7
-  JMP sortcmpv_tail(SB)
+  VBROADCASTI32X4 CONST_GET_PTR(cmpv_predicate_sort_nulls_last, 0), Z16
+  JMP cmpv_tail(SB)
 
-#define BC_CMP_NAME sortcmpv_tail
-#define BC_CMP_IS_SORT
-#include "evalbc_cmpv_impl.h"
-#undef BC_CMP_IS_SORT
-#undef BC_CMP_NAME
+TEXT cmpv_tail(SB), NOSPLIT|NOFRAME, $0
+  BC_UNPACK_3xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(CX), OUT(R8))
 
-/*
-(for our script to pick up the opcode)
-TEXT bccmpv(SB), NOSPLIT|NOFRAME, $0
-*/
+  BC_LOAD_VALUE_HLEN_FROM_SLOT(OUT(Z10), IN(BX))       // Z10 <- left value header length (TLV + [Length] size in bytes)
+  VMOVDQU32 BC_VSTACK_PTR(BX, 64), Z11                 // Z11 <- left value length
 
-#define BC_CMP_NAME bccmpv
-#include "evalbc_cmpv_impl.h"
-#undef BC_CMP_NAME
+  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
+  BC_LOAD_VALUE_HLEN_FROM_SLOT(OUT(Z12), IN(CX))       // Z12 <- right value header length (TLV + [Length] size in bytes)
+  VMOVDQU32 BC_VSTACK_PTR(CX, 64), Z13                 // Z13 <- right value length
 
+  BC_LOAD_VALUE_TYPEL_FROM_SLOT(OUT(Z14), IN(BX))
+  BC_LOAD_VALUE_TYPEL_FROM_SLOT(OUT(Z15), IN(CX))
+
+  VPSUBD.Z Z10, Z11, K1, Z11                           // Z11 <- left value content length (length - hLen)
+  VPADDD.Z BC_VSTACK_PTR(BX, 0), Z10, K1, Z10          // Z10 <- left value content offset (offset + hLen)
+  VPSUBD.Z Z12, Z13, K1, Z13                           // Z13 <- right value content length (length - hLen)
+  VPADDD.Z BC_VSTACK_PTR(CX, 0), Z12, K1, Z12          // Z12 <- right value content offset (offset + hLen)
+
+  VBROADCASTI32X4 CONST_GET_PTR(bswap64, 0), Z30       // Z30 <- predicate(bswap64)
+  VPTERNLOGD $0xFF, Z31, Z31, Z31                      // Z31 <- dword(0xFFFFFFFF)
+
+  CALL fncmpv(SB)
+
+  BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
+  VEXTRACTI32X8 $1, Z16, Y17
+  VPMOVSXDQ Y16, Z16                                   // Z16 <- merged comparison results of all types (low)
+  VPMOVSXDQ Y17, Z17                                   // Z17 <- merged comparison results of all types (high)
+
+  BC_STORE_I64_TO_SLOT(IN(Z16), IN(Z17), IN(DX))
+  BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
+
+  NEXT_ADVANCE(BC_SLOT_SIZE*5)
 
 // Comparison Instructions - Cmp(Value, Bool)
 // ------------------------------------------
@@ -1168,7 +1183,7 @@ TEXT cmpvi64_tail(SB), NOSPLIT|NOFRAME, $0
   VPBROADCASTD CONSTD_0x0F(), Z10
 
   VPXORD X3, X3, X3                                   // Z3 <- Comparison results, initially all zeros (high)
-  VBROADCASTI32X4 CONST_GET_PTR(ion_value_cmp_predicate_nulls_first, 0), Z11
+  VBROADCASTI32X4 CONST_GET_PTR(cmpv_predicate_matching_type, 0), Z11
 
   VPSRLD $4, Z9, Z8                                   // Z8 <- left ION type
   VPSHUFB Z8, Z11, Z11                                // Z11 <- left ION type converted to an internal type
@@ -1286,7 +1301,7 @@ TEXT cmpvf64_tail(SB), NOSPLIT|NOFRAME, $0
   VPBROADCASTD CONSTD_0x0F(), Z10
 
   VPXORD X3, X3, X3                                   // Z3 <- Comparison results, initially all zeros (high)
-  VBROADCASTI32X4 CONST_GET_PTR(ion_value_cmp_predicate_nulls_first, 0), Z11
+  VBROADCASTI32X4 CONST_GET_PTR(cmpv_predicate_matching_type, 0), Z11
 
   VPSRLD $4, Z9, Z8                                   // Z8 <- left ION type
   VPSHUFB Z8, Z11, Z11                                // Z11 <- left ION type converted to an internal type
