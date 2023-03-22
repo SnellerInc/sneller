@@ -97,11 +97,11 @@ type StackSlot struct {
 }
 
 func (s *StackSlot) String() string {
-	return fmt.Sprintf("%s[%d]", s.code, s.index)
+	return fmt.Sprintf("%c[%d]", s.code, s.index)
 }
 
-func (s *StackSlot) goconst() string {
-	switch s.code {
+func slotcode2goconst(c uint8) string {
+	switch c {
 	case 'k':
 		return "bcK"
 	case 's':
@@ -144,7 +144,7 @@ func (s *StackSlot) goconst() string {
 		return "bcImmF64"
 	}
 
-	panicf("wrong slot code %c", s.code)
+	panicf("wrong slot code %c", c)
 	return ""
 }
 
@@ -226,22 +226,4 @@ func slots2string(slots []StackSlot) (res string) {
 	}
 
 	return
-}
-
-func (b *BytecodeSpec) gospec() string {
-	f := &strings.Builder{}
-	fmt.Fprintf(f, "text: %q", b.name)
-	const r = "str2bcarg"
-
-	if len(b.in) > 0 {
-		fmt.Fprintf(f, ", in: %s(%q)", r, slots2string(b.in))
-	}
-	if len(b.out) > 0 {
-		fmt.Fprintf(f, ", out: %s(%q)", r, slots2string(b.out))
-	}
-	if len(b.va) > 0 {
-		fmt.Fprintf(f, ", va: %s(%q)", r, slots2string(b.va))
-	}
-
-	return f.String()
 }
