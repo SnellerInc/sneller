@@ -25,10 +25,8 @@ import (
 	"github.com/SnellerInc/sneller/ion"
 )
 
-//go:generate go run _generate/genops.go
-//go:generate gofmt -w ops_gen.go
 //go:generate go run _generate/genconst.go -i evalbc_amd64.s -o bc_constant_gen.h
-//go:generate go run ./_generate/genbytecode/ -i evalbc_amd64.s -o bytecode_gen.go
+//go:generate go run ./_generate/genbytecode/ -i evalbc_amd64.s -o bytecode_gen.go -s bytecode_amd64.s
 //go:generate gofmt -w bytecode_gen.go
 
 // --- How to Add an Instruction ---

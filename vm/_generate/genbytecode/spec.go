@@ -46,6 +46,10 @@ func (o *Opcode) baseOpcode() string {
 }
 
 func (o *Opcode) goconst() string {
+	if base, ok := strings.CutSuffix(o.name, "_v2"); ok {
+		return "op" + base + "v2"
+	}
+
 	return "op" + o.name
 }
 
