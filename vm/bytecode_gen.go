@@ -2,7 +2,8 @@ package vm
 
 // Code generated automatically; DO NOT EDIT
 
-var generated = [_maxbcop]bcopinfo{
+var opinfo = [_maxbcop]bcopinfo{
+	optrap:                    {text: "trap"},
 	opbroadcasti64:            {text: "broadcast.i64", out: bcargs[0:1] /* {bcS} */, in: bcargs[14:15] /* {bcImmI64} */},
 	opabsi64:                  {text: "abs.i64", out: bcargs[3:5] /* {bcS, bcK} */, in: bcargs[3:5] /* {bcS, bcK} */},
 	opnegi64:                  {text: "neg.i64", out: bcargs[3:5] /* {bcS, bcK} */, in: bcargs[3:5] /* {bcS, bcK} */},
@@ -87,7 +88,6 @@ var generated = [_maxbcop]bcopinfo{
 	opatan2f64:                {text: "atan2.f64", out: bcargs[3:5] /* {bcS, bcK} */, in: bcargs[2:5] /* {bcS, bcS, bcK} */},
 	ophypotf64:                {text: "hypot.f64", out: bcargs[3:5] /* {bcS, bcK} */, in: bcargs[2:5] /* {bcS, bcS, bcK} */},
 	oppowf64:                  {text: "pow.f64", out: bcargs[3:5] /* {bcS, bcK} */, in: bcargs[2:5] /* {bcS, bcS, bcK} */},
-	optrap:                    {text: "trap"},
 	opret:                     {text: "ret"},
 	opretk:                    {text: "ret.k", in: bcargs[4:5] /* {bcK} */},
 	opretbk:                   {text: "ret.b.k", in: bcargs[44:46] /* {bcB, bcK} */},

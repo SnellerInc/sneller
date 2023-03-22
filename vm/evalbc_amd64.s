@@ -71,6 +71,17 @@
 // of the scalar operand stack
 #define POP(dst) _POP(VIRT_PCREG, dst)
 
+// this is the 'unimplemented!' op
+//
+// The opcode has to be the first one, as its default
+// opcode for no-op SSA nodes.
+//
+// _ = trap()
+TEXT bctrap(SB), NOSPLIT|NOFRAME, $0
+  BYTE $0xCC
+  RET
+
+
 // Left = Left - Trunc(Left / Right) * Right
 #define BC_MODF64_IMPL(DstA, DstB, Src1A, Src1B, Src2A, Src2B, MaskA, MaskB, Tmp1, Tmp2) \
   VDIVPD.RZ_SAE.Z Src2A, Src1A, MaskA, Tmp1                \
@@ -358,13 +369,6 @@
   POPCNTL R8, R8                          \
   ADDQ    R8, bytecode_auxpos(VIRT_BCPTR) \
   CLC                                     \
-  RET
-
-// this is the 'unimplemented!' op
-//
-// _ = trap()
-TEXT bctrap(SB), NOSPLIT|NOFRAME, $0
-  BYTE $0xCC
   RET
 
 // the 'return' instruction
