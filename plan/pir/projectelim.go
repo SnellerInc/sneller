@@ -232,28 +232,6 @@ outer:
 	}
 }
 
-func bindings(s Step) []expr.Binding {
-	switch s := s.(type) {
-	case *Bind:
-		return s.binds.bind
-	default:
-		// TODO: disallow aggregate references
-		// to columns that are produced as part
-		// of the aggregation?
-		return nil
-	}
-}
-
-func flatten(b *Trace) {
-	for s := b.top; s != nil; s = s.parent() {
-		bind := bindings(s)
-		if bind == nil {
-			continue
-		}
-		flattenBind(bind)
-	}
-}
-
 // if we have a Bind that follows
 // an Aggregate and the binding is
 // just performing trivial re-naming,

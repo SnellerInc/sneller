@@ -83,7 +83,6 @@ func (b *Trace) optimize() error {
 	}
 	projectelim(b)     // drop un-used bindings
 	projectpushdown(b) // merge adjacent projections
-	flatten(b)         // eliminate left-to-right bindings
 	simplify(b)        // final simplification pass
 	if err := postcheck(b); err != nil {
 		return err
