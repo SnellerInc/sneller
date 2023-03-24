@@ -59,11 +59,11 @@ func (a *AssemblerLineReader) process(p string, fn lineFunc) error {
 		s := stack[n-1]
 
 		for ; /**/ s.location.line < len(s.lines); s.location.line++ {
-			line := s.lines[s.location.line]
+			line := strings.TrimSpace(s.lines[s.location.line])
 			if include, ok := strings.CutPrefix(line, "#include "); ok {
-				n := len(include)
-				if n > 2 && include[0] == '"' && include[n-1] == '"' {
-					path := include[1 : n-1]
+				k := len(include)
+				if k > 2 && include[0] == '"' && include[k-1] == '"' {
+					path := include[1 : k-1]
 					lines, err := a.readfile(path)
 					if err != nil {
 						return err
@@ -73,7 +73,7 @@ func (a *AssemblerLineReader) process(p string, fn lineFunc) error {
 						lines:    lines})
 					s.location.line++
 				} else {
-					return fmt.Errorf("%s: malformed include: %s", s.location, line)
+					return fmt.Errorf("%s: malformed include: %q", s.location, line)
 				}
 				break
 			}
