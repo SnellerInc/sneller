@@ -174,7 +174,7 @@ func (b *bindflattener) Rewrite(e expr.Node) expr.Node {
 	var into expr.Node
 	for i := range b.from {
 		if b.from[i].Result() == string(id) {
-			into = b.from[i].Expr
+			into = expr.Copy(b.from[i].Expr)
 			break
 		}
 	}

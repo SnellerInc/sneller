@@ -98,6 +98,7 @@ func addQueries(f *testing.F) {
 func FuzzNewPlan(f *testing.F) {
 	addQueries(f)
 	f.Add([]byte("SELECT 0 FROM A++A"))
+	f.Add([]byte("SELECT x%x x, x FROM (SELECT x+x x FROM input)"))
 	// confirm that expr.Check will not
 	// panic when handed a query that parses correctly
 	f.Fuzz(func(t *testing.T, text []byte) {
