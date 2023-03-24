@@ -164,20 +164,16 @@ func createFile(path string, mapping []Mapping) {
 
 	checksum := []byte(fmt.Sprintf("// checksum: %x\n", md5.Sum(buf.Bytes())))
 	regenerate := true
-	old, err := os.ReadFile(path)
-	if err == nil {
+
+	if old, err := os.ReadFile(path); err == nil {
 		regenerate = !bytes.HasSuffix(old, checksum)
 	}
 
 	if regenerate {
 		fmt.Printf("Creating %q\n", path)
 
-		f, err := os.Create(path)
-		checkErr(err)
-		defer f.Close()
-		_, err = f.Write(buf.Bytes())
-		checkErr(err)
-		_, err = f.Write(checksum)
+		buf.Write(checksum)
+		err := os.WriteFile(path, buf.Bytes(), 0644)
 		checkErr(err)
 	}
 }

@@ -12,6 +12,11 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+//go:generate goyacc partiql.y
+//go:generate goimports -w y.go
+//go:generate go run _generate/main.go -i keywords.txt -o lookup_gen.go
+//go:generate go fmt lookup_gen.go
+
 package partiql
 
 import (
@@ -26,10 +31,14 @@ import (
 	"github.com/SnellerInc/sneller/expr"
 )
 
-//go:generate goyacc partiql.y
-//go:generate goimports -w y.go
-
 const eof = -1
+
+func init() {
+	expr.IsKeyword = func(x string) bool {
+		term, _ := lookupKeyword([]byte(x))
+		return term != -1
+	}
+}
 
 // used in testing
 var faketime *expr.Timestamp
@@ -390,20 +399,18 @@ func (s *scanner) lexIdent(l *yySymType) int {
 	wordend := s.pos == len(s.from) || issep(s.from[s.pos])
 	if !s.notkw && wordend {
 		// don't perform string allocation if we have a keyword
-		term := lookupKeyword(s.from[startpos:s.pos])
-		if term != -1 {
-			// following AS or BY, interpret the
+		term, enum := lookupKeyword(s.from[startpos:s.pos])
+		if term == AGGREGATE {
+			l.integer = enum
+			return AGGREGATE
+		} else if term != -1 {
+			// SQL keyword following AS or BY, interpret the
 			// next word as a case-sensitive identifier
 			if term == AS {
 				s.chompws()
 				s.notkw = true
 			}
 			return term
-		}
-		aggop := lookupAggregate(s.from[startpos:s.pos])
-		if aggop != -1 {
-			l.integer = aggop
-			return AGGREGATE
 		}
 	}
 	s.notkw = s.notkw || !wordend

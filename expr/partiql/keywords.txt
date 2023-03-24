@@ -1,0 +1,102 @@
+package: partiql
+imports: github.com/SnellerInc/sneller/expr
+# return the term and aggid (if the word is an aggregate)
+signature: lookupKeyword(word []byte) (int, int)
+argname: word
+default: -1, -1
+
+# SQL keywords
+# their values equal to the name
+
+SELECT      SELECT, -1
+AND         AND, -1
+AS          AS, -1
+AT          AT, -1
+ASC         ASC, -1
+CAST        CAST, -1
+CONCAT      CONCAT, -1
+COALESCE    COALESCE, -1
+DATE_ADD    DATE_ADD, -1
+DATE_DIFF   DATE_DIFF, -1
+DESC        DESC, -1
+DISTINCT    DISTINCT, -1
+DATE_TRUNC  DATE_TRUNC, -1
+EXTRACT     EXTRACT, -1
+EXISTS      EXISTS, -1
+UNION       UNION, -1
+OR          OR, -1
+ON          ON, -1
+OVER        OVER, -1
+FROM        FROM, -1
+WHERE       WHERE, -1
+GROUP       GROUP, -1
+ORDER       ORDER, -1
+BY          BY, -1
+HAVING      HAVING, -1
+LIMIT       LIMIT, -1
+OFFSET      OFFSET, -1
+ILIKE       ILIKE, -1
+LIKE        LIKE, -1
+SIMILAR     SIMILAR, -1
+TO          TO, -1
+NULL        NULL, -1
+NULLS       NULLS, -1
+NULLIF      NULLIF, -1
+PARTITION   PARTITION, -1
+MISSING     MISSING, -1
+IS          IS, -1
+IN          IN, -1
+INTO        INTO, -1
+NOT         NOT, -1
+ALL         ALL, -1
+LEFT        LEFT, -1
+RIGHT       RIGHT, -1
+CROSS       CROSS, -1
+JOIN        JOIN, -1
+INNER       INNER, -1
+TRUE        TRUE, -1
+FALSE       FALSE, -1
+BETWEEN     BETWEEN, -1
+CASE        CASE, -1
+WHEN        WHEN, -1
+THEN        THEN, -1
+ELSE        ELSE, -1
+END         END, -1
+VALUE       VALUE, -1
+FIRST       FIRST, -1
+LAST        LAST, -1
+UTCNOW      UTCNOW, -1
+WITH        WITH, -1
+FILTER      FILTER, -1
+UNPIVOT     UNPIVOT, -1
+TRIM        TRIM, -1
+LEADING     LEADING, -1
+TRAILING    TRAILING, -1
+BOTH        BOTH, -1
+EXPLAIN     EXPLAIN, -1
+ESCAPE      ESCAPE, -1
+
+# Aggregate functions
+
+COUNT                   AGGREGATE, int(expr.OpCount)
+SUM                     AGGREGATE, int(expr.OpSum)
+MIN                     AGGREGATE, int(expr.OpMin)
+MAX                     AGGREGATE, int(expr.OpMax)
+EARLIEST                AGGREGATE, int(expr.OpEarliest)
+LATEST                  AGGREGATE, int(expr.OpLatest)
+EVERY                   AGGREGATE, int(expr.OpBoolAnd)
+BOOL_AND                AGGREGATE, int(expr.OpBoolAnd)
+BOOL_OR                 AGGREGATE, int(expr.OpBoolOr)
+AVG                     AGGREGATE, int(expr.OpAvg)
+VARIANCE                AGGREGATE, int(expr.OpVariancePop)
+VARIANCE_POP            AGGREGATE, int(expr.OpVariancePop)
+STDDEV                  AGGREGATE, int(expr.OpStdDevPop)
+STDDEV_POP              AGGREGATE, int(expr.OpStdDevPop)
+BIT_AND                 AGGREGATE, int(expr.OpBitAnd)
+BIT_OR                  AGGREGATE, int(expr.OpBitOr)
+BIT_XOR                 AGGREGATE, int(expr.OpBitXor)
+ROW_NUMBER              AGGREGATE, int(expr.OpRowNumber)
+RANK                    AGGREGATE, int(expr.OpRank)
+DENSE_RANK              AGGREGATE, int(expr.OpDenseRank)
+APPROX_COUNT_DISTINCT   AGGREGATE, int(expr.OpApproxCountDistinct)
+SNELLER_DATASHAPE       AGGREGATE, int(expr.OpSystemDatashape)
