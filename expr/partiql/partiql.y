@@ -108,7 +108,7 @@ import (
 %type <bindings> group_expr binding_list
 %type <bind> value_binding
 %type <from> from_expr lhs_from_expr
-%type <values> partition_expr value_list any_value_list field_value_list field_value_pair node_list maybe_toplevel_distinct
+%type <values> partition_expr value_list any_value_list field_value_list field_value_pair agg_value_list maybe_toplevel_distinct
 %type <order> order_one_col
 %type <orders> order_expr order_cols
 %type <jk> join_kind
@@ -222,7 +222,7 @@ maybe_distinct:
 DISTINCT { $$ = true } | { $$ = false }
 
 maybe_toplevel_distinct:
-DISTINCT ON '(' node_list ')' { $$ = $4 } |
+DISTINCT ON '(' value_list ')' { $$ = $4 } |
 DISTINCT { $$ = []expr.Node{} } |
 { $$ = nil}
 
@@ -241,7 +241,7 @@ datum_or_parens
   }
   $$ = agg
 }
-| AGGREGATE '(' maybe_distinct value_list ')' optional_filter maybe_window
+| AGGREGATE '(' maybe_distinct agg_value_list ')' optional_filter maybe_window
 {
   agg, err := toAggregate(expr.AggregateOp($1), $3, $4, $6, $7)
   if err != nil {
@@ -568,15 +568,15 @@ value_binding { $$ = []expr.Binding{$1} } |
 binding_list ',' value_binding { $$ = append($1, $3) }
 
 // match (value)+
-node_list:
-expr { $$ = []expr.Node{$1} } |
-node_list ',' expr { $$ = append($1, $3) }
-
-// match (value)+ including '*' as a special value
 value_list:
 expr { $$ = []expr.Node{$1} } |
-'*' { $$ = []expr.Node{expr.Star{}} } |
 value_list ',' expr { $$ = append($1, $3) }
+
+// match (value)+ including the leading '*' as a special value
+agg_value_list:
+expr { $$ = []expr.Node{$1} } |
+'*' { $$ = []expr.Node{expr.Star{}} } |
+agg_value_list ',' expr { $$ = append($1, $3) }
 
 // match (value)*
 any_value_list:
