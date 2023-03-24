@@ -46,6 +46,8 @@ func main() {
 	parser := AsmParser{
 		consts: consts,
 	}
+	parser.skipPaths(outpath)
+	parser.skipPaths(systemincludes...)
 
 	parser.addPath(inpath)
 	err := parser.parseAll()
@@ -88,12 +90,19 @@ func (a *AsmParser) parseAll() error {
 
 var systemincludes = []string{"go_asm.h", "funcdata.h", "textflag.h"}
 
+func (a *AsmParser) skipPaths(paths ...string) {
+	if a.seen == nil {
+		a.seen = make(map[string]struct{})
+	}
+
+	for _, p := range paths {
+		a.seen[p] = struct{}{}
+	}
+}
+
 func (a *AsmParser) addPath(path string) {
 	if a.seen == nil {
 		a.seen = make(map[string]struct{})
-		for _, p := range systemincludes {
-			a.seen[p] = struct{}{}
-		}
 	}
 
 	if _, ok := a.seen[path]; ok {
@@ -133,7 +142,10 @@ func (a *AsmParser) parse(path string) error {
 		if len(s) == 3 {
 			name := s[1][:len(s[1])-2]
 			value := s[2]
-			a.consts.add(name, value)
+			err := a.consts.add(name, value)
+			if err != nil {
+				return err
+			}
 			continue
 		}
 
@@ -157,12 +169,14 @@ type constpool struct {
 	dword      map[uint32][]string
 	bytes      map[byte][]string
 	f64        map[uint64][]string
+	f32        map[uint32][]string
 	unresolved map[string]struct{}
 
 	u64keys []uint64
 	u32keys []uint32
 	u8keys  []byte
 	f64keys []uint64
+	f32keys []uint32
 }
 
 func newconstpool() *constpool {
@@ -171,6 +185,7 @@ func newconstpool() *constpool {
 		dword:      make(map[uint32][]string),
 		bytes:      make(map[byte][]string),
 		f64:        make(map[uint64][]string),
+		f32:        make(map[uint32][]string),
 		unresolved: make(map[string]struct{}),
 	}
 }
@@ -191,6 +206,10 @@ func (c *constpool) print() {
 
 	if len(c.bytes) > 0 {
 		offset = c.printu8(offset)
+	}
+
+	if len(c.f32) > 0 {
+		offset = c.printf32(offset)
 	}
 
 	if len(c.f64) > 0 {
@@ -214,6 +233,19 @@ func (c *constpool) printu64(offset int) int {
 			return u64, 0
 		}
 
+		return 0, -1
+	}
+
+	f32alias := func(u64 uint64) (uint32, int) {
+		keys := maps.Keys(c.f32)
+		key := uint32(u64)
+		if slices.Index(keys, key) >= 0 {
+			return key, 0
+		}
+		key = uint32(u64 >> 32)
+		if slices.Index(keys, key) >= 0 {
+			return key, 4
+		}
 		return 0, -1
 	}
 
@@ -261,6 +293,13 @@ func (c *constpool) printu64(offset int) int {
 			if off != -1 {
 				define(c.dword[u32], offset+off)
 				delete(c.dword, u32)
+			}
+		}
+		{
+			u32, off := f32alias(u64)
+			if off != -1 {
+				define(c.f32[u32], offset+off)
+				delete(c.f32, u32)
 			}
 		}
 		{
@@ -344,6 +383,28 @@ func (c *constpool) printu8(offset int) int {
 	return offset
 }
 
+func (c *constpool) printf32(offset int) int {
+	writeln("")
+	writeln("// float32 constants")
+	first := true
+	for _, u32 := range c.f32keys {
+		if _, ok := c.f32[u32]; !ok {
+			continue
+		}
+		if !first {
+			writeln("")
+		}
+		first = false
+
+		define(c.f32[u32], offset)
+		writeln("CONST_DATA_U32(constpool, %d, $0x%016x) // float32(%f)",
+			offset, u32, math.Float32frombits(u32))
+
+		offset += 4
+	}
+	return offset
+}
+
 func (c *constpool) printf64(offset int) int {
 	writeln("")
 	writeln("// float64 constants")
@@ -397,8 +458,15 @@ func (c *constpool) addaux(name, typ, value string) error {
 		}
 		c.qword[u64] = append(c.qword[u64], name)
 
+	case "CONSTF32":
+		u32, err := parsefloat32(value)
+		if err != nil {
+			return err
+		}
+		c.f32[u32] = append(c.f32[u32], name)
+
 	case "CONSTF64":
-		u64, err := parsefloat(value)
+		u64, err := parsefloat64(value)
 		if err != nil {
 			return err
 		}
@@ -411,7 +479,7 @@ func (c *constpool) addaux(name, typ, value string) error {
 	return nil
 }
 
-func parsefloat(value string) (uint64, error) {
+func parsefloat64(value string) (uint64, error) {
 	var u64 uint64
 	var f64 float64
 	var err error
@@ -433,6 +501,30 @@ func parsefloat(value string) (uint64, error) {
 	}
 
 	return strconv.ParseUint(val, 0, 64)
+}
+
+func parsefloat32(value string) (uint32, error) {
+	u64, err := strconv.ParseUint(value, 0, 32)
+	if err == nil {
+		return math.Float32bits(float32(u64)), nil
+	}
+
+	f64, err := strconv.ParseFloat(value, 32)
+	if err == nil {
+		return math.Float32bits(float32(f64)), nil
+	}
+
+	val, ok := stripendings(value, "uint32(", ")")
+	if !ok {
+		return 0, err
+	}
+
+	u64, err = strconv.ParseUint(val, 0, 32)
+	if err != nil {
+		return 0, err
+	}
+
+	return math.Float32bits(float32(u64)), nil
 }
 
 func (c *constpool) add(macroname, value string) error {
@@ -466,6 +558,9 @@ func (c *constpool) postprocess() error {
 
 	c.f64keys = maps.Keys(c.f64)
 	slices.Sort(c.f64keys)
+
+	c.f32keys = maps.Keys(c.f32)
+	slices.Sort(c.f32keys)
 
 	// find aliases
 	unresolved := maps.Keys(c.unresolved)
@@ -525,6 +620,18 @@ func (c *constpool) resolve(name string) bool {
 		}
 		for _, u64 := range c.f64keys {
 			if has(c.f64[u64], name) {
+				return true
+			}
+		}
+
+	case "CONSTF32":
+		for _, u32 := range c.u32keys {
+			if has(c.dword[u32], name) {
+				return true
+			}
+		}
+		for _, u32 := range c.f32keys {
+			if has(c.f32[u32], name) {
 				return true
 			}
 		}
