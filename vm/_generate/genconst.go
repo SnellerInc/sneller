@@ -524,7 +524,11 @@ func parsefloat32(value string) (uint32, error) {
 		return 0, err
 	}
 
-	return math.Float32bits(float32(u64)), nil
+	if u64 > uint64(0xffffffff) {
+		return 0, fmt.Errorf("uint32 const greater than the allowed maximum")
+	}
+
+	return uint32(u64), nil
 }
 
 func (c *constpool) add(macroname, value string) error {
