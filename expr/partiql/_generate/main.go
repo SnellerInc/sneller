@@ -329,6 +329,7 @@ func readEntryList(path string) (*Input, error) {
 
 	input := new(Input)
 	for _, line := range tmp {
+		line = bytes.TrimRight(line, "\r\t\v\f ")
 		if len(line) == 0 || line[0] == '#' {
 			continue
 		}
