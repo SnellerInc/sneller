@@ -1552,6 +1552,20 @@ GROUP BY a.grp
 			},
 			parts: []string{"attr"},
 		},
+		{
+			// regression test: flattening used to use references,
+			// and this ended up with endless recursion. COALESCE
+			// is by default compiled into a CASE. The comparison
+			// of a case expression with a value is optimized in
+			// that way, that the comparison is pulled into "WHERE"
+			// limbs. Because we had references, CASE expression
+			// got exploded.
+			input: `SELECT COALESCE(A, X) AS X, X<X<X FROM X`,
+			expect: []string{
+				"ITERATE X FIELDS [A, X]",
+				"PROJECT CASE WHEN A IS NOT NULL THEN A WHEN X IS NOT NULL THEN X ELSE NULL END AS X, CASE WHEN A IS NOT NULL THEN A WHEN X IS NOT NULL THEN X ELSE MISSING END < CASE WHEN A IS NOT NULL THEN A WHEN X IS NOT NULL THEN X ELSE MISSING END < CASE WHEN A IS NOT NULL THEN A WHEN X IS NOT NULL THEN X ELSE MISSING END AS _2",
+			},
+		},
 	}
 
 	for i := range tests {
