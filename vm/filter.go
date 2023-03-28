@@ -80,7 +80,7 @@ func (c *Count) Close() error {
 var _ zionConsumer = &Count{}
 
 // zion is allowed unconditionally
-func (c *Count) zionOk() bool { return true }
+func (c *Count) zionOk(fields []string) bool { return true }
 
 func (c *Count) writeZion(state *zionState) error {
 	n, err := state.shape.Count()

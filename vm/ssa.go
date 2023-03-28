@@ -56,6 +56,11 @@ type sympair struct {
 	val string
 }
 
+type symid struct {
+	id  int
+	val string
+}
+
 type prog struct {
 	values []*value // all values in program
 	ret    *value   // value actually yielded by program
@@ -81,6 +86,8 @@ type prog struct {
 	// happens; we use this to determine
 	// staleness
 	resolved []sympair
+	// similarly, resolvedAux is resolved[] but for aux bindings
+	resolvedAux []symid
 
 	// finalizers that must be run when this prog is GC'd
 	finalize []func()
@@ -4256,7 +4263,7 @@ func (p *prog) unsymbolized(v *value) *value {
 // buffer for final if it has been temporarily dropped
 func recompile(st *symtab, src, dst *prog, final *bytecode, aux *auxbindings, callerName string) error {
 	final.symtab = st.symrefs
-	if !dst.isStale(st) {
+	if !dst.isStale(st, aux) {
 		// the scratch buffer may be invalid,
 		// so ensure that it is populated correctly:
 		final.restoreScratch(st)
@@ -4272,9 +4279,15 @@ func recompile(st *symtab, src, dst *prog, final *bytecode, aux *auxbindings, ca
 // IsStale returns whether the symbolized program
 // (see prog.Symbolize) is stale with respect to
 // the provided symbol table.
-func (p *prog) isStale(st *symtab) bool {
+func (p *prog) isStale(st *symtab, aux *auxbindings) bool {
 	if !p.symbolized || p.literals {
 		return true
+	}
+	for i := range p.resolvedAux {
+		if p.resolvedAux[i].id > len(aux.bound) ||
+			aux.bound[p.resolvedAux[i].id] != p.resolvedAux[i].val {
+			return false
+		}
 	}
 	for i := range p.resolved {
 		// if the symbol is -1, then we expect
@@ -4289,6 +4302,15 @@ func (p *prog) isStale(st *symtab) bool {
 		}
 	}
 	return false
+}
+
+func (p *prog) recordAux(str string, id int) {
+	for i := range p.resolvedAux {
+		if p.resolvedAux[i].id == id {
+			return
+		}
+	}
+	p.resolvedAux = append(p.resolvedAux, symid{id: id, val: str})
 }
 
 func (p *prog) record(str string, sym ion.Symbol) {
@@ -4318,6 +4340,7 @@ func (p *prog) recordEmpty(str string) {
 func (p *prog) symbolize(st *symtab, aux *auxbindings) error {
 	defer st.build() // make sure symtab is up-to-date
 	p.resolved = p.resolved[:0]
+	p.resolvedAux = p.resolvedAux[:0]
 	for i := range p.values {
 		v := p.values[i]
 		switch v.op {
@@ -4335,6 +4358,7 @@ func (p *prog) symbolize(st *symtab, aux *auxbindings) error {
 					v.op = sauxval
 					v.args = v.args[:0]
 					v.imm = id
+					p.recordAux(str, id)
 					continue
 				}
 			}

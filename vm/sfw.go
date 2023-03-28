@@ -322,8 +322,16 @@ func (q *rowSplitter) ConfigureZion(fields []string) bool {
 	// conditional on configuring zion input
 	if q.zstate == nil {
 		out, ok := q.rowConsumer.(zionConsumer)
-		if !ok || !out.zionOk() {
-			return false
+		if ok {
+			if !out.zionOk(fields) {
+				return false
+			}
+		} else {
+			out = &zionFlattener{rowConsumer: q.rowConsumer, infields: fields}
+			if !out.zionOk(fields) {
+				return false
+			}
+			q.rowConsumer = out.(rowConsumer)
 		}
 		q.zout = out
 		q.zstate = new(zionState)

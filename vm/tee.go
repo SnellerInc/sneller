@@ -221,7 +221,7 @@ func deleteOne[T any](src []T, i int) []T {
 	return src
 }
 
-func (t *teeSplitter) zionOk() bool {
+func (t *teeSplitter) zionOk(fields []string) bool {
 	switch t.zion {
 	case 1:
 		return true
@@ -231,7 +231,7 @@ func (t *teeSplitter) zionOk() bool {
 	var ok bool
 	for i := range t.state {
 		t.state[i].zout, ok = t.state[i].dst.(zionConsumer)
-		if !ok || !t.state[i].zout.zionOk() {
+		if !ok || !t.state[i].zout.zionOk(fields) {
 			t.zion = -1
 			return false
 		}

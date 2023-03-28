@@ -271,6 +271,10 @@ func query(args []string) bool {
 		exitf("cannot execute query without AVX512 support")
 	}
 
+	vm.Errorf = func(f string, args ...any) {
+		fmt.Fprintf(os.Stderr, f, args...)
+	}
+
 	var stats plan.ExecStats
 	start := time.Now()
 	err = plan.Exec(tree, stdout, &stats)

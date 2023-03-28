@@ -345,7 +345,7 @@ func (s *sortstateKtop) EndSegment() {
 }
 
 func (s *sortstateKtop) symbolize(st *symtab, aux *auxbindings) error {
-	if s.prefilter && s.filtprog.isStale(st) {
+	if s.prefilter && s.filtprog.isStale(st, aux) {
 		s.invalidatePrefilter()
 	} else {
 		s.filtbc.restoreScratch(st)
@@ -628,8 +628,12 @@ outer:
 			data = data[size:]
 		}
 		for j := range s.auxsyms {
+			mem := rp.auxbound[j][rowID].mem()
+			if len(mem) == 0 {
+				continue
+			}
 			s.scratch.BeginField(s.auxsyms[j])
-			s.scratch.UnsafeAppend(rp.auxbound[j][rowID].mem())
+			s.scratch.UnsafeAppend(mem)
 		}
 		s.scratch.EndStruct()
 		dat, _, _ := ion.ReadDatum(&s.st.Symtab, s.scratch.Bytes())

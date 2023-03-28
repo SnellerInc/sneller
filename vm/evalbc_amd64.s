@@ -7676,7 +7676,7 @@ TEXT bcauxval(SB), NOSPLIT|NOFRAME, $0
   VINSERTI32X8.Z $1, Y2, Z0, K7, Z0                         // Z0 <- value offsets
   VINSERTI32X8.Z $1, Y3, Z1, K7, Z1                         // Z1 <- value lengths
   VPBROADCASTD CONSTD_14(), Z9                              // Z9 <- dword(14)
-  VPTESTMD Z1, Z1, K1                                       // K1 <- MISSING when a value has zero length
+  VPTESTMD Z1, Z1, K7, K1                                   // K1 <- MISSING when a value has zero length or lanes aren't valid
 
   // read TLV byte and calculate header length
   KMOVW K1, K2

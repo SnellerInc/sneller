@@ -136,7 +136,7 @@ type kernelUnpivotAsAt struct {
 
 var _ zionConsumer = &kernelUnpivotAsAt{}
 
-func (u *kernelUnpivotAsAt) zionOk() bool { return true }
+func (u *kernelUnpivotAsAt) zionOk(_ []string) bool { return true }
 
 func (u *kernelUnpivotAsAt) flush() error {
 	if len(u.dummy) == 0 {
