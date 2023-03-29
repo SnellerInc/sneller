@@ -5,6 +5,12 @@
 (and.k f:(false) _) -> f
 (and.k x x) -> x
 
+
+// for most ops, the 'and' of an op result and its input mask
+// will be equal to the result
+(and.k a b), "p.mask(a) == b && !ssainfo[a.op].disjunctive" -> a
+(and.k a b), "p.mask(b) == a && !ssainfo[b.op].disjunctive" -> b
+
 (or.k t:(init) _) -> t
 (or.k _ t:(init)) -> t
 (or.k (false) x) -> x
@@ -36,6 +42,9 @@
 // identity tuple simplifications
 (make.vk val k), `p.mask(val) == k` -> val
 (floatk f k), `p.mask(f) == k` -> f
+// notmissing just exists for the purposes of compilation;
+// it can always be removed safely:
+(notmissing k) -> k
 
 // trivial conversion
 // (the use sites should have picked up

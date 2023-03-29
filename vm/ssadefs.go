@@ -848,10 +848,12 @@ var _ssainfo = [_ssamax]ssaopinfo{
 
 	// identity ops; these ops just return their input
 	// associated with a different not-missing mask
-	smakev:      {text: "make.v", rettype: stValue, argtypes: []ssatype{stValue, stBool}, bc: opmovv},
-	smakevk:     {text: "make.vk", rettype: stValueMasked, argtypes: []ssatype{stValue, stBool}, bc: opmovvk},
-	sfloatk:     {text: "floatk", rettype: stFloat, argtypes: []ssatype{stFloat, stBool}, bc: opmovf64},
-	snotmissing: {text: "notmissing", rettype: stBool, argtypes: []ssatype{stBool}, bc: opmovk}, // notmissing exists to coerce st*Masked into stBool
+	smakev:  {text: "make.v", rettype: stValue, argtypes: []ssatype{stValue, stBool}, bc: opmovv},
+	smakevk: {text: "make.vk", rettype: stValueMasked, argtypes: []ssatype{stValue, stBool}, bc: opmovvk},
+	sfloatk: {text: "floatk", rettype: stFloat, argtypes: []ssatype{stFloat, stBool}, bc: opmovf64},
+	// notmissing is an identity op that exists so that (*value).notMissing
+	// can assume a value other than prog.mask(*value)
+	snotmissing: {text: "notmissing", rettype: stBool, argtypes: []ssatype{stBool}, bc: opmovk},
 
 	sblendv:   {text: "blend.v", rettype: stValueMasked, argtypes: []ssatype{stValue, stBool, stValue, stBool}, bc: opblendv, disjunctive: true, safeValueMask: true},
 	sblendf64: {text: "blend.f64", rettype: stFloatMasked, argtypes: []ssatype{stFloat, stBool, stFloat, stBool}, bc: opblendf64, disjunctive: true},
