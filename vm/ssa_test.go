@@ -94,6 +94,9 @@ func TestArgMatch(t *testing.T) {
 				t.Errorf("%s: bytecode output %v doesn't match ret %v", bcinfo.text, bcret[i], ret)
 			}
 		}
+		if ret&stBool != 0 && !slices.Contains(bcret, bcK) {
+			t.Errorf("%s (%s): ssa yields stMasked but bytecode doesn't", bcinfo.text, info.text)
+		}
 	}
 }
 

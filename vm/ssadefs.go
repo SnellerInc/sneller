@@ -644,8 +644,8 @@ var _ssainfo = [_ssamax]ssaopinfo{
 	// because sometimes we determine that certain
 	// path expressions must yield no result due to
 	// the symbol not being present in the symbol table)
-	sbroadcast0k: {text: "broadcast0.k", rettype: stBool},
-	sbroadcast1k: {text: "broadcast1.k", rettype: stBool},
+	sbroadcast0k: {text: "broadcast0.k", rettype: stBool, bc: opbroadcast0k},
+	sbroadcast1k: {text: "broadcast1.k", rettype: stBool, bc: opbroadcast1k},
 	skfalse:      {text: "false", rettype: stValueMasked, bc: opfalse, safeValueMask: true},
 	sand:         {text: "and.k", argtypes: argsBoolBool, rettype: stBool, bc: opandk},
 	sandn:        {text: "andn.k", argtypes: argsBoolBool, rettype: stBool, bc: opandnk},
@@ -796,8 +796,8 @@ var _ssainfo = [_ssamax]ssaopinfo{
 	// s, k = skip_nchar_right s, k -- skip n unicode character off the end (right) of a string slice
 	sStrSkipNCharRight: {text: "skip_nchar_right", argtypes: []ssatype{stString, stInt, stBool}, rettype: stStringMasked, bc: opSkipNcharRight},
 
-	soctetlength:     {text: "octetlength", argtypes: str1Args, rettype: stIntMasked, bc: opoctetlength},
-	scharacterlength: {text: "characterlength", argtypes: str1Args, rettype: stIntMasked, bc: opcharlength},
+	soctetlength:     {text: "octetlength", argtypes: str1Args, rettype: stInt, bc: opoctetlength},
+	scharacterlength: {text: "characterlength", argtypes: str1Args, rettype: stInt, bc: opcharlength},
 	sSubStr:          {text: "substr", argtypes: []ssatype{stString, stInt, stInt, stBool}, rettype: stString, bc: opSubstr},
 	sSplitPart:       {text: "split_part", argtypes: []ssatype{stString, stInt, stBool}, rettype: stStringMasked, immfmt: fmtdict, bc: opSplitPart},
 
@@ -1038,12 +1038,12 @@ var _ssainfo = [_ssamax]ssaopinfo{
 	smakestructkey: {text: "makestructkey", rettype: stString, immfmt: fmtother, emit: emitNone},
 
 	// GEO functions
-	sgeohash:      {text: "geohash", rettype: stStringMasked, argtypes: []ssatype{stFloat, stFloat, stInt, stBool}, bc: opgeohash},
-	sgeohashimm:   {text: "geohash.imm", rettype: stStringMasked, argtypes: []ssatype{stFloat, stFloat, stBool}, immfmt: fmti64, bc: opgeohashimm},
+	sgeohash:      {text: "geohash", rettype: stString, argtypes: []ssatype{stFloat, stFloat, stInt, stBool}, bc: opgeohash},
+	sgeohashimm:   {text: "geohash.imm", rettype: stString, argtypes: []ssatype{stFloat, stFloat, stBool}, immfmt: fmti64, bc: opgeohashimm},
 	sgeotilex:     {text: "geotilex", rettype: stInt, argtypes: []ssatype{stFloat, stInt, stBool}, bc: opgeotilex},
 	sgeotiley:     {text: "geotiley", rettype: stInt, argtypes: []ssatype{stFloat, stInt, stBool}, bc: opgeotiley},
-	sgeotilees:    {text: "geotilees", rettype: stStringMasked, argtypes: []ssatype{stFloat, stFloat, stInt, stBool}, bc: opgeotilees},
-	sgeotileesimm: {text: "geotilees.imm", rettype: stStringMasked, argtypes: []ssatype{stFloat, stFloat, stBool}, immfmt: fmti64, bc: opgeotileesimm},
+	sgeotilees:    {text: "geotilees", rettype: stString, argtypes: []ssatype{stFloat, stFloat, stInt, stBool}, bc: opgeotilees},
+	sgeotileesimm: {text: "geotilees.imm", rettype: stString, argtypes: []ssatype{stFloat, stFloat, stBool}, immfmt: fmti64, bc: opgeotileesimm},
 	sgeodistance:  {text: "geodistance", rettype: stFloatMasked, argtypes: []ssatype{stFloat, stFloat, stFloat, stFloat, stBool}, bc: opgeodistance},
 
 	schecktag: {text: "checktag", argtypes: []ssatype{stValue, stBool}, rettype: stValueMasked, immfmt: fmtother, bc: opchecktag},
