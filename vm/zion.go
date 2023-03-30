@@ -42,10 +42,11 @@ type zionFlattener struct {
 	infields    []string
 
 	// cached structures:
-	myaux  auxbindings
-	params rowParams
-	tape   []ion.Symbol
-	empty  []vmref
+	myaux   auxbindings
+	strided []vmref
+	params  rowParams
+	tape    []ion.Symbol
+	empty   []vmref
 }
 
 // we only flatten when the number of fields is small;
@@ -84,44 +85,74 @@ func (z *zionFlattener) symbolize(st *symtab, aux *auxbindings) error {
 // into the corresponding vmref slices
 //
 // prerequisites:
-//   - len(fields) == len(tape)
-//   - len(fields[*]) == shape count
+//   - len(fields) == len(tape)*zionStride
+//   - len(shape) > 0
+//   - len(tape) > 0
 //
 //go:noescape
-func zionflatten(shape []byte, buckets *zll.Buckets, fields [][]vmref, tape []ion.Symbol) int
+func zionflatten(shape []byte, buckets *zll.Buckets, fields []vmref, tape []ion.Symbol) (in, out int)
 
 const (
 	//lint:ignore U1000 used in assembly
 	zllBucketPos          = unsafe.Offsetof(zll.Buckets{}.Pos)
 	zllBucketDecompressed = unsafe.Offsetof(zll.Buckets{}.Decompressed)
+
+	// we try to process zionStride rows at a time from the shape
+	zionStride = 256
 )
 
 // convert a writeZion into a writeRows
 // by projecting into auxparams
 func (z *zionFlattener) writeZion(state *zionState) error {
-	n, err := state.shape.Count()
-	if err != nil {
-		return err
+	if len(z.tape) == 0 {
+		// unusual edge-case: none of the matched symbols
+		// are part of the symbol table; just count
+		// the number of rows and emit empty rows
+		n, err := state.shape.Count()
+		if err != nil {
+			return err
+		}
+		z.params.auxbound = z.params.auxbound[:0]
+		z.empty = sanitizeAux(z.empty, n)
+		return z.writeRows(z.empty, &z.params)
 	}
+
 	// force decompression of the buckets we want
-	err = state.buckets.SelectSymbols(z.tape)
+	err := state.buckets.SelectSymbols(z.tape)
 	if err != nil {
 		return err
 	}
 
+	// allocate space for up to zionStride rows * columns;
+	// each "column" starts at z.strided[column * zionStride:]
+	// which simplifies the assembly a bit
+	z.strided = sanitizeAux(z.strided, len(z.tape)*zionStride)
+	posn := state.buckets.Pos
 	// set slice sizes for all the fields
-	z.empty = sanitizeAux(z.empty, n)
 	z.params.auxbound = shrink(z.params.auxbound, len(z.tape))
-	for i := range z.params.auxbound {
-		z.params.auxbound[i] = sanitizeAux(z.params.auxbound[i], n)
+	pos := state.shape.Start
+	for pos < len(state.shape.Bits) {
+		in, out := zionflatten(state.shape.Bits[pos:], &state.buckets, z.strided, z.tape)
+		pos += in
+		if pos > len(state.shape.Bits) {
+			panic("read out-of-bounds")
+		}
+		if out > zionStride {
+			panic("write out-of-bounds")
+		}
+		if out <= 0 {
+			err = fmt.Errorf("couldn't copy out zion data (data corruption?)")
+			break
+		}
+		for i := range z.params.auxbound {
+			z.params.auxbound[i] = sanitizeAux(z.strided[i*zionStride:], out)
+		}
+		z.empty = sanitizeAux(z.empty, out)
+		err = z.writeRows(z.empty, &z.params)
+		if err != nil {
+			break
+		}
 	}
-
-	count := zionflatten(state.shape.Bits[state.shape.Start:], &state.buckets, z.params.auxbound, z.tape)
-	if count < n {
-		return fmt.Errorf("couldn't copy out zion data (data corruption?)")
-	} else if count > n {
-		println(count, ">", n)
-		panic("write out-of-bounds")
-	}
-	return z.writeRows(z.empty, &z.params)
+	state.buckets.Pos = posn // restore bucket positions
+	return err
 }

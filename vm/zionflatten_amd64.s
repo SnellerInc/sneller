@@ -122,24 +122,22 @@ label_done:
     ADDQ    tape_base+56(FP), AX // AX = &tape[len(tape)] = end-of-tape
 match_tape:
     CMPQ    DX, AX
-    JGE     parse_value      // definitely not matching if tape exhausted
-    CMPQ    0(DX), R8        // *tape == symbol
+    JGE     parse_value               // definitely not matching if tape exhausted
+    CMPQ    0(DX), R8                 // *tape == symbol
     JEQ     exact_match
-    JA      parse_value      // symbol <= tape
-    MOVL    8(SP), R14       // R14 = current struct
-    SHLQ    $3, R14          //
-    ADDQ    0(DI), R14       //
-    MOVQ    BX, 0(R14)       // fields[struct].{off, len} = 0
-    ADDQ    $24, DI          // fields += sizeof([]vmref)
-    ADDQ    $8, DX           // tape += sizeof(symbol)
+    JA      parse_value               // symbol <= tape
+    MOVL    8(SP), R14                // R14 = current struct
+    MOVQ    BX, 0(DI)(R14*8)          // fields[struct].{off, len} = 0
+    ADDQ    $(const_zionStride*8), DI // fields += sizeof([]vmref)
+    ADDQ    $8, DX                    // tape += sizeof(symbol)
     JMP     match_tape
 exact_match:
     MOVL    $1, BX
     ADDQ    $8, DX
 parse_value:
     // parse value
-    MOVL    CX, R12           // save label size
-    MOVL    0(SI)(CX*1), R14  // load first 4 bytes of value
+    MOVL    CX, R12          // save label size
+    MOVL    0(SI)(CX*1), R14 // load first 4 bytes of value
     CMPB    R14, $0x11
     JE      just_one_byte
     MOVL    R14, R15
@@ -147,7 +145,7 @@ parse_value:
     CMPL    R15, $0x0f
     JE      just_one_byte
     CMPL    R15, $0x0e
-    JNE     end_varint // will add R15 to CX
+    JNE     end_varint       // will add R15 to CX
 value_is_varint:
     INCL    CX
     SHRL    $8, R14
@@ -167,7 +165,7 @@ varint_loop:
     TESTL   $0x80, R14
     JZ      varint_loop
 end_varint:
-    ADDL    R15, CX          // size += sizeof(object)
+    ADDL    R15, CX           // size += sizeof(object)
 just_one_byte:
     INCL   CX                                // size += descriptor byte
     ADDL   CX, const_zllBucketPos(R9)(R13*4) // bucket base += size
@@ -181,12 +179,11 @@ just_one_byte:
 
     // copy out the field into DI
     SUBQ   ·vmm+0(SB), SI
-    JS     trap              // SI should always be within vmm...
+    JS     trap                      // SI should always be within vmm...
     MOVL   8(SP), R8
-    MOVQ   0(DI), AX
-    MOVL   SI, 0(AX)(R8*8)   // fields[struct].off = (addr - vmm)
-    MOVL   CX, 4(AX)(R8*8)   // fields[struct].len = rcx
-    ADDQ   $24, DI           // fields += sizeof([]vmref)
+    MOVL   SI, 0(DI)(R8*8)           // fields[struct].off = (addr - vmm)
+    MOVL   CX, 4(DI)(R8*8)           // fields[struct].len = rcx
+    ADDQ   $(const_zionStride*8), DI // fields += stride
 skip_bucket:
     DECL    R11               // elements--
     JNZ     unpack_loop       // continue while elements > 0
@@ -194,17 +191,21 @@ check_outer_loop:
     CMPQ    R10, $16          // loop again if shape[0] == 16
     JEQ     top
 done:
-    INCL    8(SP)            // struct++
-    JMP     begin_struct
+    INCL    8(SP)             // struct++
+    CMPL    8(SP), $const_zionStride
+    JB      begin_struct      // continue while (struct < zionStride)
 ret_ok:
-    VMOVDQU32 Z0, const_zllBucketPos(R9)
+    MOVQ    0(SP), AX
+    SUBQ    shape_base+0(FP), AX
+    MOVQ    AX, in+80(FP)     // ret0 = shape in = current shape position - start
     MOVL    8(SP), AX
-    MOVQ    AX, ret+80(FP)    // return # structures copied out
+    MOVQ    AX, out+88(FP)    // ret1 = structures out
     RET
 ret_err:
-    VMOVDQU32 Z0, const_zllBucketPos(R9)
+    XORL    AX, AX
+    MOVQ    AX, in+80(FP)    // set shape consumed = 0
     MOVL    8(SP), AX
-    MOVQ    AX, ret+80(FP)
+    MOVQ    AX, out+88(FP)   // ret1 = structures out
     RET
 trap:
     BYTE $0xCC

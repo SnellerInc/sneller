@@ -99,13 +99,13 @@ func TestZionFlatten(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	out := make([][]vmref, 2)
-	for i := range out {
-		out[i] = make([]vmref, 3)
+	flat := make([]vmref, zionStride*len(tape))
+	in, out := zionflatten(shape.Bits[shape.Start:], &buckets, flat, tape)
+	if in != len(shape.Bits[shape.Start:]) {
+		t.Fatalf("consumed %d of %d shape bytes?", in, len(shape.Bits[shape.Start:]))
 	}
-	n := zionflatten(shape.Bits[shape.Start:], &buckets, out, tape)
-	if n != 3 {
-		t.Fatalf("n = %d", n)
+	if out != 3 {
+		t.Fatalf("out = %d", out)
 	}
 
 	// check that the fields were transposed correctly:
@@ -117,12 +117,13 @@ func TestZionFlatten(t *testing.T) {
 	}
 
 	// "row" values
-	cmp(out[0][0].mem(), []byte{0x20})
-	cmp(out[0][1].mem(), []byte{0x21, 0x01})
-	cmp(out[0][2].mem(), []byte{})
+	cmp(flat[0].mem(), []byte{0x20})
+	cmp(flat[1].mem(), []byte{0x21, 0x01})
+	cmp(flat[2].mem(), []byte{})
 
 	// "value" values
-	cmp(out[1][0].mem(), []byte{0x83, 'f', 'o', 'o'})
-	cmp(out[1][1].mem(), []byte{0x83, 'b', 'a', 'r'})
-	cmp(out[1][2].mem(), []byte{})
+	flat = flat[zionStride:]
+	cmp(flat[0].mem(), []byte{0x83, 'f', 'o', 'o'})
+	cmp(flat[1].mem(), []byte{0x83, 'b', 'a', 'r'})
+	cmp(flat[2].mem(), []byte{})
 }
