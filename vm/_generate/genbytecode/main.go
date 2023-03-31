@@ -24,10 +24,11 @@ import (
 )
 
 var (
-	verbose = false
-	inpath  string
-	gopath  string
-	asmpath string
+	verbose         = false
+	verboseAnalysis = false
+	inpath          string
+	gopath          string
+	asmpath         string
 )
 
 func main() {
@@ -35,6 +36,7 @@ func main() {
 	flag.StringVar(&gopath, "o", "", "bytecode file path")
 	flag.StringVar(&asmpath, "s", "", "assembler file path")
 	flag.BoolVar(&verbose, "v", false, "be verbose")
+	flag.BoolVar(&verboseAnalysis, "va", false, "verbose analysis")
 	flag.Parse()
 	if gopath == "" || inpath == "" {
 		flag.Usage()
@@ -48,6 +50,9 @@ func main() {
 	check(err)
 
 	argtype, err := generateArgTypeSeqs(opcodes)
+	check(err)
+
+	err = analyseOpcodes(opcodes)
 	check(err)
 
 	gofile := bytes.NewBuffer(nil)
@@ -78,6 +83,38 @@ func main() {
 		err = os.WriteFile(asmpath, asmfile.Bytes(), 0644)
 		check(err)
 	}
+}
+
+func analyseOpcodes(opcodes []Opcode) error {
+	skip := func(s string) bool {
+		switch s {
+		case "concatstr": // stack slot at offset -4: not exists
+			return false
+
+		case "makelist", "makestruct": // expected a number
+			return false
+		}
+		return true
+	}
+
+	if verboseAnalysis {
+		debugPrint = func(format string, args ...any) { fmt.Printf(format, args...) }
+	}
+
+	for i := range opcodes {
+		name := opcodes[i].name
+		if !skip(name) {
+			fmt.Printf("analysis of opcode %q is disabled\n", name)
+			continue
+		}
+
+		err := analyseOpcode(opcodes[i])
+		if err != nil {
+			return fmt.Errorf("opcode %s: %s", name, err)
+		}
+	}
+
+	return nil
 }
 
 func check(err error) {
