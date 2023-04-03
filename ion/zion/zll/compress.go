@@ -42,6 +42,18 @@ func dropIguana(dec *iguana.Decoder) {
 // BucketAlgo is an algorithm used to compress buckets.
 type BucketAlgo uint8
 
+var iguanaEncoders = sync.Pool{
+	New: func() any { return &iguana.Encoder{} },
+}
+
+func iguanaEnc() *iguana.Encoder {
+	return iguanaEncoders.Get().(*iguana.Encoder)
+}
+
+func dropIguanaEnc(enc *iguana.Encoder) {
+	iguanaEncoders.Put(enc)
+}
+
 const (
 	// CompressZstd indicates that buckets are compressed
 	// using vanilla zstd compression.
@@ -117,7 +129,9 @@ func (a BucketAlgo) Compress(src, dst []byte) ([]byte, error) {
 	var err error
 	switch a {
 	case CompressIguanaV0:
-		dst, err = iguana.Compress(src, dst, iguana.DefaultANSThreshold)
+		enc := iguanaEnc()
+		dst, err = enc.Compress(src, dst, iguana.DefaultANSThreshold)
+		dropIguanaEnc(enc)
 	case CompressZstd:
 		dst = enc.EncodeAll(src, dst)
 	default:

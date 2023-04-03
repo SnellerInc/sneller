@@ -126,7 +126,7 @@ const (
 
 type AnsDenseTable [ansWordM]uint32
 
-type ansParallelEncoder struct {
+type ANSEncoder struct {
 	state  [32]uint32
 	bufFwd []byte
 	bufRev []byte
@@ -134,62 +134,64 @@ type ansParallelEncoder struct {
 	stats  *AnsStatistics
 }
 
-func makeAnsEncoder(src []byte, stats *AnsStatistics) *ansParallelEncoder {
-	enc := &ansParallelEncoder{bufFwd: make([]byte, 0, ansInitialBufferSize), bufRev: make([]byte, 0, ansInitialBufferSize), src: src, stats: stats}
-	for i := range enc.state {
-		enc.state[i] = ansWordL
+func (e *ANSEncoder) init(src []byte, stats *AnsStatistics) {
+	e.src = src
+	e.bufFwd = slices.Grow(e.bufFwd[:0], ansInitialBufferSize)
+	e.bufRev = slices.Grow(e.bufRev[:0], ansInitialBufferSize)
+	for i := range e.state {
+		e.state[i] = ansWordL
 	}
-	return enc
+	e.stats = stats
 }
 
-func (enc *ansParallelEncoder) put(chunk []byte) {
+func (e *ANSEncoder) put(chunk []byte) {
 	avail := len(chunk)
 	// the forward half
 	for lane := 15; lane >= 0; lane-- {
 		if lane < avail {
-			q := enc.stats[chunk[lane]]
+			q := e.stats[chunk[lane]]
 			freq := q & ansStatisticsFrequencyMask
 			start := (q >> ansStatisticsFrequencyBits) & ansStatisticsCumulativeFrequencyMask
 			// renormalize
-			x := enc.state[lane]
+			x := e.state[lane]
 			if x >= ((ansWordL>>ansWordMBits)<<ansWordLBits)*freq {
-				enc.bufFwd = binary.BigEndian.AppendUint16(enc.bufFwd, uint16(x))
+				e.bufFwd = binary.BigEndian.AppendUint16(e.bufFwd, uint16(x))
 				x >>= ansWordLBits
 			}
 			// x = C(s,x)
-			enc.state[lane] = ((x / freq) << ansWordMBits) + (x % freq) + start
+			e.state[lane] = ((x / freq) << ansWordMBits) + (x % freq) + start
 		}
 	}
 	// the reverse half
 	for lane := 31; lane >= 16; lane-- {
 		if lane < avail {
-			q := enc.stats[chunk[lane]]
+			q := e.stats[chunk[lane]]
 			freq := q & ansStatisticsFrequencyMask
 			start := (q >> ansStatisticsFrequencyBits) & ansStatisticsCumulativeFrequencyMask
 			// renormalize
-			x := enc.state[lane]
+			x := e.state[lane]
 			if x >= ((ansWordL>>ansWordMBits)<<ansWordLBits)*freq {
-				enc.bufRev = binary.LittleEndian.AppendUint16(enc.bufRev, uint16(x))
+				e.bufRev = binary.LittleEndian.AppendUint16(e.bufRev, uint16(x))
 				x >>= ansWordLBits
 			}
 			// x = C(s,x)
-			enc.state[lane] = ((x / freq) << ansWordMBits) + (x % freq) + start
+			e.state[lane] = ((x / freq) << ansWordMBits) + (x % freq) + start
 		}
 	}
 }
 
-func (enc *ansParallelEncoder) flush() {
+func (e *ANSEncoder) flush() {
 	for lane := 15; lane >= 0; lane-- {
-		enc.bufFwd = binary.BigEndian.AppendUint32(enc.bufFwd, enc.state[lane])
+		e.bufFwd = binary.BigEndian.AppendUint32(e.bufFwd, e.state[lane])
 	}
 	for lane := 16; lane < 32; lane++ {
-		enc.bufRev = binary.LittleEndian.AppendUint32(enc.bufRev, enc.state[lane])
+		e.bufRev = binary.LittleEndian.AppendUint32(e.bufRev, e.state[lane])
 	}
 }
 
-func AnsEncode(src []byte) ([]byte, error) {
+func (e *ANSEncoder) Encode(src []byte) ([]byte, error) {
 	stats := AnsMakeStatistics(src)
-	dst, err := AnsEncodeExplicit(src, stats)
+	dst, err := e.EncodeExplicit(src, stats)
 	if err != nil {
 		return dst, err
 	}
@@ -198,22 +200,22 @@ func AnsEncode(src []byte) ([]byte, error) {
 	return dst, nil
 }
 
-func AnsEncodeExplicit(src []byte, stats *AnsStatistics) ([]byte, error) {
+func (e *ANSEncoder) EncodeExplicit(src []byte, stats *AnsStatistics) ([]byte, error) {
 	// Initialize the rANS encoder
-	enc := makeAnsEncoder(src, stats)
-	ansCompress(enc)
-	lenFwd := len(enc.bufFwd)
-	lenRev := len(enc.bufRev)
-	buf := slices.Grow(enc.bufFwd, lenFwd+lenRev+ansDenseTableMaxLength)
+	e.init(src, stats)
+	ansCompress(e)
+	lenFwd := len(e.bufFwd)
+	lenRev := len(e.bufRev)
+	buf := slices.Grow(e.bufFwd, lenFwd+lenRev+ansDenseTableMaxLength)
 	// In-place inversion of bufFwd
 	for i, j := 0, lenFwd-1; i < j; i, j = i+1, j-1 {
 		buf[i], buf[j] = buf[j], buf[i]
 	}
-	buf = append(buf, enc.bufRev...)
+	buf = append(buf, e.bufRev...)
 	return buf, nil
 }
 
-func ansCompressReference(enc *ansParallelEncoder) {
+func ansCompressReference(enc *ANSEncoder) {
 	srcLen := len(enc.src)
 	srcLast := srcLen % 32
 	k := srcLen - srcLast
@@ -564,6 +566,6 @@ func init() {
 }
 
 var ansHistogram func(freqs *[256]uint32, src []byte) int = ansHistogramReference
-var ansCompress func(enc *ansParallelEncoder) = ansCompressReference
+var ansCompress func(enc *ANSEncoder) = ansCompressReference
 var ansDecompress func(dst []byte, dstLen int, src []byte, tab *AnsDenseTable) ([]byte, errorCode) = ansDecompressReference
 var ansDecodeTable func(tab *AnsDenseTable, src []byte) ([]byte, errorCode) = ansDecodeTableReference

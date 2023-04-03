@@ -46,7 +46,7 @@ const (
 	ansCoreFlagExpandReverse
 )
 
-func ansCompressAVX512Generic(enc *ansParallelEncoder) {
+func ansCompressAVX512Generic(enc *ANSEncoder) {
 	for {
 		if r := ansCompressCoreAVX512Generic(enc); r == 0 {
 			return
@@ -76,4 +76,4 @@ func ansDecodeTableAVX512Generic(tab *AnsDenseTable, src []byte) ([]byte, errorC
 
 //go:noescape
 //go:nosplit
-func ansCompressCoreAVX512Generic(enc *ansParallelEncoder) ansCoreFlags
+func ansCompressCoreAVX512Generic(enc *ANSEncoder) ansCoreFlags

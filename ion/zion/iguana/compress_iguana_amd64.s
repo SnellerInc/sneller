@@ -19,7 +19,7 @@
 #include "../../../internal/asmutils/bc_constant.h"
 
 
-// func pickBestMatchVPOPCNTDQ(ec *iguanaEncodingContext, src []byte, candidates []uint32) matchDescriptor
+// func pickBestMatchVPOPCNTDQ(ec *encodingContext, src []byte, candidates []uint32) matchDescriptor
 TEXT ·pickBestMatchVPOPCNTDQ(SB), NOSPLIT | NOFRAME, $0-56
     MOVQ            candidates_len+40(FP), R15                          // R15 := uint64{candidates.Len}
     MOVQ            ec+0(FP), BX                                        // BX  := uint64{ec}
@@ -34,11 +34,11 @@ TEXT ·pickBestMatchVPOPCNTDQ(SB), NOSPLIT | NOFRAME, $0-56
     XORL            DI, DI                                              // DI  := uint32{0}
     VPSRLD          $1, Z1, Z18                                         // Z18 := uint32{costInfinite times 16}
     MOVL            $(const_lastLongOffset + const_mmLongOffsets), SI   // SI  := uint32{lastLongOffset + mmLongOffsets}
-    MOVQ            (iguanaEncodingContext_pendingLiterals+const_offsSliceHeaderLen)(BX), AX // AX := int64{litLen}
+    MOVQ            (encodingContext_pendingLiterals+const_offsSliceHeaderLen)(BX), AX // AX := int64{litLen}
     MOVQ            candidates_base+32(FP), R14                         // R14 := uint64{candidates.Data}
     VPSRLD          $31, Z1, Z26                                        // Z26 := uint32{1 times 16}
     VPBROADCASTD    SI, Z14                                             // Z14 := uint32{(lastLongOffset + mmLongOffsets) times 16}
-    MOVL            iguanaEncodingContext_currentOffset(BX), R13        // R13 := uint32{ec.currentOffset}
+    MOVL            encodingContext_currentOffset(BX), R13        // R13 := uint32{ec.currentOffset}
     VPSLLD          $2, Z26, Z28                                        // Z28 := uint32{4 times 16}
     VPSUBB          Z1, Z16, Z11                                        // Z11 := uint8{0x01 times 64}
     MOVL            $1, SI                                              // SI  := uint32{1}
@@ -68,7 +68,7 @@ TEXT ·pickBestMatchVPOPCNTDQ(SB), NOSPLIT | NOFRAME, $0-56
     ADDQ            SI, R13                                             // R13 := uint64{&src[ec.currentOffset]}
     VPBROADCASTD    2(R13), Z12                                         // Z12 := uint32{(src[ec.currentOffset+5..2]) times 16}
     VPBROADCASTD    CONST_GET_PTR(consts_minOffset, 0), Z23             // Z23 := uint32{minOffset times 16}
-    VPBROADCASTD    iguanaEncodingContext_lastEncodedOffset(BX), Z21    // Z21 := uint32{ec.lastEncodedOffset times 16}
+    VPBROADCASTD    encodingContext_lastEncodedOffset(BX), Z21    // Z21 := uint32{ec.lastEncodedOffset times 16}
     VPSRLD          $30, Z1, Z15                                        // Z15 := uint32{3 times 16}
     VMOVDQU32       CONST_GET_PTR(consts_shuffle, 0), Z31               // Z31 := uint32{consts_shuffle}
     VPBROADCASTD    R12, Z10                                            // Z10 := uint32{(src.Len - ec.currentOffset) times 16}

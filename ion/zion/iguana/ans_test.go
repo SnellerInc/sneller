@@ -22,7 +22,8 @@ import (
 func TestANS(t *testing.T) {
 	in := []byte("test message 123 test message 456")
 
-	ans, err := AnsEncode(in)
+	var enc ANSEncoder
+	ans, err := enc.Encode(in)
 	if err != nil {
 		t.Error(err)
 		return
@@ -51,7 +52,8 @@ func TestANS(t *testing.T) {
 func FuzzANSRoundtrip(f *testing.F) {
 	f.Fuzz(func(t *testing.T, ref []byte) {
 		refLen := len(ref)
-		compressed, err := AnsEncode(ref)
+		var enc ANSEncoder
+		compressed, err := enc.Encode(ref)
 		if err != nil {
 			return // when would this fail?
 		}

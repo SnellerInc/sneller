@@ -80,10 +80,21 @@ func testRoundtrip(t *testing.T, src []byte) {
 	t.Logf("srcLen = %d\n", srcLen)
 
 	var dec Decoder
-	dst, err := Compress(src, nil, DefaultANSThreshold)
+	var enc Encoder
+	dst, err := enc.Compress(src, nil, DefaultANSThreshold)
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	// test that encoder state is reset correctly
+	dst2, err := enc.Compress(src, nil, DefaultANSThreshold)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(dst, dst2) {
+		t.Fatal("second Compress not equivalent?")
+	}
+
 	dstLen := len(dst)
 	t.Logf("comprLen = %d\n", dstLen)
 	compressionRatio := 100.0 * (1.0 - float64(dstLen)/float64(srcLen))
@@ -109,11 +120,27 @@ func FuzzRoundTrip(f *testing.F) {
 	})
 	f.Fuzz(func(t *testing.T, ref []byte) {
 		var dec Decoder
-		compressed, err := Compress(ref, nil, DefaultANSThreshold)
+		var enc Encoder
+		compressed, err := enc.Compress(ref, nil, DefaultANSThreshold)
 		if err != nil {
 			return // when would this fail?
 		}
 		decompressed, err := dec.Decompress(compressed)
+		if err != nil {
+			t.Fatalf("round-trip failed: %s", err)
+		}
+		if !bytes.Equal(ref, decompressed) {
+			t.Fatal("round trip result is not equal to the input")
+		}
+		if len(ref) == 0 {
+			return
+		}
+		ref = ref[:len(ref)-1]
+		compressed, err = enc.Compress(ref, nil, DefaultANSThreshold)
+		if err != nil {
+			return // when would this fail?
+		}
+		decompressed, err = dec.Decompress(compressed)
 		if err != nil {
 			t.Fatalf("round-trip failed: %s", err)
 		}
@@ -128,7 +155,8 @@ func BenchmarkRef(b *testing.B) {
 	if err != nil {
 		b.Fatal(err)
 	}
-	dst, err := Compress(src, nil, DefaultANSThreshold)
+	var enc Encoder
+	dst, err := enc.Compress(src, nil, DefaultANSThreshold)
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -138,6 +166,27 @@ func BenchmarkRef(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		src, err = dec.DecompressTo(src[:0], dst)
+		if err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func BenchmarkCompress(b *testing.B) {
+	src, err := fetchTestData("testdata/ref.bin.gz")
+	if err != nil {
+		b.Fatal(err)
+	}
+	var enc Encoder
+	dst, err := enc.Compress(src, nil, DefaultANSThreshold)
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.ReportAllocs()
+	b.SetBytes(int64(len(src)))
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		dst, err = enc.Compress(src, dst[:0], DefaultANSThreshold)
 		if err != nil {
 			b.Fatal(err)
 		}

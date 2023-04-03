@@ -42,4 +42,4 @@ func decompressIguanaVBMI2(dst []byte, streams *streamPack, lastOffs *int) ([]by
 
 //gox:noescape
 //go:nosplit
-func pickBestMatchVPOPCNTDQ(ec *iguanaEncodingContext, src []byte, candidates []uint32) matchDescriptor
+func pickBestMatchVPOPCNTDQ(ec *encodingContext, src []byte, candidates []uint32) matchDescriptor

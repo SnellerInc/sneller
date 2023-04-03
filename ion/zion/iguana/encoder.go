@@ -57,18 +57,29 @@ type encodingStation struct {
 	dst               []byte
 	ctrl              []byte
 	lastCommandOffset int
+	ans               ANSEncoder
+	ctx               encodingContext
+
+	ustreams, cstreams [streamCount][]byte
 }
 
-func Compress(src []byte, dst []byte, ansRejectionThreshold float32) ([]byte, error) {
-	return CompressComposite(dst, []EncodingRequest{{Src: src, Mode: EncodingIguanaANS, ANSRejectionThreshold: ansRejectionThreshold}})
+type Encoder struct {
+	es encodingStation
 }
 
-func CompressComposite(dst []byte, reqs []EncodingRequest) ([]byte, error) {
-	es := encodingStation{dst: dst, lastCommandOffset: -1}
-	return es.encode(reqs)
+func (e *Encoder) Compress(src []byte, dst []byte, ansRejectionThreshold float32) ([]byte, error) {
+	return e.CompressComposite(dst, []EncodingRequest{{Src: src, Mode: EncodingIguanaANS, ANSRejectionThreshold: ansRejectionThreshold}})
 }
 
-type iguanaEncodingContext struct {
+func (e *Encoder) CompressComposite(dst []byte, reqs []EncodingRequest) ([]byte, error) {
+	e.es.ctx.reset()
+	e.es.dst = dst
+	e.es.lastCommandOffset = -1
+	e.es.ctrl = e.es.ctrl[:0]
+	return e.es.encode(reqs)
+}
+
+type encodingContext struct {
 	src         []byte
 	tokens      []byte
 	offsets16   []byte
@@ -76,10 +87,26 @@ type iguanaEncodingContext struct {
 	varLitLen   []byte
 	varMatchLen []byte
 	literals    []byte
+
 	// The compressor's state
 	pendingLiterals   []byte
 	currentOffset     uint32
 	lastEncodedOffset uint32
+
+	table [256 * 256][]uint32
+}
+
+func (ec *encodingContext) reset() {
+	ec.src = ec.src[:0]
+	ec.tokens = ec.tokens[:0]
+	ec.offsets16 = ec.offsets16[:0]
+	ec.offsets24 = ec.offsets24[:0]
+	ec.varLitLen = ec.varLitLen[:0]
+	ec.varMatchLen = ec.varMatchLen[:0]
+	ec.literals = ec.literals[:0]
+	ec.pendingLiterals = ec.pendingLiterals[:0]
+	ec.currentOffset = 0
+	ec.lastEncodedOffset = 0
 }
 
 func (es *encodingStation) encode(reqs []EncodingRequest) ([]byte, error) {
@@ -142,7 +169,7 @@ func (es *encodingStation) encodeRaw(src []byte) error {
 }
 
 func (es *encodingStation) encodeANS(src []byte, threshold float32) error {
-	ans, err := AnsEncode(src)
+	ans, err := es.ans.Encode(src)
 	if err != nil {
 		return err
 	}
@@ -165,24 +192,27 @@ func (es *encodingStation) encodeIguana(src []byte, threshold float32) error {
 	if len(src) < minLength {
 		return es.encodeRaw(src)
 	}
-	ec := iguanaEncodingContext{src: src}
+	ec := &es.ctx
+	ec.src = src
 	ec.encodeIguanaHashChains()
 
 	hdr := byte(0)
-	ustreams := [streamCount][]byte{ec.tokens, ec.offsets16, ec.offsets24, ec.varLitLen, ec.varMatchLen, ec.literals}
-	cstreams := [streamCount][]byte{}
+	es.ustreams = [streamCount][]byte{ec.tokens, ec.offsets16, ec.offsets24, ec.varLitLen, ec.varMatchLen, ec.literals}
+	for i := range es.cstreams {
+		es.cstreams[i] = es.cstreams[i][:0]
+	}
 
 	if threshold > 0.0 {
 		for i := 0; i < int(streamCount); i++ {
 			// ANS-compress the stream
-			cs, err := AnsEncode(ustreams[i])
+			cs, err := es.ans.Encode(es.ustreams[i])
 			if err != nil {
 				return err
 			}
 			csLen := len(cs)
-			if ratio := float64(csLen) / float64(len(ustreams[i])); ratio < float64(threshold) {
+			if ratio := float64(csLen) / float64(len(es.ustreams[i])); ratio < float64(threshold) {
 				hdr |= (1 << i)
-				cstreams[i] = cs
+				es.cstreams[i] = append(es.cstreams[i][:0], cs...)
 			}
 		}
 	}
@@ -192,16 +222,16 @@ func (es *encodingStation) encodeIguana(src []byte, threshold float32) error {
 
 	// Append the uncompressed streams' lengths
 	for i := 0; i < int(streamCount); i++ {
-		es.appendControlVarUint(uint64(len(ustreams[i])))
+		es.appendControlVarUint(uint64(len(es.ustreams[i])))
 	}
 
 	// Append streams' data and compressed lengths
 	for i := 0; i < int(streamCount); i++ {
 		if hdr&(1<<i) == 0 {
-			es.dst = append(es.dst, ustreams[i]...)
+			es.dst = append(es.dst, es.ustreams[i]...)
 		} else {
-			es.appendControlVarUint(uint64(len(cstreams[i])))
-			es.dst = append(es.dst, cstreams[i]...)
+			es.appendControlVarUint(uint64(len(es.cstreams[i])))
+			es.dst = append(es.dst, es.cstreams[i]...)
 		}
 	}
 	return nil
@@ -275,7 +305,7 @@ func hashMatch(c0, c1 byte) uint {
 	return uint(c1)<<8 | uint(c0)
 }
 
-func (ec *iguanaEncodingContext) encodeIguanaHashChains() {
+func (ec *encodingContext) encodeIguanaHashChains() {
 	src := ec.src
 	srcLen := len(src)
 	if srcLen < minOffset {
@@ -284,24 +314,26 @@ func (ec *iguanaEncodingContext) encodeIguanaHashChains() {
 	last := srcLen - minOffset
 	data := src[:last]
 
-	table := [256 * 256][]uint32{}
+	for i := range ec.table {
+		ec.table[i] = ec.table[i][:0]
+	}
 	ec.lastEncodedOffset = 0
 
 	for ec.currentOffset = 0; ec.currentOffset < uint32(last); {
 		c0 := src[ec.currentOffset]
 		c1 := src[ec.currentOffset+1]
 		// Find the lowest cost match in table[]
-		if match := pickBestMatch(ec, data, table[hashMatch(c0, c1)]); match.cost >= 0 {
+		if match := pickBestMatch(ec, data, ec.table[hashMatch(c0, c1)]); match.cost >= 0 {
 			ec.pendingLiterals = append(ec.pendingLiterals, c0)
 			if ec.currentOffset > 0 {
 				h := hashMatch(src[ec.currentOffset-1], c0)
-				table[h] = append(table[h], ec.currentOffset-1)
+				ec.table[h] = append(ec.table[h], ec.currentOffset-1)
 			}
 			ec.currentOffset++
 		} else {
 			for i := uint32(0); i < match.length; i++ {
 				h := hashMatch(src[ec.currentOffset+i-1], src[ec.currentOffset+i])
-				table[h] = append(table[h], ec.currentOffset+i-1)
+				ec.table[h] = append(ec.table[h], ec.currentOffset+i-1)
 			}
 			ec.emit(&match)
 			ec.currentOffset += match.length
@@ -313,7 +345,7 @@ func (ec *iguanaEncodingContext) encodeIguanaHashChains() {
 	ec.pendingLiterals = ec.pendingLiterals[:0]
 }
 
-func (ec *iguanaEncodingContext) costVarUInt(v uint32) int32 {
+func (ec *encodingContext) costVarUInt(v uint32) int32 {
 	// The cost of a VarUInt is the number of bytes its encoding requires
 	if v < varUIntThreshold1B {
 		return 1
@@ -327,7 +359,7 @@ func (ec *iguanaEncodingContext) costVarUInt(v uint32) int32 {
 	}
 }
 
-func (ec *iguanaEncodingContext) cost(offs uint32, length uint32) int32 {
+func (ec *encodingContext) cost(offs uint32, length uint32) int32 {
 	// The cost is the sum of all emission costs (what we pay) minus the length of the covered match (what we get).
 	if offs < minOffset {
 		return costInfinite // The offset must be at least the size of a vector register used for match copying
@@ -364,7 +396,7 @@ func (ec *iguanaEncodingContext) cost(offs uint32, length uint32) int32 {
 	}
 }
 
-func (ec *iguanaEncodingContext) emit(m *matchDescriptor) {
+func (ec *encodingContext) emit(m *matchDescriptor) {
 	// Flush the pending literals, if any
 	litLen := len(ec.pendingLiterals)
 	if litLen > 0 {
@@ -433,7 +465,7 @@ func (ec *iguanaEncodingContext) emit(m *matchDescriptor) {
 	ec.lastEncodedOffset = offs
 }
 
-var pickBestMatch func(ec *iguanaEncodingContext, src []byte, candidates []uint32) matchDescriptor = pickBestMatchReference
+var pickBestMatch func(ec *encodingContext, src []byte, candidates []uint32) matchDescriptor = pickBestMatchReference
 
 func init() {
 	if minLength < minOffset {
@@ -441,7 +473,7 @@ func init() {
 	}
 }
 
-func pickBestMatchReference(ec *iguanaEncodingContext, src []byte, candidates []uint32) matchDescriptor {
+func pickBestMatchReference(ec *encodingContext, src []byte, candidates []uint32) matchDescriptor {
 	match := matchDescriptor{cost: costInfinite} // Use the worst possible match as the first candidate
 	n := uint32(len(src))
 	cLen := len(candidates)
