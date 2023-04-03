@@ -19,8 +19,11 @@ import (
 	"fmt"
 	"runtime"
 
+	"github.com/SnellerInc/sneller/ion/zion/iguana"
 	"github.com/klauspost/compress/zstd"
 )
+
+const useIguana = false // TODO: implement it properly
 
 var dec *zstd.Decoder
 var enc *zstd.Encoder
@@ -75,7 +78,16 @@ func put24(i int, dst []byte) {
 func Compress(src, dst []byte) ([]byte, error) {
 	off := len(dst)
 	dst = append(dst, 0, 0, 0)
-	dst = enc.EncodeAll(src, dst)
+
+	if useIguana {
+		var err error
+		dst, err = iguana.Compress(src, dst, iguana.DefaultANSThreshold)
+		if err != nil {
+			return dst, err
+		}
+	} else {
+		dst = enc.EncodeAll(src, dst)
+	}
 	size := len(dst) - off - 3
 	if size >= MaxBucketSize {
 		return nil, fmt.Errorf("compressed segment length %d exceeds max size %d", size, MaxBucketSize)
@@ -110,9 +122,17 @@ func Decompress(src, dst []byte) ([]byte, int, error) {
 	if size > len(src) {
 		return nil, 0, fmt.Errorf("zion.decompress: segment size %d exceeds slice len %d", size, len(src))
 	}
-	out, err := dec.DecodeAll(src[3:size], dst)
-	if err != nil {
-		return nil, 0, err
+	if useIguana {
+		out, err := iguana.DecompressTo(dst, src[3:size])
+		if err != nil {
+			return nil, 0, err
+		}
+		return out, size, nil
+	} else {
+		out, err := dec.DecodeAll(src[3:size], dst)
+		if err != nil {
+			return nil, 0, err
+		}
+		return out, size, nil
 	}
-	return out, size, nil
 }
