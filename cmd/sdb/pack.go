@@ -64,7 +64,7 @@ func pack(args []string) {
 	flags := flag.NewFlagSet(args[0], flag.ExitOnError)
 	flags.StringVar(&dashf, "f", "", "input file format (if empty, automatically inferred from file suffix)")
 	flags.StringVar(&dasho, "o", "", "output file")
-	flags.StringVar(&dashc, "c", "zion", "compression format (zion, zstd)")
+	flags.StringVar(&dashc, "c", "zion", "compression format (zion, zstd, zion+iguana_v0, ...)")
 	flags.Parse(args[1:])
 	args = flags.Args()
 	if dasho == "" {
@@ -105,7 +105,7 @@ func pack(args []string) {
 func init() {
 	addApplet(applet{
 		name: "pack",
-		help: "[-o output] [-f format] <file> ...",
+		help: "[-o output] [-f format] [-c compression] <file> ...",
 		desc: `pack 1 or more files into an output file`,
 		run: func(args []string) bool {
 			if len(args) < 2 {

@@ -30,6 +30,11 @@ import (
 	"golang.org/x/exp/slices"
 )
 
+var validAlgs = []zll.BucketAlgo{
+	zll.CompressZstd,
+	zll.CompressIguanaV0,
+}
+
 type testWriter struct {
 	t    *testing.T
 	enc  Encoder
@@ -401,6 +406,15 @@ func trimnop(buf []byte) []byte {
 }
 
 func BenchmarkDecompressFields(b *testing.B) {
+	for _, alg := range validAlgs {
+		alg := alg
+		b.Run(alg.String(), func(b *testing.B) {
+			benchmarkDecompressFields(alg, b)
+		})
+	}
+}
+
+func benchmarkDecompressFields(alg zll.BucketAlgo, b *testing.B) {
 	type benchcase struct {
 		file   string
 		fields [][]string
@@ -434,6 +448,7 @@ func BenchmarkDecompressFields(b *testing.B) {
 			filesize := info.Size()
 			defer f.Close()
 			tb := &testBuffer{}
+			tb.enc.Algo = alg
 			cn := ion.Chunker{
 				W:     tb,
 				Align: 1024 * 1024,
@@ -459,7 +474,7 @@ func BenchmarkDecompressFields(b *testing.B) {
 				in = append(in, trimnop(tb.input[i])...)
 			}
 			insize := len(in)
-			in, _ = zll.Compress(in, nil)
+			in, _ = alg.Compress(in, nil)
 			// benchmark simply (de)compressing the input data directly
 			b.Run("baseline", func(b *testing.B) {
 				b.Logf("%d -> %d bytes", insize, len(in))
@@ -470,7 +485,7 @@ func BenchmarkDecompressFields(b *testing.B) {
 					var out []byte
 					var err error
 					for pb.Next() {
-						out, _, err = zll.Decompress(in, out[:0])
+						out, _, err = alg.Decompress(in, out[:0])
 						if err != nil {
 							b.Fatal(err)
 						}
@@ -548,49 +563,53 @@ func BenchmarkEncode(b *testing.B) {
 	}
 	for i := range cases {
 		f := cases[i].file
-		b.Run(f, func(b *testing.B) {
-			fp := filepath.Join("..", "..", "testdata", f)
-			f, err := os.Open(fp)
-			if err != nil {
-				b.Fatal(err)
-			}
-			defer f.Close()
-			var buf bytes.Buffer
-			cn := ion.Chunker{
-				W:     &buf,
-				Align: 1024 * 1024,
-			}
-			err = jsonrl.Convert(f, &cn, nil, nil)
-			if err != nil {
-				b.Fatal(err)
-			}
-			err = cn.Flush()
-			if err != nil {
-				b.Fatal(err)
-			}
-			var enc Encoder
-			var st ion.Symtab
-			in := trimnop(buf.Bytes())
-			// same as in, minus symtab:
-			tail, _ := st.Unmarshal(in)
-			b.SetBytes(int64(len(in)))
-			b.ResetTimer()
-
-			// we are doing the first Encode with
-			// the symbol table, and then doing the
-			// rest without it so that we don't inadvertently
-			// just benchmark the seed-picking code
-			out, err := enc.Encode(in, nil)
-			if err != nil {
-				b.Fatal(err)
-			}
-			for i := 1; i < b.N; i++ {
-				out, err = enc.Encode(tail, out[:0])
+		for _, alg := range validAlgs {
+			alg := alg
+			b.Run(fmt.Sprintf("%s/%s", f, alg), func(b *testing.B) {
+				fp := filepath.Join("..", "..", "testdata", f)
+				f, err := os.Open(fp)
 				if err != nil {
 					b.Fatal(err)
 				}
-			}
-		})
+				defer f.Close()
+				var buf bytes.Buffer
+				cn := ion.Chunker{
+					W:     &buf,
+					Align: 1024 * 1024,
+				}
+				err = jsonrl.Convert(f, &cn, nil, nil)
+				if err != nil {
+					b.Fatal(err)
+				}
+				err = cn.Flush()
+				if err != nil {
+					b.Fatal(err)
+				}
+				var enc Encoder
+				enc.Algo = alg
+				var st ion.Symtab
+				in := trimnop(buf.Bytes())
+				// same as in, minus symtab:
+				tail, _ := st.Unmarshal(in)
+				b.SetBytes(int64(len(in)))
+				b.ResetTimer()
+
+				// we are doing the first Encode with
+				// the symbol table, and then doing the
+				// rest without it so that we don't inadvertently
+				// just benchmark the seed-picking code
+				out, err := enc.Encode(in, nil)
+				if err != nil {
+					b.Fatal(err)
+				}
+				for i := 1; i < b.N; i++ {
+					out, err = enc.Encode(tail, out[:0])
+					if err != nil {
+						b.Fatal(err)
+					}
+				}
+			})
+		}
 	}
 
 }

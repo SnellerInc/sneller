@@ -79,6 +79,7 @@ var ErrBuildAgain = errors.New("partial db update")
 type Config struct {
 	// Algo is the compression algorithm
 	// used for producing output data blocks.
+	// (See [blockfmt.CompressorByName].)
 	// If Algo is the empty string, Config
 	// uses DefaultAlgo instead.
 	Algo string
@@ -897,14 +898,14 @@ func (st *tableState) flush(ctx context.Context, idx *blockfmt.Index) (err error
 }
 
 func suffixForComp(c string) string {
-	switch c {
-	case "zstd":
+	if c == "zstd" {
 		return ".ion.zst"
-	case "zion":
-		return ".zion"
-	default:
-		panic("bad suffixForComp value")
 	}
+	if strings.HasPrefix(c, "zion") {
+		return ".zion"
+	}
+	panic("bad suffixForComp value")
+	return ""
 }
 
 // errUpdateFailed is used to signal that a call

@@ -23,10 +23,31 @@ import (
 	"github.com/klauspost/compress/zstd"
 )
 
-const useIguana = false // TODO: implement it properly
-
 var dec *zstd.Decoder
 var enc *zstd.Encoder
+
+// BucketAlgo is an algorithm used to compress buckets.
+type BucketAlgo uint8
+
+const (
+	// CompressZstd indicates that buckets are compressed
+	// using vanilla zstd compression.
+	CompressZstd BucketAlgo = iota
+	// CompressIguanaV0 indicates that buckets are
+	// compressed using the experimental iguana compression.
+	CompressIguanaV0
+)
+
+func (a BucketAlgo) String() string {
+	switch a {
+	case CompressZstd:
+		return "zstd"
+	case CompressIguanaV0:
+		return "iguana_v0"
+	default:
+		return fmt.Sprintf("BucketAlgo(%X)", uint8(a))
+	}
+}
 
 // magic is the (little-endian) magic number
 // that begins zion compressed chunks
@@ -47,9 +68,10 @@ func IsMagic(x []byte) bool {
 //
 // NOTE: currently only the lowest 4 bits of seed should be set.
 // The rest are reserved for future use.
-func AppendMagic(dst []byte, seed uint32) []byte {
-	return append(append(dst, magic...),
-		byte(seed), byte(seed>>8), byte(seed>>16), byte(seed>>24))
+func AppendMagic(dst []byte, algo BucketAlgo, seed uint8) []byte {
+	lo8 := (seed & 0xf) | (uint8(algo&0xf) << 4)
+	hi8 := uint8(algo >> 4)
+	return append(append(dst, magic...), lo8, hi8, 0, 0)
 }
 
 func init() {
@@ -75,18 +97,21 @@ func put24(i int, dst []byte) {
 
 // Compress compresses data from src and appends it to dst,
 // returning the new dst slice or an error.
-func Compress(src, dst []byte) ([]byte, error) {
+func (a BucketAlgo) Compress(src, dst []byte) ([]byte, error) {
 	off := len(dst)
 	dst = append(dst, 0, 0, 0)
 
-	if useIguana {
-		var err error
+	var err error
+	switch a {
+	case CompressIguanaV0:
 		dst, err = iguana.Compress(src, dst, iguana.DefaultANSThreshold)
-		if err != nil {
-			return dst, err
-		}
-	} else {
+	case CompressZstd:
 		dst = enc.EncodeAll(src, dst)
+	default:
+		panic("BucketAlgo.Compress: unknown BucketAlgo")
+	}
+	if err != nil {
+		return nil, err
 	}
 	size := len(dst) - off - 3
 	if size >= MaxBucketSize {
@@ -114,7 +139,7 @@ func FrameSize(src []byte) (int, error) {
 // Decompress decompressed data from src, appending it to dst.
 // Decompress returns the new dst, the number of compressed bytes consumed,
 // and the first error encountered, if any.
-func Decompress(src, dst []byte) ([]byte, int, error) {
+func (a BucketAlgo) Decompress(src, dst []byte) ([]byte, int, error) {
 	if len(src) < 3 {
 		return nil, 0, fmt.Errorf("zion.decompress: illegal frame size")
 	}
@@ -122,17 +147,15 @@ func Decompress(src, dst []byte) ([]byte, int, error) {
 	if size > len(src) {
 		return nil, 0, fmt.Errorf("zion.decompress: segment size %d exceeds slice len %d", size, len(src))
 	}
-	if useIguana {
-		out, err := iguana.DecompressTo(dst, src[3:size])
-		if err != nil {
-			return nil, 0, err
-		}
-		return out, size, nil
-	} else {
-		out, err := dec.DecodeAll(src[3:size], dst)
-		if err != nil {
-			return nil, 0, err
-		}
-		return out, size, nil
+	var err error
+	var out []byte
+	switch a {
+	case CompressZstd:
+		out, err = dec.DecodeAll(src[3:size], dst)
+	case CompressIguanaV0:
+		out, err = iguana.DecompressTo(dst, src[3:size])
+	default:
+		err = fmt.Errorf("zll.BucketAlgo.Decompress: unrecognized algo %X", a)
 	}
+	return out, size, err
 }

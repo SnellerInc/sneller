@@ -34,6 +34,10 @@ func (b *bucket) append(mem []byte) {
 // Encoder is used to compress sequential blocks
 // of ion data. See Encoder.Encode and Decoder.Decode.
 type Encoder struct {
+	// Algo is the current encoder bucket algorithm.
+	// Algo may be changed between calls to Encoder.Encode.
+	Algo zll.BucketAlgo
+
 	st         ion.Symtab
 	sym2bucket []uint8
 	shape      []byte
@@ -118,13 +122,13 @@ func (e *Encoder) Encode(src, dst []byte) ([]byte, error) {
 	// TODO: try multiple seed values and pick
 	// the one that produces the most even distribution
 	// of compressed bucket sizes?
-	dst = zll.AppendMagic(dst, e.seed)
-	dst, err = zll.Compress(e.shape, dst)
+	dst = zll.AppendMagic(dst, e.Algo, uint8(e.seed))
+	dst, err = e.Algo.Compress(e.shape, dst)
 	if err != nil {
 		return nil, err
 	}
 	for i := 0; i < zll.NumBuckets; i++ {
-		dst, err = zll.Compress(e.buck[i].mem, dst)
+		dst, err = e.Algo.Compress(e.buck[i].mem, dst)
 		if err != nil {
 			return nil, err
 		}

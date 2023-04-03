@@ -22,6 +22,7 @@ import (
 	"io"
 	"io/fs"
 	"runtime"
+	"strings"
 
 	"github.com/SnellerInc/sneller/aws/s3"
 	"github.com/SnellerInc/sneller/ion"
@@ -712,7 +713,7 @@ func (c *Converter) runPrepend(cn *ion.Chunker) error {
 	// if we are appending to a short block (i.e. size < RangeAlign)
 	// then try to consume all but the final chunk without re-compressing
 	if len(t.Blocks) == 1 &&
-		c.Comp == "zion" && t.Algo == "zion" && // not changing compression
+		strings.HasPrefix(c.Comp, "zion") && t.Algo == c.Comp && // not changing compression
 		cn.Align == 1<<t.BlockShift && // not changing block size
 		t.Blocks[0].Chunks > 1 && // more than 1 chunk to use fast-path
 		cn.RangeAlign >= t.Blocks[0].Chunks<<t.BlockShift {

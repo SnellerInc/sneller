@@ -21,11 +21,13 @@ import (
 	"fmt"
 	"io"
 	"math/bits"
+	"strings"
 	"sync"
 
 	"github.com/SnellerInc/sneller/compr"
 	"github.com/SnellerInc/sneller/ion"
 	"github.com/SnellerInc/sneller/ion/zion"
+	"github.com/SnellerInc/sneller/ion/zion/zll"
 )
 
 var debugFree = false
@@ -88,15 +90,28 @@ func (e *encoderNopCloser) Compress(src, dst []byte) ([]byte, error) {
 // CompressorByName produces the Compressor
 // associated with the provided algorithm name,
 // or nil if no such algorithm is known to the library.
+//
+// Valid values include:
+//
+//	"zstd"
+//	"zion"
+//	"zion+zstd" (equivalent to "zion")
+//	"zion+iguana_v0"
 func CompressorByName(algo string) Compressor {
 	return getCompressor(algo)
 }
 
 func getCompressor(algo string) Compressor {
 	switch algo {
-	case "zion":
+	case "zion+iguana_v0":
 		e := zionEncPool.Get().(*zion.Encoder)
 		e.Reset()
+		e.Algo = zll.CompressIguanaV0
+		return &zionCompressor{enc: e}
+	case "zion", "zion+zstd":
+		e := zionEncPool.Get().(*zion.Encoder)
+		e.Reset()
+		e.Algo = zll.CompressZstd
 		return &zionCompressor{enc: e}
 	default:
 		c := compr.Compression(algo)
@@ -569,7 +584,7 @@ func (z *zionDecompressor) Decompress(src, dst []byte) error {
 
 func getAlgo(algo string) decompressor {
 	switch algo {
-	case "zion":
+	case "zion", "zion+zstd", "zion+iguana_v0":
 		d := zionDecompPool.Get().(*zion.Decoder)
 		d.Reset()
 		return &zionDecompressor{d}
@@ -822,7 +837,7 @@ func (d *Decoder) acceptsZion(w io.Writer) bool {
 // (see ZionWriter for more details).
 func (d *Decoder) CopyBytes(dst io.Writer, src []byte) (int64, error) {
 	size := 1 << d.BlockShift
-	if d.Algo == "zion" {
+	if strings.HasPrefix(d.Algo, "zion") {
 		if d.acceptsZion(dst) {
 			return d.copyZion(dst, src)
 		}
@@ -876,7 +891,7 @@ func (d *Decoder) Copy(dst io.Writer, src io.Reader) (int64, error) {
 	if d.tmp != nil {
 		panic("concurrent blockfmt.Decoder calls")
 	}
-	if d.Algo == "zion" && d.acceptsZion(dst) {
+	if strings.HasPrefix(d.Algo, "zion") && d.acceptsZion(dst) {
 		return d.copyZionFrom(dst, src)
 	}
 	defer d.free()

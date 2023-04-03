@@ -45,8 +45,16 @@ type Shape struct {
 	// This may be non-zero if the Bits stream has a leading symbol table.
 	Start int
 	// Seed is the 32-bit seed stored in the shape preamble;
-	// it contains the selector used to hash symbols.
+	// it contains the selector used to hash symbols and the
+	// algorithm used to compress buckets. All the other bits
+	// are reserved and should be zero.
 	Seed uint32
+}
+
+// Algo returns the bucket compression algorithm
+// as indicated by s.Seed.
+func (s *Shape) Algo() BucketAlgo {
+	return BucketAlgo(s.Seed >> 4)
 }
 
 //go:noescape
@@ -77,7 +85,10 @@ func (s *Shape) checkMagic(src []byte) ([]byte, error) {
 		return nil, fmt.Errorf("zll.Shape: bad magic bytes %x", src[:len(magic)])
 	}
 	s.Seed = binary.LittleEndian.Uint32(src[4:])
-	if (s.Seed >> 4) != 0 {
+	// bits[0:4] = seed
+	// bits[4:12] = algo
+	// bits[12:32] = reserved
+	if (s.Seed >> 12) != 0 {
 		return nil, fmt.Errorf("zll.Shape: unexpected Seed bits 0x%x (unsupported features?)", s.Seed)
 	}
 	return src[8:], nil
@@ -95,7 +106,7 @@ func (s *Shape) Decode(src []byte) ([]byte, error) {
 	}
 	s.Start = 0
 	var skip int
-	s.Bits, skip, err = Decompress(src, s.Bits[:0])
+	s.Bits, skip, err = s.Algo().Decompress(src, s.Bits[:0])
 	if err != nil {
 		return nil, err
 	}
@@ -232,6 +243,7 @@ func pad8(buf []byte) []byte {
 
 func (b *Buckets) decompSelected() error {
 	parts := b.Compressed
+	algo := b.Shape.Algo()
 	for i := 0; i < NumBuckets; i++ {
 		var skip int
 		var err error
@@ -240,7 +252,7 @@ func (b *Buckets) decompSelected() error {
 			skip, err = FrameSize(parts)
 		} else {
 			b.Pos[i] = int32(len(b.Decompressed))
-			b.Decompressed, skip, err = Decompress(parts, b.Decompressed)
+			b.Decompressed, skip, err = algo.Decompress(parts, b.Decompressed)
 			b.Decomps++
 		}
 		if err != nil {
