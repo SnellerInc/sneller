@@ -18,6 +18,7 @@ import (
 	"bytes"
 	"fmt"
 	"runtime"
+	"sync"
 
 	"github.com/SnellerInc/sneller/ion/zion/iguana"
 	"github.com/klauspost/compress/zstd"
@@ -25,6 +26,18 @@ import (
 
 var dec *zstd.Decoder
 var enc *zstd.Encoder
+
+var iguanaPool = sync.Pool{
+	New: func() any { return &iguana.Decoder{} },
+}
+
+func iguanaDec() *iguana.Decoder {
+	return iguanaPool.Get().(*iguana.Decoder)
+}
+
+func dropIguana(dec *iguana.Decoder) {
+	iguanaPool.Put(dec)
+}
 
 // BucketAlgo is an algorithm used to compress buckets.
 type BucketAlgo uint8
@@ -153,7 +166,9 @@ func (a BucketAlgo) Decompress(src, dst []byte) ([]byte, int, error) {
 	case CompressZstd:
 		out, err = dec.DecodeAll(src[3:size], dst)
 	case CompressIguanaV0:
-		out, err = iguana.DecompressTo(dst, src[3:size])
+		dec := iguanaDec()
+		out, err = dec.DecompressTo(dst, src[3:size])
+		dropIguana(dec)
 	default:
 		err = fmt.Errorf("zll.BucketAlgo.Decompress: unrecognized algo %X", a)
 	}

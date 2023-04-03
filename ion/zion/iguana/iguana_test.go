@@ -50,6 +50,7 @@ func TestIguana(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	var dec Decoder
 	srcLen := len(src)
 	t.Logf("srcLen = %d\n", srcLen)
 
@@ -62,7 +63,7 @@ func TestIguana(t *testing.T) {
 	compressionRatio := 100.0 * (1.0 - float64(dstLen)/float64(srcLen))
 	t.Logf("compressed by = %f%%\n", compressionRatio)
 	out := make([]byte, 0, 1024*1024)
-	out, err = DecompressTo(out, dst)
+	out, err = dec.DecompressTo(out, dst)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -89,11 +90,12 @@ func TestIguana(t *testing.T) {
 
 func FuzzRoundTrip(f *testing.F) {
 	f.Fuzz(func(t *testing.T, ref []byte) {
+		var dec Decoder
 		compressed, err := Compress(ref, nil, DefaultANSThreshold)
 		if err != nil {
 			return // when would this fail?
 		}
-		decompressed, err := Decompress(compressed)
+		decompressed, err := dec.Decompress(compressed)
 		if err != nil {
 			t.Fatalf("round-trip failed: %s", err)
 		}
@@ -112,11 +114,12 @@ func BenchmarkRef(b *testing.B) {
 	if err != nil {
 		b.Fatal(err)
 	}
+	var dec Decoder
 	b.ReportAllocs()
 	b.SetBytes(int64(len(src)))
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		src, err = DecompressTo(src[:0], dst)
+		src, err = dec.DecompressTo(src[:0], dst)
 		if err != nil {
 			b.Fatal(err)
 		}

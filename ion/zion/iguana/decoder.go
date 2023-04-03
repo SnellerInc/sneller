@@ -19,7 +19,24 @@ import (
 	"golang.org/x/exp/slices"
 )
 
-func Decompress(src []byte) ([]byte, error) {
+// Decoder is a stateless decoder for iguana-compressed data.
+// The zero value of Decoder is ready to use via Decompress or DecompressTo.
+//
+// It is not safe to use a Decoder from multiple goroutines simultaneously.
+type Decoder struct {
+	pack     streamPack
+	anstab   AnsDenseTable
+	ansbuf   []byte
+	lastOffs int
+}
+
+func (d *Decoder) reset() {
+	d.pack = streamPack{}
+	d.anstab = AnsDenseTable{}
+}
+
+// Decompress returns the decompressed result of src as a new slice.
+func (d *Decoder) Decompress(src []byte) ([]byte, error) {
 	cursor := len(src) - 1
 	if cursor < 0 {
 		return nil, errs[ecOutOfInputData]
@@ -32,14 +49,16 @@ func Decompress(src []byte) ([]byte, error) {
 		return nil, nil
 	}
 	dst := make([]byte, 0, ints.AlignUp64(uncompressedLen, 64))
-	dst, ec = decode(uncompressedLen, cursor, dst, src)
+	dst, ec = d.decode(uncompressedLen, cursor, dst, src)
 	if ec != ecOK {
 		return nil, errs[ec]
 	}
 	return dst, nil
 }
 
-func DecompressTo(dst []byte, src []byte) ([]byte, error) {
+// DecompressTo decompresses the data in src and appends it to dst,
+// returning the enlarged slice or the first encountered error.
+func (d *Decoder) DecompressTo(dst []byte, src []byte) ([]byte, error) {
 	cursor := len(src) - 1
 	if cursor < 0 {
 		return dst, errs[ecOutOfInputData]
@@ -56,16 +75,16 @@ func DecompressTo(dst []byte, src []byte) ([]byte, error) {
 	if rem := c - n; uncompressedLen > rem {
 		dst = slices.Grow(dst, int(uncompressedLen))
 	}
-	dst, ec = decode(uncompressedLen, cursor, dst, src)
+	dst, ec = d.decode(uncompressedLen, cursor, dst, src)
 	if ec != ecOK {
 		return dst, errs[ec]
 	}
 	return dst, nil
 }
 
-func decode(uncompressedLen uint64, ctrlCursor int, dst []byte, src []byte) ([]byte, errorCode) {
+func (d *Decoder) decode(uncompressedLen uint64, ctrlCursor int, dst []byte, src []byte) ([]byte, errorCode) {
+	d.reset()
 	var ec errorCode
-	var ansBuffer []byte
 
 	// Fetch the header
 	if ctrlCursor < 0 {
@@ -101,12 +120,11 @@ func decode(uncompressedLen uint64, ctrlCursor int, dst []byte, src []byte) ([]b
 				return dst, ec
 			}
 			ans := src[dataCursor : dataCursor+lenCompressed]
-			var tab AnsDenseTable
-			encoded, ec := ansDecodeTable(&tab, ans)
+			encoded, ec := ansDecodeTable(&d.anstab, ans)
 			if ec != ecOK {
 				return dst, ec
 			}
-			dst, ec = ansDecodeExplicit(encoded, &tab, int(lenUncompressed), dst)
+			dst, ec = ansDecodeExplicit(encoded, &d.anstab, int(lenUncompressed), dst)
 			if ec != ecOK {
 				return dst, ec
 			}
@@ -121,8 +139,6 @@ func decode(uncompressedLen uint64, ctrlCursor int, dst []byte, src []byte) ([]b
 			ctrlCursor--
 
 			// Fetch the uncompressed streams' lengths
-			var streams streamPack
-
 			if hdr == 0 {
 				for i := stridType(0); i < streamCount; i++ {
 					var uLen uint64
@@ -130,7 +146,7 @@ func decode(uncompressedLen uint64, ctrlCursor int, dst []byte, src []byte) ([]b
 					if ec != ecOK {
 						return dst, ec
 					}
-					streams[i].data = src[dataCursor : dataCursor+uLen]
+					d.pack[i].data = src[dataCursor : dataCursor+uLen]
 					dataCursor += uLen
 				}
 			} else {
@@ -148,15 +164,15 @@ func decode(uncompressedLen uint64, ctrlCursor int, dst []byte, src []byte) ([]b
 						ansBufferSize = ints.AlignUp64(ansBufferSize+uLen, 64)
 					}
 				}
-				if uint64(cap(ansBuffer)) < ansBufferSize {
-					ansBuffer = make([]byte, ansBufferSize)
+				if uint64(cap(d.ansbuf)) < ansBufferSize {
+					d.ansbuf = make([]byte, ansBufferSize)
 				}
 				ansOffs := uint64(0)
 
 				for i := stridType(0); i < streamCount; i++ {
 					uLen := ulens[i]
 					if hdr&(1<<i) == 0 {
-						streams[i].data = src[dataCursor : dataCursor+uLen]
+						d.pack[i].data = src[dataCursor : dataCursor+uLen]
 						dataCursor += uLen
 					} else {
 						var cLen uint64
@@ -167,14 +183,13 @@ func decode(uncompressedLen uint64, ctrlCursor int, dst []byte, src []byte) ([]b
 						ans := src[dataCursor : dataCursor+cLen]
 						dataCursor += cLen
 
-						var tab AnsDenseTable
-						encoded, ec := ansDecodeTable(&tab, ans)
+						encoded, ec := ansDecodeTable(&d.anstab, ans)
 						if ec != ecOK {
 							return dst, ec
 						}
 
-						buf := ansBuffer[ansOffs:ansOffs]
-						streams[i].data, ec = ansDecodeExplicit(encoded, &tab, int(uLen), buf)
+						buf := d.ansbuf[ansOffs:ansOffs]
+						d.pack[i].data, ec = ansDecodeExplicit(encoded, &d.anstab, int(uLen), buf)
 						if ec != ecOK {
 							return dst, ec
 						}
@@ -183,8 +198,8 @@ func decode(uncompressedLen uint64, ctrlCursor int, dst []byte, src []byte) ([]b
 				}
 			}
 
-			lastOffs := -initLastOffset
-			dst, ec = decompressIguana(dst, &streams, &lastOffs)
+			d.lastOffs = -initLastOffset
+			dst, ec = decompressIguana(dst, &d.pack, &d.lastOffs)
 			if ec != ecOK {
 				return dst, ec
 			}
