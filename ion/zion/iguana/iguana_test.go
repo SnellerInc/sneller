@@ -17,11 +17,13 @@ package iguana
 import (
 	"bytes"
 	"compress/gzip"
+	"encoding/hex"
 	"io"
 	"os"
+	"path/filepath"
 	"testing"
 
-	"golang.org/x/exp/slices"
+	"github.com/SnellerInc/sneller/tests"
 )
 
 func fetchTestData(path string) ([]byte, error) {
@@ -44,16 +46,40 @@ func fetchTestData(path string) ([]byte, error) {
 	return s, nil
 }
 
-func TestIguana(t *testing.T) {
-	src, err := fetchTestData("testdata/ref.bin.gz")
+// run a sub-test for each testdata file
+func runTestdata[T testing.TB](t T, inner func(T, string, []byte)) {
+	entries, err := os.ReadDir("testdata")
 	if err != nil {
+		t.Helper()
 		t.Fatal(err)
 	}
+	for i := range entries {
+		if entries[i].IsDir() {
+			continue
+		}
+		buf, err := fetchTestData(filepath.Join("testdata", entries[i].Name()))
+		if err != nil {
+			t.Helper()
+			t.Fatal(err)
+		}
+		inner(t, entries[i].Name(), buf)
+	}
+}
 
-	var dec Decoder
+func TestRoundtrip(t *testing.T) {
+	runTestdata(t, func(t *testing.T, name string, buf []byte) {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			testRoundtrip(t, buf)
+		})
+	})
+}
+
+func testRoundtrip(t *testing.T, src []byte) {
 	srcLen := len(src)
 	t.Logf("srcLen = %d\n", srcLen)
 
+	var dec Decoder
 	dst, err := Compress(src, nil, DefaultANSThreshold)
 	if err != nil {
 		t.Fatal(err)
@@ -67,28 +93,20 @@ func TestIguana(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	outLen := len(out)
-
-	if srcLen != outLen {
-		t.Fatalf("length mismatch: outLen = %d, srcLen = %d\n", outLen, srcLen)
-	} else {
-		if !slices.Equal(src, out) {
-			t.Errorf("content mismatch\n")
-			for i := 0; i != srcLen; i++ {
-				vs := src[i]
-				vo := out[i]
-
-				if vs != vo {
-					t.Fatalf("data mismatch at offset %d: vsrc = %02x, vout = %02x\n", i, vs, vo)
-				}
-			}
-		} else {
-			t.Logf("OK!\n")
+	if !bytes.Equal(src, out) {
+		// print the diff of the hexdumps
+		delta, ok := tests.Diff(hex.Dump(src), hex.Dump(out))
+		if ok {
+			t.Log(delta)
 		}
+		t.Fatal("round-trip encoding+decoding failed")
 	}
 }
 
 func FuzzRoundTrip(f *testing.F) {
+	runTestdata(f, func(f *testing.F, _ string, buf []byte) {
+		f.Add(buf)
+	})
 	f.Fuzz(func(t *testing.T, ref []byte) {
 		var dec Decoder
 		compressed, err := Compress(ref, nil, DefaultANSThreshold)
