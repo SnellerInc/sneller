@@ -50,36 +50,40 @@ CONST_GLOBAL(cmpv_predicate_sort_nulls_last, $16)
 
 // Input registers:
 //
-//   - K1 <- input predicate
-//
-//   - Z10 <- [L] unpacked ION value offsets
-//   - Z11 <- [L] unpacked ION value lengths
-//   - Z12 <- [R] unpacked ION value offsets
-//   - Z13 <- [R] unpacked ION value lengths
-//   - Z14 <- [L] TLV byte, having zeros in unused bytes
-//   - Z15 <- [R] TLV byte, having zeros in unused bytes
-//   - Z16 <- comparison predicate, see cmpv_predicate_... for more details
-//
-//   - Z30 <- predicate(bswap64)
-//   - Z31 <- constant(-1)
+//   - K1  - input predicate
+//   - SI  - [L] value base offset (this is a VIRT_BASE register)
+//   - R8  - [R] value base offset (can be the same as VIRT_BASE)
+//   - Z10 - [L] unpacked ION value offsets
+//   - Z11 - [L] unpacked ION value lengths
+//   - Z12 - [R] unpacked ION value offsets
+//   - Z13 - [R] unpacked ION value lengths
+//   - Z14 - [L] TLV byte, having zeros in unused bytes
+//   - Z15 - [R] TLV byte, having zeros in unused bytes
+//   - Z16 - comparison predicate, see cmpv_predicate_... for more details
+//   - Z30 - predicate(bswap64)
+//   - Z31 - constant(-1)
 //
 // Output registers:
 //
-//   - K1 <- output predicate
-//   - Z16 <- comparison results as 32-bit clamped values to [-1, 0, 1].
-//   - Z30 <- predicate(bswap64)
-//   - Z31 <- constant(-1)
+//   - K1  - output predicate
+//   - Z16 - comparison results as 32-bit clamped values to [-1, 0, 1].
+//   - Z30 - predicate(bswap64)
+//   - Z31 - constant(-1)
 //
 // Preserved registers:
 //
-//   - Z0:Z9 <- Unchanged
-//   - Z30 <- predicate(bswap64)
-//   - Z31 <- constant(-1)
+//   - Z0:Z9 - Unchanged
+//   - Z30   - predicate(bswap64)
+//   - Z31   - constant(-1)
 //
 // Purpose of some registers:
 //
-//   - K1 <- final predicate, having masked out lanes that couldn't be compared
-//   - K2 <- working predicate, always contains remaining lanes to compare
+//   - K1  - final predicate, having masked out lanes that couldn't be compared
+//   - K2  - working predicate, always contains remaining lanes to compare
+//   - Z24 - [L] value 8 content bytes (low)
+//   - Z25 - [L] value 8 content bytes (high)
+//   - Z26 - [R] value 8 content bytes (low)
+//   - Z27 - [R] value 8 content bytes (high)
 //
 // Implementation Notes:
 //
@@ -91,7 +95,7 @@ TEXT fncmpv(SB), NOSPLIT|NOFRAME, $0
   KMOVB K1, K3
   VPXORD X24, X24, X24
   KSHIFTRW $8, K1, K2
-  VPGATHERDQ 0(VIRT_BASE)(Y10*1), K3, Z24              // Z24 <- left value 8 content bytes (low)
+  VPGATHERDQ 0(VIRT_BASE)(Y10*1), K3, Z24              // Z24 <- [L] value 8 content bytes (low)
   // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
   VPXORD X26, X26, X26
@@ -99,18 +103,18 @@ TEXT fncmpv(SB), NOSPLIT|NOFRAME, $0
   KMOVB K2, K4
   VEXTRACTI32X8 $1, Z10, Y20
   VEXTRACTI32X8 $1, Z12, Y21
-  VPSRLD $4, Z14, Z18                                  // Z18 <- left ION type
-  VPSRLD $4, Z15, Z19                                  // Z19 <- right ION type
-  VPGATHERDQ 0(VIRT_BASE)(Y12*1), K3, Z26              // Z26 <- right value 8 content bytes (low)
+  VPSRLD $4, Z14, Z18                                  // Z18 <- [L] ION type
+  VPSRLD $4, Z15, Z19                                  // Z19 <- [R] ION type
+  VPGATHERDQ 0(R8)(Y12*1), K3, Z26                     // Z26 <- [R] value 8 content bytes (low)
   // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-  VPSHUFB Z18, Z16, Z22                                // Z22 <- left ION type converted to internal type
-  VPSHUFB Z19, Z16, Z23                                // Z23 <- right ION type converted to internal type
+  VPSHUFB Z18, Z16, Z22                                // Z22 <- [L] ION type converted to internal type
+  VPSHUFB Z19, Z16, Z23                                // Z23 <- [R] ION type converted to internal type
   VPXORD X25, X25, X25
   VPABSD Z31, Z28                                      // Z28 <- dword(1)
-  VPORD.Z Z23, Z22, K1, Z29                            // Z29 <- left and right internal types combined (for predicate calculations)
+  VPORD.Z Z23, Z22, K1, Z29                            // Z29 <- [L] and right internal types combined (for predicate calculations)
   VPSUBD Z23, Z22, Z16                                 // Z16 <- initial comparison results (with sorting semantics, at this point)
-  VPGATHERDQ 0(VIRT_BASE)(Y20*1), K2, Z25              // Z25 <- left value 8 content bytes (high)
+  VPGATHERDQ 0(VIRT_BASE)(Y20*1), K2, Z25              // Z25 <- [L] value 8 content bytes (high)
   // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
   VPTESTNMD.BCST CONSTD_0x40(), Z29, K1, K1            // K1 <- updated predicate to only contain lanes that can be compared
@@ -123,11 +127,11 @@ TEXT fncmpv(SB), NOSPLIT|NOFRAME, $0
   KANDNW K2, K5, K2                                    // K2 <- comparable lanes, without nulls/bools
   KXORW K3, K1, K1                                     // K1 <- updated output predicate to follow sorting semantics
   VPCMPUD.BCST $VPCMP_IMM_LE, CONSTD_4(), Z18, K2, K3  // K3 <- number comparison predicate
-  VPGATHERDQ 0(VIRT_BASE)(Y21*1), K4, Z27              // Z27 <- right value 8 content bytes (high)
+  VPGATHERDQ 0(R8)(Y21*1), K4, Z27                     // Z27 <- [R] value 8 content bytes (high)
   // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
   KTESTW K3, K3
-  JZ compare_string_or_timestamp                       // skip number comparison if there are no numbers
+  JZ compare_bytes                       // skip number comparison if there are no numbers
 
   // Number Comparison - I64/F64
   // ---------------------------
@@ -184,11 +188,11 @@ dispatch_compare_number:
   // floating point, but without a fraction, it's beyond a 64-bit integer range. This leads to a conclusion that if
   // there is an integer vs floating point, we convert the integer to floating point and compare floats.
 
-  VPCMPUD $VPCMP_IMM_LE, Z17, Z18, K3, K4              // K4 <- integer values (positive or negative) on the left side
-  VPCMPUD $VPCMP_IMM_LE, Z17, Z19, K3, K5              // K5 <- integer values (positive or negative) on the right side
+  VPCMPUD $VPCMP_IMM_LE, Z17, Z18, K3, K4              // K4 <- [L] integer values (positive or negative)
+  VPCMPUD $VPCMP_IMM_LE, Z17, Z19, K3, K5              // K5 <- [R] integer values (positive or negative)
   KANDW K4, K5, K6                                     // K6 <- integer values on both sides
-  KANDNW K4, K6, K4                                    // K4 <- integer values on the left side to convert to floats
-  KANDNW K5, K6, K5                                    // K5 <- integer values on the right side to convert to floats
+  KANDNW K4, K6, K4                                    // K4 <- [L] integer values to convert to floats
+  KANDNW K5, K6, K5                                    // K5 <- [R] integer values to convert to floats
 
   // Convert mixed integer/floating point values on both lanes to floating point
   VCVTQQ2PD Z20, K4, Z20
@@ -223,14 +227,30 @@ dispatch_compare_number:
   VPSUBD Z16, Z28, K5, Z16                             // Z16 <- results with corrected floating point comparison
   JZ next
 
-  // String | Timestamp Comparison - Unsymbolize
-  // -------------------------------------------
+  // Bytes Comparison - Unsymbolize
+  // ------------------------------
 
-compare_string_or_timestamp:
+compare_bytes:
+  // Convert base offsets to absolute 64-bit pointers.
+  VEXTRACTI32X8 $1, Z10, Y14
+  VEXTRACTI32X8 $1, Z12, Y15
+  VPMOVZXDQ Y10, Z10
+  VPMOVZXDQ Y14, Z14
+
+  VPBROADCASTQ VIRT_BASE, Z20
+  VPBROADCASTQ R8, Z21
+  VPMOVZXDQ Y12, Z12
+  VPMOVZXDQ Y15, Z15
+
+  VPADDQ Z20, Z10, Z10
+  VPADDQ Z20, Z14, Z14
+  VPADDQ Z21, Z12, Z12
+  VPADDQ Z21, Z15, Z15
+
   // To continue comparing string and timestamp values, we have to first "unsymbolize".
   VPSRLD $29, Z31, Z17                                 // Z17 <- dword(7)
-  VPCMPEQD Z17, Z18, K2, K3                            // K3 <- left lanes that are symbols
-  VPCMPEQD Z17, Z19, K2, K4                            // K4 <- right lanes that are symbols
+  VPCMPEQD Z17, Z18, K2, K3                            // K3 <- [L] lanes that are symbols
+  VPCMPEQD Z17, Z19, K2, K4                            // K4 <- [R] lanes that are symbols
 
   KORTESTW K3, K4
   JZ skip_unsymbolize                                  // don't unsymbolize if there are no symbols
@@ -239,13 +259,13 @@ compare_string_or_timestamp:
   VPMOVQD Z25, Y21
   VPMOVQD Z26, Y22
   VPMOVQD Z27, Y23
-  VINSERTI32X8 $1, Y21, Z20, Z20                       // Z20 <- left 4 bytes
-  VINSERTI32X8 $1, Y23, Z22, Z21                       // Z21 <- right 4 bytes
+  VINSERTI32X8 $1, Y21, Z20, Z20                       // Z20 <- [L] 4 bytes
+  VINSERTI32X8 $1, Y23, Z22, Z21                       // Z21 <- [R] 4 bytes
 
   VPBROADCASTD CONSTD_4(), Z17                         // Z17 <- dword(4)
   VBROADCASTI32X4 bswap32<>+0(SB), Z22                 // Z22 <- predicate(bswap32)
 
-  MOVQ bytecode_symtab+0(VIRT_BCPTR), R8               // R8 <- Symbol table
+  MOVQ bytecode_symtab+0(VIRT_BCPTR), BX               // BX <- Symbol table
   VPBROADCASTD bytecode_symtab+8(VIRT_BCPTR), Z23      // Z23 <- Number of symbols in symbol table
 
   VPSUBD Z11, Z17, Z28
@@ -254,62 +274,69 @@ compare_string_or_timestamp:
   VPSHUFB Z22, Z21, Z21
   VPSLLD $3, Z28, Z28
   VPSLLD $3, Z29, Z29
-  VPSRLVD Z28, Z20, Z28                                // Z28 <- left SymbolIDs
-  VPSRLVD Z29, Z21, Z29                                // Z29 <- right SymbolIDs
+  VPSRLVD Z28, Z20, Z28                                // Z28 <- [L] SymbolIDs
+  VPSRLVD Z29, Z21, Z29                                // Z29 <- [R] SymbolIDs
 
   // only unsymbolize lanes where id < len(symtab)
-  VPCMPUD $VPCMP_IMM_LT, Z23, Z28, K3, K3              // K3 <- left symbols that are in symtab
-  KMOVB K3, K5
-  VPGATHERDQ 0(R8)(Y28*8), K5, Z20                     // Z20 <- left vmrefs of symbols (low)
+  VPCMPUD $VPCMP_IMM_LT, Z23, Z28, K3, K3              // K3 <- [L] symbols that are in symtab
+  KMOVW K3, K5
+  VPGATHERDQ 0(BX)(Y28*8), K5, Z20                     // Z20 <- [L] vmrefs of symbols (low)
 
   KSHIFTRW $8, K3, K6
   VEXTRACTI32X8 $1, Z28, Y28
-  VPGATHERDQ 0(R8)(Y28*8), K6, Z21                     // Z21 <- left vmrefs of symbols (high)
+  VPGATHERDQ 0(BX)(Y28*8), K6, Z21                     // Z21 <- [L] vmrefs of symbols (high)
 
-  VPCMPUD $VPCMP_IMM_LT, Z23, Z29, K4, K4              // K4 <- right symbols that are in symtab
-  KMOVB K4, K5
+  VPCMPUD $VPCMP_IMM_LT, Z23, Z29, K4, K4              // K4 <- [R] symbols that are in symtab
+  KMOVW K4, K5
   KSHIFTRW $8, K4, K6
-  VPGATHERDQ 0(R8)(Y29*8), K5, Z22                     // Z22 <- right vmrefs of symbols (low)
+  VPGATHERDQ 0(BX)(Y29*8), K5, Z22                     // Z22 <- [R] vmrefs of symbols (low)
 
   VEXTRACTI32X8 $1, Z29, Y29
-  BC_MERGE_VMREFS_TO_VALUE(IN_OUT(Z10), IN_OUT(Z11), IN(Z20), IN(Z21), IN(K3), Z28, Y28, Y17)
-  VPGATHERDQ 0(R8)(Y29*8), K6, Z23                     // Z23 <- right vmrefs of symbols (high)
+  VPGATHERDQ 0(BX)(Y29*8), K6, Z23                     // Z23 <- [R] vmrefs of symbols (high)
 
   VPBROADCASTD CONSTD_14(), Z17
-  BC_CALC_VALUE_HLEN_ALT(OUT(Z20), IN(Z11), IN(K3), IN(Z31), IN(Z17), Z29, K5)
-
-  VPADDD Z20, Z10, K3, Z10
-  VPSUBD Z20, Z11, K3, Z11
-  VEXTRACTI32X8 $1, Z10, Y20
-  KMOVB K3, K5
   KSHIFTRW $8, K3, K6
-  VPGATHERDQ 0(VIRT_BASE)(Y10*1), K5, Z24
 
-  BC_MERGE_VMREFS_TO_VALUE(IN_OUT(Z12), IN_OUT(Z13), IN(Z22), IN(Z23), IN(K4), Z28, Y28, Y29)
-  VPGATHERDQ 0(VIRT_BASE)(Y20*1), K6, Z25
+  BC_MERGE_VMREFS_TO_VALUE_PTR_LEN(IN_OUT(Z10), IN_OUT(Z14), IN_OUT(Z11), IN(Z20), IN(Z21), IN(K3), IN(K6), Z28, Y28, Z29, Y29)
+  BC_CALC_VALUE_HLEN_ALT(OUT(Z28), IN(Z11), IN(K3), IN(Z31), IN(Z17), Z29, K5)
 
-  BC_CALC_VALUE_HLEN_ALT(OUT(Z20), IN(Z13), IN(K4), IN(Z31), IN(Z17), Z29, K5)
-  VPADDD Z20, Z12, K4, Z12
-  VPSUBD Z20, Z13, K4, Z13
+  KMOVW K3, K5
+  VPSUBD Z28, Z11, K3, Z11
+  VEXTRACTI32X8 $1, Z28, Y29
+  VPMOVZXDQ Y28, Z28
+  VPMOVZXDQ Y29, Z29
 
-  KMOVB K4, K5
+  VPADDQ Z28, Z10, K5, Z10
+  VPGATHERQQ 0(Z10*1), K5, Z24
+  VPADDQ Z29, Z14, K6, Z14
+  VPGATHERQQ 0(Z14*1), K6, Z25
+
   KSHIFTRW $8, K4, K6
-  VPGATHERDQ 0(VIRT_BASE)(Y12*1), K5, Z26
 
-  VEXTRACTI32X8 $1, Z12, Y20
-  VPGATHERDQ 0(VIRT_BASE)(Y20*1), K6, Z27
+  BC_MERGE_VMREFS_TO_VALUE_PTR_LEN(IN_OUT(Z12), IN_OUT(Z15), IN_OUT(Z13), IN(Z22), IN(Z23), IN(K4), IN(K6), Z28, Y28, Z29, Y29)
+  BC_CALC_VALUE_HLEN_ALT(OUT(Z28), IN(Z13), IN(K4), IN(Z31), IN(Z17), Z29, K5)
+
+  KMOVW K4, K5
+  VPSUBD Z28, Z13, K4, Z13
+  VEXTRACTI32X8 $1, Z28, Y29
+  VPMOVZXDQ Y28, Z28
+  VPMOVZXDQ Y29, Z29
+
+  VPADDQ Z28, Z12, K5, Z12
+  VPGATHERQQ 0(Z12*1), K5, Z26
+  VPADDQ Z29, Z15, K6, Z15
+  VPGATHERQQ 0(Z15*1), K6, Z27
 
 skip_unsymbolize:
 
-  // String | Timestamp Comparison - Prepare
-  // ---------------------------------------
+  // Bytes Comparison - Prepare
+  // --------------------------
 
-  LEAQ bytecode_spillArea+0(VIRT_BCPTR), R8            // R8 <- pointer to spill area
   VPSUBD Z13, Z11, K2, Z16                             // Z16 <- merged length comparison
-  VPMINUD Z13, Z11, Z14                                // Z14 <- length iterator (min(left, right) length) (decreasing)
+  VPMINUD Z13, Z11, Z28                                // Z28 <- length iterator (min(left, right) length) (decreasing)
 
-  // String | Timestamp Comparison - Vector
-  // --------------------------------------
+  // Bytes Comparison - Vector
+  // -------------------------
 
   // We keep K2 alive - it's not really necessary in the current implementation, but it's
   // likely we would want to extend this to support lists and structs in the future.
@@ -317,7 +344,7 @@ skip_unsymbolize:
   // but zero lengths, we filter them here. Any string that has zero length would be already
   // compared before entering vector or scalar loop.
 
-  VPTESTMD Z14, Z14, K2, K3                            // K3 <- comparison predicate (values having non-zero length)
+  VPTESTMD Z28, Z28, K2, K3                            // K3 <- comparison predicate (values having non-zero length)
   VPBROADCASTD CONSTD_8(), Z17                         // Z17 <- dword(8)
 
   // Avoid gathering bytes that we have already gathered. The idea is to use the 8
@@ -325,79 +352,88 @@ skip_unsymbolize:
   // that we do meanwhile gathering inside the loop here (as otherwise we would
   // have to avoid doing any computations meanwhile gathering).
 
-  // 1.
-  VPMINUD Z17, Z14, Z23                                // Z23 <- number of bytes to compare (max 8).
-  VPADDD Z23, Z10, K3, Z10                             // Z10 <- adjusted left slice offset
-  VPSUBD Z23, Z17, Z28                                 // Z28 <- number of bytes to discard (8 - Z23).
+  VPMINUD.Z Z17, Z28, K3, Z23                          // Z23 <- number of bytes to compare (max 8).
 
-  // 2.
-  VPSUBD Z23, Z14, K3, Z14                             // Z14 <- adjusted length to compare
-  VPSLLD $3, Z28, Z28                                  // Z28 <- number of bits to discard
+  VPSUBD Z23, Z17, Z22                                 // Z22 <- number of bytes to discard (8 - Z23).
+  VEXTRACTI32X8 $1, Z23, Y21
+  VPSUBD Z23, Z28, K3, Z28                             // Z28 <- adjusted length to compare
+  VPSLLD $3, Z22, Z22                                  // Z22 <- number of bits to discard
 
-  // 3.
-  VPADDD Z23, Z12, K3, Z12                             // Z12 <- adjusted right slice offset
-  VEXTRACTI32X8 $1, Z28, Y29
-  VPMOVZXDQ Y28, Z28
-  VPMOVZXDQ Y29, Z29
+  VPMOVZXDQ Y23, Z20                                   // Z20 <- number of bytes to compare as QWORD (low)
+  VPMOVZXDQ Y21, Z21                                   // Z21 <- number of bytes to compare as QWORD (high)
+  VPADDQ Z20, Z10, Z10                                 // Z10 <- [L] advance left pointer (low)
+  VPADDQ Z21, Z14, Z14                                 // Z14 <- [L] advance left pointer (high)
+  VPADDQ Z20, Z12, Z12                                 // Z12 <- [R] advance left pointer (low)
+  VPADDQ Z21, Z15, Z15                                 // Z15 <- [R] advance left pointer (high)
 
-  VMOVDQA32 Z24, Z20
-  VMOVDQA32 Z25, Z21
-  VMOVDQA32 Z26, Z22
-  VMOVDQA32 Z27, Z23
-  JMP compare_string_vector_after_gather
+  VEXTRACTI32X8 $1, Z22, Y23
+  VPMOVZXDQ Y22, Z22
+  VPMOVZXDQ Y23, Z23
+  JMP compare_bytes_vector_after_gather
 
   // The idea is to keep using vector loop unless the number of lanes gets too low.
   // The initial eight bytes are always compared in this vector loop to prevent
   // going scalar in case that those eight bytes determine the results of all lanes.
 
-compare_string_vector:
+compare_bytes_vector:
+  // NOTE: don't clean Z24:Z27 - we are just updating bytes that need to be updated,
+  // but we want to keep those that we are not comparing here (as we could need them
+  // if we want to compare lists / structs).
+
   KMOVB K3, K4
   KSHIFTRW $8, K3, K5
-  VEXTRACTI32X8 $1, Z10, Y22
+  VPGATHERQQ 0(Z10*1), K4, Z24                         // Z24 <- [L] bytes to compare (low)
 
-  VPXORQ X20, X20, X20
-  VPGATHERDQ 0(VIRT_BASE)(Y10*1), K4, Z20
-
-  // 1.
-  VPMINUD Z17, Z14, Z15                                // Z15 <- number of bytes to compare (max 8).
-  VPADDD Z15, Z10, K3, Z10                             // Z10 <- adjusted left slice offset
-  VPSUBD Z15, Z17, Z28                                 // Z28 <- number of bytes to discard (8 - Z15).
-
-  VPXORQ X21, X21, X21
-  VPGATHERDQ 0(VIRT_BASE)(Y22*1), K5, Z21
+  KMOVB K3, K4
+  VPMINUD Z17, Z28, Z20                                // Z20 <- number of bytes to compare (max 8).
+  VPGATHERQQ 0(Z14*1), K5, Z25                         // Z25 <- [L] bytes to compare (high)
 
   KSHIFTRW $8, K3, K5
-  KMOVB K3, K4
-  VEXTRACTI32X8 $1, Z12, Y22
+  VPSUBD Z20, Z17, Z22                                 // Z22 <- number of bytes to discard (8 - Z21).
+  VPSUBD Z20, Z28, K3, Z28                             // Z28 <- adjusted length to compare
 
-  // 2.
-  VPSUBD Z15, Z14, K3, Z14                             // Z14 <- adjusted length to compare
-  VPSLLD $3, Z28, Z28                                  // Z28 <- number of bits to discard
+  VEXTRACTI32X8 $1, Z20, Y21                           // Z20 <- number of bytes to compare as DWORD (high)
+  VPMOVZXDQ Y20, Z20                                   // Z20 <- number of bytes to compare as QWORD (low)
+  VPMOVZXDQ Y21, Z21                                   // Z21 <- number of bytes to compare as QWORD (high)
 
-  VPXORQ X23, X23, X23
-  VPGATHERDQ 0(VIRT_BASE)(Y22*1), K5, Z23
+  VPSLLD $3, Z22, Z22                                  // Z22 <- number of bits to discard
+  VPGATHERQQ 0(Z12*1), K4, Z26                         // Z26 <- [R] bytes to compare (low)
 
-  // 3.
-  VPXORQ X22, X22, X22
-  VEXTRACTI32X8 $1, Z28, Y29
-  VPGATHERDQ 0(VIRT_BASE)(Y12*1), K4, Z22
+  VPADDQ Z20, Z10, Z10                                 // Z10 <- [L] advance left pointer (low)
+  VPADDQ Z21, Z14, Z14                                 // Z14 <- [L] advance left pointer (high)
+  VPADDQ Z20, Z12, Z12                                 // Z12 <- [R] advance left pointer (low)
+  VPGATHERQQ 0(Z15*1), K5, Z27                         // Z27 <- [R] bytes to compare (high)
 
-  VPMOVZXDQ Y28, Z28
-  VPMOVZXDQ Y29, Z29
-  VPADDD Z15, Z12, K3, Z12                             // Z12 <- adjusted right slice offset
+  VEXTRACTI32X8 $1, Z22, Y23
+  VPADDQ Z21, Z15, Z15                                 // Z15 <- [R] advance left pointer (high)
 
-compare_string_vector_after_gather:
-  VPSLLVQ Z28, Z20, Z20                                // Z20 <- left bytes to compare (low)
-  VPSLLVQ Z29, Z21, Z21                                // Z21 <- left bytes to compare (high)
-  VPSHUFB Z30, Z20, Z20                                // Z20 <- left byteswapped quadword to compare (low)
-  VPSHUFB Z30, Z21, Z21                                // Z21 <- left byteswapped quadword to compare (high)
+  VPMOVZXDQ Y22, Z22
+  VPMOVZXDQ Y23, Z23
 
-  VPSLLVQ Z28, Z22, Z22                                // Z22 <- right bytes to compare (low)
-  VPSLLVQ Z29, Z23, Z23                                // Z23 <- right bytes to compare (high)
-  VPSHUFB Z30, Z22, Z22                                // Z22 <- right byteswapped quadword to compare (low)
-  VPSHUFB Z30, Z23, Z23                                // Z23 <- right byteswapped quadword to compare (high)
-
+compare_bytes_vector_after_gather:
+  // To compare bytes, we have to byteswap and eliminate bytes we don't compare:
+  //
+  //   I -> [HH GG FF EE DD CC BB AA] (8 input bytes)
+  //   0 -> [AA BB CC DD EE FF GG HH] (0 bytes to discard => 8 bytes compared)
+  //   1 -> [00 AA BB CC DD EE FF GG] (1 byte  to discard => 7 bytes compared)
+  //   2 -> [00 00 AA BB CC DD EE FF] (2 bytes to discard => 6 bytes compared)
+  //   3 -> [00 00 00 AA BB CC DD EE] (3 bytes to discard => 5 bytes compared)
+  //   4 -> [00 00 00 00 AA BB CC DD] (4 bytes to discard => 4 bytes compared)
+  //   5 -> [00 00 00 00 00 AA BB CC] (5 bytes to discard => 3 bytes compared)
+  //   6 -> [00 00 00 00 00 00 AA BB] (6 bytes to discard => 2 bytes compared)
+  //   7 -> [00 00 00 00 00 00 00 AA] (7 bytes to discard => 1 byte  compared)
   KSHIFTRW $8, K3, K4
+
+  VPSLLVQ Z22, Z24, Z20                                // Z20 <- [L] bytes to compare (low)
+  VPSLLVQ Z23, Z25, Z21                                // Z21 <- [L] bytes to compare (high)
+  VPSHUFB Z30, Z20, Z20                                // Z20 <- [L] byteswapped quadword to compare (low)
+  VPSHUFB Z30, Z21, Z21                                // Z21 <- [L] byteswapped quadword to compare (high)
+
+  VPSLLVQ Z22, Z26, Z22                                // Z22 <- [R] bytes to compare (low)
+  VPSLLVQ Z23, Z27, Z23                                // Z23 <- [R] bytes to compare (high)
+  VPSHUFB Z30, Z22, Z22                                // Z22 <- [R] byteswapped quadword to compare (low)
+  VPSHUFB Z30, Z23, Z23                                // Z23 <- [R] byteswapped quadword to compare (high)
+
   VPCMPQ $VPCMP_IMM_NE, Z22, Z20, K3, K5               // K5 <- lanes having values that aren't equal (low)
   VPCMPQ $VPCMP_IMM_NE, Z23, Z21, K4, K4               // K4 <- lanes having values that aren't equal (high)
   KUNPCKBW K5, K4, K5                                  // K5 <- lanes having values that aren't equal (all lanes)
@@ -405,7 +441,7 @@ compare_string_vector_after_gather:
 
   VPCMPUQ $VPCMP_IMM_LT, Z22, Z20, K5, K0              // K0 <- lanes where the comparison is less than (low)
   VPCMPUQ $VPCMP_IMM_LT, Z23, Z21, K4, K6              // K6 <- lanes where the comparison is less than (high)
-  VPTESTMD Z14, Z14, K3, K3                            // K3 <- lanes to continue being compared (where length is non-zero)
+  VPTESTMD Z28, Z28, K3, K3                            // K3 <- lanes to continue being compared (where length is non-zero)
   KUNPCKBW K0, K6, K6                                  // K6 <- lanes where the comparison is less than (all lanes)
   VMOVDQA32 Z31, K6, Z16                               // Z16 <- merge less than results (-1)
   KMOVW K3, BX
@@ -421,56 +457,56 @@ compare_string_vector_after_gather:
 
   // Go to scalar loop if the number of lanes to compare gets low
   CMPL DX, $BC_SCALAR_PROCESSING_LANE_COUNT
-  JHI compare_string_vector
+  JHI compare_bytes_vector
 
-  VMOVDQU32 Z10, 0(R8)                                 // left content iterator
-  VMOVDQU32 Z12, 64(R8)                                // right content iterator
-  VMOVDQU32 Z14, 128(R8)                               // min(left, right) length
-  VMOVDQU32 Z16, 192(R8)                               // comparison results
+  VMOVDQU32 Z10, BC_SPILL_AREA(0)                      // [L] content pointer (QWORD) (low)
+  VMOVDQU32 Z14, BC_SPILL_AREA(64)                     // [L] content pointer (QWORD) (high)
+  VMOVDQU32 Z12, BC_SPILL_AREA(128)                    // [R] content pointer (QWORD) (low)
+  VMOVDQU32 Z15, BC_SPILL_AREA(192)                    // [R] content pointer (QWORD) (high)
+  VMOVDQU32 Z28, BC_SPILL_AREA(256)                    // min(left, right) length (DWORD)
+  VMOVDQU32 Z16, BC_SPILL_AREA(320)                    // comparison results (DWORD)
 
   MOVQ $-1, R13
-  JMP compare_string_scalar_lane
+  JMP compare_bytes_scalar_lane
 
-  // String | Timestamp Comparison (Scalar)
-  // --------------------------------------
+  // Bytes Comparison (Scalar)
+  // -------------------------
 
-compare_string_scalar_diff:
+compare_bytes_scalar_diff:
   KMOVQ K4, CX
   TZCNTQ CX, CX
   MOVBLZX 0(R14)(CX*1), R14
   MOVBLZX 0(R15)(CX*1), R15
   SUBL R15, R14
-  MOVL R14, 192(R8)(DX * 4)
+  MOVL R14, BC_SPILL_AREA_INDEX(320, DX*4)
 
   TESTL BX, BX
-  JE compare_string_scalar_done
+  JE compare_bytes_scalar_done
 
-compare_string_scalar_lane:
+compare_bytes_scalar_lane:
   TZCNTL BX, DX                                        // DX - Index of the lane to process
   BLSRL BX, BX                                         // clear the index of the iterator
 
-  MOVL 128(R8)(DX * 4), CX                             // min(left, right) length
-  MOVL 0(R8)(DX * 4), R14                              // left slice offset
-  ADDQ VIRT_BASE, R14                                  // make left offset an absolute VM address
-  MOVL 64(R8)(DX * 4), R15                             // right slice offset
-  ADDQ VIRT_BASE, R15                                  // make right offset an absolute VM address
+  MOVL BC_SPILL_AREA_INDEX(256, DX*4), CX              // min(left, right) length
+  MOVQ BC_SPILL_AREA_INDEX(0, DX*8), R14               // [L] slice pointer (absolute address)
+  MOVQ BC_SPILL_AREA_INDEX(128, DX*8), R15             // [R] slice pointer (absolute address)
 
   SUBL $64, CX
-  JCS compare_string_tail
+  JCS compare_bytes_tail
 
-compare_string_scalar_iter:                            // main compare loop that processes 64 bytes at once
+compare_bytes_scalar_iter:                             // main compare loop that processes 64 bytes at once
   VMOVDQU8 0(R14), Z20
   VMOVDQU8 0(R15), Z21
   VPCMPB $VPCMP_IMM_NE, Z21, Z20, K4
   KTESTQ K4, K4
-  JNE compare_string_scalar_diff
+  JNE compare_bytes_scalar_diff
 
   ADDQ $64, R14
   ADDQ $64, R15
   SUBL $64, CX
-  JA compare_string_scalar_iter
+  JA compare_bytes_scalar_iter
 
-compare_string_tail:                                   // tail loop that processes up to 64 bytes at once
+compare_bytes_tail:                                    // tail loop that processes up to 64 bytes at once
   SHLXQ CX, R13, CX
   NOTQ CX
   KMOVQ CX, K4                                         // K4 <- LSB mask of bits to process (valid characters)
@@ -480,17 +516,17 @@ compare_string_tail:                                   // tail loop that process
 
   VPCMPB $VPCMP_IMM_NE, Z21, Z20, K4
   KTESTQ K4, K4
-  JNE compare_string_scalar_diff
+  JNE compare_bytes_scalar_diff
 
   // Comparable slices have the same content, which means that `leftLen-rightLen` is the result
   // This result was already precalculated before entering the scalar loop, so we don't have to
   // calculate and store it again.
 
   TESTL BX, BX
-  JNE compare_string_scalar_lane
+  JNE compare_bytes_scalar_lane
 
-compare_string_scalar_done:
-  VMOVDQU32 192(R8), Z16
+compare_bytes_scalar_done:
+  VMOVDQU32 BC_SPILL_AREA(320), Z16
 
 next:
   VPABSD Z31, Z17                                      // Z17 <- dword(1)

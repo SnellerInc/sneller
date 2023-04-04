@@ -28,6 +28,9 @@
 
 #define BC_VSTACK_PTR(Slot, Offset) (Offset)(VIRT_VALUES)(Slot*1)
 
+#define BC_SPILL_AREA(Offset) bytecode_spillArea+Offset(VIRT_BCPTR)
+#define BC_SPILL_AREA_INDEX(Offset, Index) bytecode_spillArea+Offset(VIRT_BCPTR)(Index)
+
 // NOTE: It's not enough to change the following macros to get 4 bytes per slot,
 // there are some optimizations in BC_UNPACK_2xSLOT(), etc... that current take
 // advantage of 2 bytes per slot, these would have to be changed to make slots
@@ -360,7 +363,7 @@ error_null_symtab:                                             \
 // BC Working With Values and Symbols
 // ----------------------------------
 
-// Merges [Offset, Value] pairs into value offset and length registers.
+// Merges [Offset, Value] pairs into value offset (DWORD) and length (DWORD) registers.
 #define BC_MERGE_VMREFS_TO_VALUE(ValOffZ, ValLenZ, LoZ, HiZ, Msk, TmpZ0, TmpY0, TmpY1) \
   VPMOVQD LoZ, TmpY0                                                            \
   VPSRLQ $32, LoZ, LoZ                                                          \
@@ -370,6 +373,22 @@ error_null_symtab:                                             \
   VPMOVQD LoZ, TmpY0                                                            \
   VPMOVQD HiZ, TmpY1                                                            \
   VINSERTI32X8 $1, TmpY1, TmpZ0, Msk, ValLenZ
+
+// Merges [Offset, Value] pairs into absolute pointer (2xQWORD) and length (DWORD) registers.
+#define BC_MERGE_VMREFS_TO_VALUE_PTR_LEN(ValPtrLo, ValPtrHi, ValLenZ, LoZ, HiZ, MskLo, MskHi, TmpZ0, TmpY0, TmpZ1, TmpY1) \
+  VPBROADCASTQ VIRT_BASE, TmpZ0                                                 \
+                                                                                \
+  VPANDQ.BCST CONSTQ_0xFFFFFFFF(), LoZ, MskLo, ValPtrLo                         \
+  VPANDQ.BCST CONSTQ_0xFFFFFFFF(), HiZ, MskHi, ValPtrHi                         \
+                                                                                \
+  VPADDQ TmpZ0, ValPtrLo, MskLo, ValPtrLo                                       \
+  VPADDQ TmpZ0, ValPtrHi, MskHi, ValPtrHi                                       \
+                                                                                \
+  VPSRLQ $32, LoZ, TmpZ0                                                        \
+  VPSRLQ $32, HiZ, TmpZ1                                                        \
+  VPMOVQD TmpZ0, TmpY0                                                          \
+  VPMOVQD TmpZ1, TmpY1                                                          \
+  VINSERTI32X8 $1, TmpY1, TmpZ0, MskLo, ValLenZ
 
 // This calculates TLV byte and HLen byte from a Value length. The purpose is to use
 // this macro after unsymbolize to recreate these two bytes as they were invalidated

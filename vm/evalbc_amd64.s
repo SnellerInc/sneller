@@ -1144,6 +1144,7 @@ TEXT cmpv_tail(SB), NOSPLIT|NOFRAME, $0
   VBROADCASTI32X4 CONST_GET_PTR(bswap64, 0), Z30       // Z30 <- predicate(bswap64)
   VPTERNLOGD $0xFF, Z31, Z31, Z31                      // Z31 <- dword(0xFFFFFFFF)
 
+  MOVQ VIRT_BASE, R8                                   // R8 <- base of the right value (the same as left)
   CALL fncmpv(SB)
 
   BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
