@@ -365,7 +365,14 @@ func lookupKeyword(word []byte) (int, int) {
 		if equalASCII(word, []byte("VARIANCE_POP")) {
 			return AGGREGATE, int(expr.OpVariancePop)
 		}
+	case 13:
+		if equalASCII(word, []byte("APPROX_MEDIAN")) {
+			return AGGREGATE, int(expr.OpApproxMedian)
+		}
 	case 17:
+		if equalASCII(word, []byte("APPROX_PERCENTILE")) {
+			return AGGREGATE, int(expr.OpApproxPercentile)
+		}
 		if equalASCII(word, []byte("SNELLER_DATASHAPE")) {
 			return AGGREGATE, int(expr.OpSystemDatashape)
 		}
@@ -431,4 +438,4 @@ func equalASCIILetters9(anyCase [9]byte, upperCaseLetters [9]byte) bool {
 	return true
 }
 
-// checksum: 7590873419eae19568dda65d569a9ada
+// checksum: 0e14a47f8acff0b57ed2906c8af6336f

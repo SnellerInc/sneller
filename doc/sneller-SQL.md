@@ -821,6 +821,39 @@ a union of all values found in the given list.
 **Current limitations**: the `SNELLER_DATASHAPE` aggregate can be the
 only one present in a query. Mixing it with other aggregates is not supported.
 
+#### `APPROX_MEDIAN`
+
+The `APPROX_MEDIAN` determines the approximate median of a set of values.
+The t-Digest algorithm (https://www.sciencedirect.com/science/article/pii/S2665963820300403)
+is used for the approximation.
+
+Aggregate function:
+```sql
+APPROX_MEDIAN( <expr> )
+```
+
+Window function (not implemented yet):
+```sql
+APPROX_MEDIAN( <expr> ) OVER ( [ PARTITION BY <expr> ] )
+```
+
+The expression must evaluate to a numeric data type (INTEGER, FLOAT, DECIMAL, or equivalent).
+Returns a FLOAT or DECIMAL (fixed-point) number, depending upon the input.
+
+#### `APPROX_PERCENTILE`
+
+The `APPROX_PERCENTILE` returns an approximated value for the desired percentile
+
+Aggregate function (not implemented yet):
+```sql
+APPROX_PERCENTILE( <expr> , <percentile> )
+```
+
+Window function:
+```sql
+APPROX_PERCENTILE( <expr> , <percentile> ) OVER ( [ PARTITION BY <expr> ] )
+```
+
 
 ### Filtered aggregates
 

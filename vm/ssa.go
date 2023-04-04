@@ -2723,6 +2723,14 @@ func (p *prog) aggregateSum(child, filter *value, slot aggregateslot) (v *value,
 	return p.makeAggregateOp(saggsumf, saggsumi, child, filter, slot)
 }
 
+func (p *prog) aggregateTDigest(child, filter *value, slot aggregateslot) *value {
+	v, m := p.coerceF64(child)
+	if filter != nil {
+		m = p.and(m, filter)
+	}
+	return p.ssa3imm(sAggTDigest, p.initMem(), v, m, slot)
+}
+
 func (p *prog) aggregateAvg(child, filter *value, slot aggregateslot) (v *value, fp bool) {
 	return p.makeAggregateOp(saggavgf, saggavgi, child, filter, slot)
 }

@@ -680,7 +680,8 @@ func toAggregateAux(op expr.AggregateOp, distinct bool, args []expr.Node, filter
 	switch op {
 	case expr.OpApproxCountDistinct:
 		return createApproxCountDistinct(body, args, filter, over)
-
+	case expr.OpApproxPercentile:
+		return createApproxPercentile(body, args, filter, over)
 	default:
 		if len(args) > 0 {
 			return nil, fmt.Errorf("does not accept arguments")
@@ -715,6 +716,25 @@ func createApproxCountDistinct(body expr.Node, args []expr.Node, filter expr.Nod
 		Inner:     body,
 		Over:      over,
 		Filter:    filter}, nil
+}
+
+func createApproxPercentile(body expr.Node, args []expr.Node, filter expr.Node, over *expr.Window) (*expr.Aggregate, error) {
+	if len(args) != 1 {
+		return nil, fmt.Errorf("accepts 1 argument")
+	}
+	p, ok := args[0].(expr.Float)
+	if !ok {
+		return nil, fmt.Errorf("percentile p=%v has to be floating point", args[0])
+	}
+	if p < 0.0 || p > 1.0 {
+		return nil, fmt.Errorf("percentile p=%v has to be in range [0.0, 1.0]", p)
+	}
+	return &expr.Aggregate{
+		Op:     expr.OpApproxPercentile,
+		Misc:   float32(p),
+		Inner:  body,
+		Over:   over,
+		Filter: filter}, nil
 }
 
 func createCase(optionalExpr expr.Node, limbs []expr.CaseLimb, elseExpr expr.Node) expr.Node {

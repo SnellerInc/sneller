@@ -1,0 +1,15 @@
+# go test -v -run=TestQueries/0031
+#
+SELECT
+	APPROX_PERCENTILE(grade, 0.50) AS p50,
+	APPROX_PERCENTILE(grade, 0.25) AS p25
+	FROM input
+---
+{"grade": 1}
+{"grade": 2}
+{"grade": 3}
+{"grade": 4}
+{"grade": 5}
+{"grade": 6}
+---
+{"p50": 3.5, "p25": 2}

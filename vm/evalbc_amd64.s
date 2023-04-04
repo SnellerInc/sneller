@@ -12412,6 +12412,11 @@ next:
 
 //; #endregion string methods
 
+// tDigest
+// --------------------------------------------------
+
+#include "evalbc_tdigest.h"
+
 // LOWER/UPPER functions
 // --------------------------------------------------
 

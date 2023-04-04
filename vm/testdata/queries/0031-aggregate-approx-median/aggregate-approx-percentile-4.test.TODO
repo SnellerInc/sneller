@@ -1,0 +1,47 @@
+# go test -v -run=TestQueries/0031
+# https://www.hackmath.net/en/calculator/percentile
+# data 1,1,1,1,1,1,2,2,2,2,2,2,3,3,3,3,3,4,4,4,4,5,5,5,5,6,7,8,8,9,9,10,10
+
+# TODO: due to the approximate nature of tDigest the results may variates
+# currenly we can only test exact equality of floats; once we can compare
+# approximate equality, this test can be switched on.
+
+SELECT
+	APPROX_PERCENTILE(grade, 0.60) AS p60
+	FROM input
+---
+{"grade": 1}
+{"grade": 1}
+{"grade": 1}
+{"grade": 1}
+{"grade": 1}
+{"grade": 1}
+{"grade": 2}
+{"grade": 2}
+{"grade": 2}
+{"grade": 2}
+{"grade": 2}
+{"grade": 2}
+{"grade": 3}
+{"grade": 3}
+{"grade": 3}
+{"grade": 3}
+{"grade": 3}
+{"grade": 4}
+{"grade": 4}
+{"grade": 4}
+{"grade": 4}
+{"grade": 5}
+{"grade": 5}
+{"grade": 5}
+{"grade": 5}
+{"grade": 6}
+{"grade": 7}
+{"grade": 8}
+{"grade": 8}
+{"grade": 9}
+{"grade": 9}
+{"grade": 10}
+{"grade": 10}
+---
+{"p60": 4.140000343322754} # true result is 4

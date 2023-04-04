@@ -311,6 +311,7 @@ var opinfo = [_maxbcop]bcopinfo{
 	opDfaT7Z:                  {text: "dfa_tiny7Z", out: bcargs[4:5] /* {bcK} */, in: bcargs[23:26] /* {bcS, bcDictSlot, bcK} */},
 	opDfaT8Z:                  {text: "dfa_tiny8Z", out: bcargs[4:5] /* {bcK} */, in: bcargs[23:26] /* {bcS, bcDictSlot, bcK} */},
 	opDfaLZ:                   {text: "dfa_largeZ", out: bcargs[4:5] /* {bcK} */, in: bcargs[23:26] /* {bcS, bcDictSlot, bcK} */},
+	opAggTDigest:              {text: "aggtdigest.f64", in: bcargs[50:53] /* {bcAggSlot, bcS, bcK} */},
 	opslower:                  {text: "slower", out: bcargs[3:5] /* {bcS, bcK} */, in: bcargs[3:5] /* {bcS, bcK} */, scratch: PageSize},
 	opsupper:                  {text: "supper", out: bcargs[3:5] /* {bcS, bcK} */, in: bcargs[3:5] /* {bcS, bcK} */, scratch: PageSize},
 	opaggapproxcount:          {text: "aggapproxcount", in: bcargs[26:30] /* {bcAggSlot, bcH, bcImmU16, bcK} */},
@@ -642,14 +643,15 @@ const (
 	opDfaT7Z                  bcop = 305
 	opDfaT8Z                  bcop = 306
 	opDfaLZ                   bcop = 307
-	opslower                  bcop = 308
-	opsupper                  bcop = 309
-	opaggapproxcount          bcop = 310
-	opaggapproxcountmerge     bcop = 311
-	opaggslotapproxcount      bcop = 312
-	opaggslotapproxcountmerge bcop = 313
-	oppowuintf64              bcop = 314
-	_maxbcop                       = 315
+	opAggTDigest              bcop = 308
+	opslower                  bcop = 309
+	opsupper                  bcop = 310
+	opaggapproxcount          bcop = 311
+	opaggapproxcountmerge     bcop = 312
+	opaggslotapproxcount      bcop = 313
+	opaggslotapproxcountmerge bcop = 314
+	oppowuintf64              bcop = 315
+	_maxbcop                       = 316
 )
 
 type opreplace struct{ from, to bcop }
@@ -659,4 +661,4 @@ var patchAVX512Level2 []opreplace = []opreplace{
 	{from: opaggslotcountv2, to: opaggslotcount},
 }
 
-// checksum: a0f77f85f6d6c1ee19e7f360d15c2c0d
+// checksum: 9c40839f70b0e7abb602805922305323

@@ -1,0 +1,26 @@
+# go test -v -run=TestQueries/0031
+#
+SELECT
+	APPROX_PERCENTILE(grade, 0.25) AS q1,
+	APPROX_PERCENTILE(grade, 0.50) AS q2,
+	APPROX_PERCENTILE(grade, 0.75) AS q3
+	FROM input
+---
+{"grade": 1}
+{"grade": 2}
+{"grade": 3}
+{"grade": 4}
+{"grade": 5}
+{"grade": 6}
+{"grade": 7}
+{"grade": 8}
+{"grade": 9}
+{"grade": 10}
+{"grade": 11}
+{"grade": 12}
+{"grade": 13}
+{"grade": 14}
+{"grade": 15}
+{"grade": 16}
+---
+{"q1": 4.5, "q2": 8.5, "q3": 12.5} # quartiles Q1=4.5; Q2=8.5, Q3=12.5

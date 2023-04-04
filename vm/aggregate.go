@@ -41,6 +41,7 @@ type AggregateOpFn uint8
 const (
 	AggregateOpNone AggregateOpFn = iota
 	AggregateOpSumF
+	AggregateOpTDigest
 	AggregateOpAvgF
 	AggregateOpMinF
 	AggregateOpMaxF
@@ -118,6 +119,9 @@ type AggregateOp struct {
 	// precision for AggregateOpApproxCountDistinct, AggregateOpApproxCountDistinctPartial
 	// and AggregateOpApproxCountDistinctMerge
 	precision uint8
+
+	// misc used by AggregateOpTDigest to contain the percentile values p
+	misc float32
 }
 
 type aggregateOpInfo struct {
@@ -155,6 +159,8 @@ var aggregateOpInfoTable = [...]aggregateOpInfo{
 	AggregateOpMaxTS: {isAtomic: true, isFloat: false, initUInt64: 0x8000000000000000},
 	AggregateOpCount: {isAtomic: true, isFloat: false, initUInt64: 0},
 
+	AggregateOpTDigest: {isAtomic: false, initFunc: tDigestInit},
+
 	AggregateOpApproxCountDistinct:        {isAtomic: false, initFunc: aggApproxCountDistinctInit},
 	AggregateOpApproxCountDistinctPartial: {isAtomic: false, initFunc: aggApproxCountDistinctInit},
 	AggregateOpApproxCountDistinctMerge:   {isAtomic: false, initFunc: aggApproxCountDistinctInit},
@@ -167,6 +173,8 @@ func (a *AggregateOp) dataSize() int {
 
 	case AggregateOpSumF, AggregateOpAvgF:
 		return aggregateOpSumFDataSize
+	case AggregateOpTDigest:
+		return tDigestDataSize
 	case AggregateOpMinF:
 		return 16
 	case AggregateOpMaxF:
@@ -235,6 +243,11 @@ func mergeAggregatedValues(dst, src []byte, aggregateOps []AggregateOp) {
 			neumaierSummationMerge(dst, src)
 			dst = dst[aggregateOpSumFDataSize:]
 			src = src[aggregateOpSumFDataSize:]
+
+		case AggregateOpTDigest:
+			tDigestMerge(dst, src)
+			dst = dst[tDigestDataSize:]
+			src = src[tDigestDataSize:]
 
 		case AggregateOpMinF:
 			bufferMinFloat64(dst, src)
@@ -492,6 +505,14 @@ func writeAggregatedValue(b *ion.Buffer, data []byte, op AggregateOp) int {
 		n := op.dataSize()
 		b.WriteBlob(data[:n])
 		return n
+
+	case AggregateOpTDigest:
+		percentiles, err := calcPercentiles(data[:tDigestDataSize], []float32{op.misc})
+		if err != nil {
+			panic(err)
+		}
+		b.WriteCanonicalFloat(float64(percentiles[0]))
+		return tDigestDataSize
 
 	default:
 		panic(fmt.Sprintf("Invalid aggregate op: %v", op.fn))
@@ -833,6 +854,14 @@ func (q *Aggregate) compileAggregate(agg Aggregation) error {
 			case expr.OpLatest:
 				mem[i] = p.aggregateLatest(argv, filter, offset)
 				ops[i].fn = AggregateOpMaxTS
+			case expr.OpApproxMedian:
+				mem[i] = p.aggregateTDigest(argv, filter, offset)
+				ops[i].fn = AggregateOpTDigest
+				ops[i].misc = .5
+			case expr.OpApproxPercentile:
+				mem[i] = p.aggregateTDigest(argv, filter, offset)
+				ops[i].fn = AggregateOpTDigest
+				ops[i].misc = agg[i].Expr.Misc
 			default:
 				return fmt.Errorf("unsupported aggregate operation: %s", &agg[i])
 			}

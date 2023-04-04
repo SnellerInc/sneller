@@ -408,6 +408,9 @@ const (
 	saggslotapproxcountpartial // the partial step of APPROX_COUNT_DISTINCT (for split queries with GROUP BY)
 	saggslotapproxcountmerge   // the merge step of APPROX_COUNT_DISTINCT (for split queries with GROUP BY)
 
+	sAggTDigest // tDigest aggregator used for percentile, median approximation
+	sAggSlotTDigest
+
 	_ssamax
 )
 
@@ -964,6 +967,8 @@ var _ssainfo = [_ssamax]ssaopinfo{
 	saggori:   {text: "aggor.i", rettype: stMem, argtypes: []ssatype{stMem, stInt, stBool}, immfmt: fmtaggslot, bc: opaggori, priority: prioMem},
 	saggxori:  {text: "aggxor.i", rettype: stMem, argtypes: []ssatype{stMem, stInt, stBool}, immfmt: fmtaggslot, bc: opaggxori, priority: prioMem},
 	saggcount: {text: "aggcount", rettype: stMem, argtypes: []ssatype{stMem, stBool}, immfmt: fmtaggslot, bc: opaggcount, priority: prioMem + 1},
+
+	sAggTDigest: {text: "agg.tdigest", rettype: stMem, argtypes: []ssatype{stMem, stFloat, stBool}, immfmt: fmtaggslot, bc: opAggTDigest, priority: prioMem},
 
 	// compute hash aggregate bucket location; encoded immediate will be input hash slot to use
 	saggbucket: {text: "aggbucket", argtypes: []ssatype{stMem, stHash, stBool}, rettype: stBucket, immfmt: fmtslot, bc: opaggbucket},

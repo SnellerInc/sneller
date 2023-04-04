@@ -338,6 +338,16 @@ func reduceAggregate(a *Aggregate, mapping, reduce *Trace) error {
 			expr.OpEarliest, expr.OpLatest, expr.OpStdDevPop:
 			// these are all distributive
 			newagg = &expr.Aggregate{Op: age.Op, Inner: innerref}
+		case expr.OpApproxPercentile:
+			newagg = &expr.Aggregate{
+				Op:    expr.OpApproxPercentile,
+				Misc:  age.Misc,
+				Inner: innerref}
+		case expr.OpApproxMedian:
+			newagg = &expr.Aggregate{
+				Op:    expr.OpApproxMedian,
+				Misc:  age.Misc,
+				Inner: innerref}
 		case expr.OpApproxCountDistinctPartial:
 			newagg = &expr.Aggregate{
 				Op:        expr.OpApproxCountDistinctMerge,

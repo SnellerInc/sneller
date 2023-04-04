@@ -186,6 +186,12 @@ const (
 	// Note that it does not calculate the sample standard deviation
 	OpStdDevPop
 
+	// OpApproxPercentile is equivalent to APPROX_PERCENTILE() operation
+	OpApproxPercentile
+
+	// OpApproxMedian is equivalent to (non-SQL but eg present in snowflake) APPROX_MEDIAN() operation
+	OpApproxMedian
+
 	// OpRowNumber corresponds to ROW_NUMBER()
 	OpRowNumber
 
@@ -203,6 +209,7 @@ const (
 	// aggregates.
 	OpSystemDatashapeMerge
 
+	// anchor for the last aggregate operator
 	maxAggregateOp
 )
 
@@ -224,6 +231,8 @@ func (a AggregateOp) defaultResult() string {
 		return "variance_pop"
 	case OpStdDevPop:
 		return "stddev_pop"
+	case OpApproxPercentile:
+		return "approx_percentile"
 	case OpMin, OpEarliest:
 		return "min"
 	case OpMax, OpLatest:
@@ -253,6 +262,10 @@ func (a AggregateOp) String() string {
 		return "VARIANCE_POP"
 	case OpStdDevPop:
 		return "STDDEV_POP"
+	case OpApproxPercentile:
+		return "APPROX_PERCENTILE"
+	case OpApproxMedian:
+		return "APPROX_MEDIAN"
 	case OpMin:
 		return "MIN"
 	case OpMax:
@@ -300,7 +313,9 @@ func (a AggregateOp) String() string {
 
 func (a AggregateOp) private() bool {
 	switch a {
-	case OpCount, OpSum, OpAvg, OpVariancePop, OpStdDevPop, OpMin, OpMax, OpEarliest, OpLatest,
+	case OpCount, OpSum, OpAvg, OpVariancePop, OpStdDevPop,
+		OpApproxMedian, OpApproxPercentile,
+		OpMin, OpMax, OpEarliest, OpLatest,
 		OpBitAnd, OpBitOr, OpBitXor, OpBoolAnd, OpBoolOr,
 		OpApproxCountDistinct, OpSystemDatashape, OpRowNumber, OpRank, OpDenseRank:
 		return false
@@ -350,6 +365,8 @@ type Aggregate struct {
 	// Op is the aggregation operation
 	// (sum, min, max, etc.)
 	Op AggregateOp
+	// Miscellaneous data: used by OpTDigest to store percentile values q
+	Misc float32
 	// Precision is the parameter for OpApproxCountDistinct
 	Precision uint8
 	// Inner is the expression to be aggregated;
@@ -375,6 +392,9 @@ func (a *Aggregate) Equals(e Node) bool {
 		return false
 	}
 
+	if ea.Misc != a.Misc {
+		return false
+	}
 	if (a.Filter != nil) != (ea.Filter != nil) {
 		return false
 	}
@@ -404,6 +424,9 @@ func (a *Aggregate) Encode(dst *ion.Buffer, st *ion.Symtab) {
 	if a.Op == OpApproxCountDistinct || a.Op == OpApproxCountDistinctPartial || a.Op == OpApproxCountDistinctMerge {
 		dst.BeginField(st.Intern("precision"))
 		dst.WriteUint(uint64(a.Precision))
+	} else if a.Op == OpApproxPercentile || a.Op == OpApproxMedian {
+		dst.BeginField(st.Intern("misc"))
+		dst.WriteFloat64(float64(a.Misc))
 	}
 	if a.Inner != nil {
 		dst.BeginField(st.Intern("inner"))
@@ -472,6 +495,12 @@ func (a *Aggregate) SetField(f ion.Field) error {
 			return err
 		}
 		a.Precision = uint8(p)
+	case "misc":
+		p, err := f.Float()
+		if err != nil {
+			return err
+		}
+		a.Misc = float32(p)
 	default:
 		return errUnexpectedField
 	}
@@ -492,6 +521,13 @@ func (a *Aggregate) text(dst *strings.Builder, redact bool) {
 		if a.Precision > 0 && a.Precision != ApproxCountDistinctDefaultPrecision {
 			fmt.Fprintf(dst, ", %d", a.Precision)
 		}
+		dst.WriteByte(')')
+
+	case OpApproxPercentile:
+		dst.WriteString(a.Op.String())
+		dst.WriteByte('(')
+		a.Inner.text(dst, redact)
+		fmt.Fprintf(dst, ", %v", a.Misc)
 		dst.WriteByte(')')
 
 	default:
