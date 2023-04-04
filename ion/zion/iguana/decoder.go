@@ -301,7 +301,7 @@ func decompressIguanaReference(dst []byte, streams *streamPack, lastOffset *int)
 			lastOffs = -int(x)
 		}
 		match := len(dst) + lastOffs
-		dst = append(dst, dst[match:match+matchLen]...)
+		dst = iguanaWildCopy(dst, dst[match:match+matchLen])
 	}
 
 	// last literals
@@ -315,6 +315,22 @@ func decompressIguanaReference(dst []byte, streams *streamPack, lastOffset *int)
 	// end of decoding
 	*lastOffset = lastOffs
 	return dst, ecOK
+}
+
+func iguanaWildCopy(dst []byte, match []byte) []byte {
+	// Emulates the SIMD register-wide copies
+	for {
+		n := len(match)
+		if n == 0 {
+			break
+		}
+		rem := ints.Min(iguanaChunkSize, n)
+		var tmp [iguanaChunkSize]byte
+		copy(tmp[:], match[:rem])
+		dst = append(dst, tmp[:rem]...)
+		match = match[rem:]
+	}
+	return dst
 }
 
 var decompressIguana func(dst []byte, streams *streamPack, lastOffs *int) ([]byte, errorCode) = decompressIguanaReference

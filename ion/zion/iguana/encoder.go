@@ -48,8 +48,9 @@ const (
 )
 
 const (
-	minOffset = 64
-	minLength = 64
+	iguanaChunkSize = 64
+	minOffset       = iguanaChunkSize
+	minLength       = iguanaChunkSize
 )
 
 type encodingStation struct {
