@@ -1,0 +1,20 @@
+WITH stats AS (
+    SELECT class,
+           COUNT(*) AS cnt,
+           SUM(n) AS total
+    FROM table2 GROUP BY class)
+SELECT
+    lhs.name,
+    lhs.class,
+    rhs.cnt + 1,
+    rhs.cnt/ABS(rhs.total)
+FROM
+    table lhs CROSS JOIN stats rhs
+    WHERE rhs.class = lhs.class
+---
+WITH (
+	ITERATE table2 FIELDS [class, n]
+	AGGREGATE COUNT(*) AS cnt, SUM(n) AS total BY class AS class
+) AS REPLACEMENT(0)
+ITERATE table AS lhs FIELDS [class, name] WHERE IN_REPLACEMENT(class, 0)
+PROJECT name AS name, class AS class, HASH_REPLACEMENT(0, 'struct', 'class', class).cnt + 1 AS _3, HASH_REPLACEMENT(0, 'struct', 'class', class).cnt / ABS(HASH_REPLACEMENT(0, 'struct', 'class', class).total) AS _4

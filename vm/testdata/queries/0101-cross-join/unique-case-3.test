@@ -1,0 +1,48 @@
+WITH aux AS (SELECT code FROM input0 GROUP BY code)
+SELECT
+    lhs.code,
+    lhs.name
+FROM input1 AS lhs CROSS JOIN aux AS rhs
+WHERE lhs.code = rhs.code
+ORDER BY lhs.id LIMIT 1000
+---
+{"code": "a", "displayname": "animals"}
+{"code": "a", "displayname": "artificial"}
+{"code": "a", "displayname": "automotovie"}
+{"code": "n", "displayname": "nature"}
+{"code": "l", "displayname": "landscape"}
+{"code": "l", "displayname": "long exposure"}
+---
+{"id":  1, "code": "a", "name": "aaa"}
+{"id":  2, "code": "a", "name": "bbb"}
+{"id":  3, "code": "a", "name": "ccc"}
+{"id":  4, "code": "a", "name": "ddd"}
+{"id":  5, "code": "e", "name": "eee"}
+{"id":  6, "code": "e", "name": "fff"}
+{"id":  7, "code": "e", "name": "ggg"}
+{"id":  8, "code": "e", "name": "hhh"}
+{"id":  9, "code": "e", "name": "iii"}
+{"id": 10, "code": "l", "name": "AAA"}
+{"id": 11, "code": "l", "name": "BBB"}
+{"id": 12, "code": "l", "name": "CCC"}
+{"id": 13, "code": "l", "name": "DDD"}
+{"id": 14, "code": "l", "name": "EEE"}
+{"id": 15, "code": "n", "name": "aaaaaa"}
+{"id": 16, "code": "n", "name": "baaaaa"}
+{"id": 17, "code": "N", "name": "bbaaaa"}
+{"id": 18, "code": "N", "name": "bbbaaa"}
+{"id": 19, "code": "N", "name": "bbbbaa"}
+{"id": 20, "code": "N", "name": "bbbbba"}
+{"id": 21, "code": "N", "name": "bbbbbb"}
+---
+{"code": "a", "name": "aaa"}
+{"code": "a", "name": "bbb"}
+{"code": "a", "name": "ccc"}
+{"code": "a", "name": "ddd"}
+{"code": "l", "name": "AAA"}
+{"code": "l", "name": "BBB"}
+{"code": "l", "name": "CCC"}
+{"code": "l", "name": "DDD"}
+{"code": "l", "name": "EEE"}
+{"code": "n", "name": "aaaaaa"}
+{"code": "n", "name": "baaaaa"}

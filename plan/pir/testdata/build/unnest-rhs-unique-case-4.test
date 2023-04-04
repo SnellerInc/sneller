@@ -1,0 +1,15 @@
+WITH stats AS (SELECT DISTINCT object.type AS class FROM table2)
+SELECT
+    lhs.name,
+    lhs.class
+FROM
+    table lhs CROSS JOIN stats rhs
+    WHERE rhs.class = lhs.class
+---
+WITH (
+	ITERATE table2 FIELDS [object]
+	FILTER DISTINCT [object.type]
+	PROJECT object.type AS class
+) AS REPLACEMENT(0)
+ITERATE table AS lhs FIELDS [class, name] WHERE IN_REPLACEMENT(class, 0)
+PROJECT name AS name, class AS class

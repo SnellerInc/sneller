@@ -1,0 +1,59 @@
+WITH aux AS (SELECT code, COUNT(*) AS cnt FROM input0 GROUP BY code)
+SELECT
+    lhs.code,
+    lhs.name,
+    rhs.cnt
+FROM input1 AS lhs CROSS JOIN aux AS rhs
+WHERE lhs.code = rhs.code AND CHAR_LENGTH(lhs.name) > 0
+ORDER BY lhs.id LIMIT 1000
+---
+{"code": "a", "displayname": "animals"}
+{"code": "a", "displayname": "artificial"}
+{"code": "a", "displayname": "automotovie"}
+{"code": "n", "displayname": "nature"}
+{"code": "l", "displayname": "landscape"}
+{"code": "l", "displayname": "long exposure"}
+---
+{"id":  1, "code": "a", "name": "aaa"}
+{"id":  2, "code": "a", "name": "bbb"}
+{"id":  3, "code": "a", "name": "ccc"}
+{"id":  4, "code": "a", "name": "ddd"}
+{"id":  5, "code": "a", "name": "eee"}
+{"id":  6, "code": "a", "name": "fff"}
+{"id":  7, "code": "a", "name": "ggg"}
+{"id":  8, "code": "a", "name": "hhh"}
+{"id":  9, "code": "a", "name": "iii"}
+{"id": 10, "code": "l", "name": "AAA"}
+{"id": 11, "code": "l", "name": "BBB"}
+{"id": 12, "code": "l", "name": "CCC"}
+{"id": 13, "code": "l", "name": "DDD"}
+{"id": 14, "code": "l", "name": "EEE"}
+{"id": 15, "code": "n", "name": "aaaaaa"}
+{"id": 16, "code": "n", "name": "baaaaa"}
+{"id": 17, "code": "n", "name": "bbaaaa"}
+{"id": 18, "code": "n", "name": "bbbaaa"}
+{"id": 19, "code": "n", "name": "bbbbaa"}
+{"id": 20, "code": "n", "name": "bbbbba"}
+{"id": 21, "code": "n", "name": "bbbbbb"}
+---
+{"code": "a", "name": "aaa", "cnt": 3}
+{"code": "a", "name": "bbb", "cnt": 3}
+{"code": "a", "name": "ccc", "cnt": 3}
+{"code": "a", "name": "ddd", "cnt": 3}
+{"code": "a", "name": "eee", "cnt": 3}
+{"code": "a", "name": "fff", "cnt": 3}
+{"code": "a", "name": "ggg", "cnt": 3}
+{"code": "a", "name": "hhh", "cnt": 3}
+{"code": "a", "name": "iii", "cnt": 3}
+{"code": "l", "name": "AAA", "cnt": 2}
+{"code": "l", "name": "BBB", "cnt": 2}
+{"code": "l", "name": "CCC", "cnt": 2}
+{"code": "l", "name": "DDD", "cnt": 2}
+{"code": "l", "name": "EEE", "cnt": 2}
+{"code": "n", "name": "aaaaaa", "cnt": 1}
+{"code": "n", "name": "baaaaa", "cnt": 1}
+{"code": "n", "name": "bbaaaa", "cnt": 1}
+{"code": "n", "name": "bbbaaa", "cnt": 1}
+{"code": "n", "name": "bbbbaa", "cnt": 1}
+{"code": "n", "name": "bbbbba", "cnt": 1}
+{"code": "n", "name": "bbbbbb", "cnt": 1}
