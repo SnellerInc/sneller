@@ -222,11 +222,6 @@ func (p *prog) begin() {
 	p.resolved = p.resolved[:0]
 }
 
-//lint:ignore U1000 (TODO: Should we remove this)
-func (p *prog) undef() *value {
-	return p.values[1]
-}
-
 func (p *prog) val() *value {
 	v := new(value)
 	p.values = append(p.values, v)
@@ -1499,22 +1494,6 @@ func (p *prog) containsPattern(str *value, pattern *stringext.Pattern, caseSensi
 func (p *prog) isSubnetOfIP4(str *value, min, max [4]byte) *value {
 	str = p.coerceStr(str)
 	return p.ssa2imm(sIsSubnetOfIP4, str, p.mask(str), stringext.ToBCD(&min, &max))
-}
-
-// SkipCharLeft skips a variable number of UTF-8 code-points from the left side of a string
-//
-//lint:ignore U1000 (TODO: Should we remove this)
-func (p *prog) skipCharLeft(str, nChars *value) *value {
-	str = p.coerceStr(str)
-	return p.ssa3(sStrSkipNCharLeft, str, nChars, p.and(p.mask(str), p.mask(nChars)))
-}
-
-// SkipCharRight skips a variable number of UTF-8 code-points from the right side of a string
-//
-//lint:ignore U1000 (TODO: Should we remove this)
-func (p *prog) skipCharRight(str, nChars *value) *value {
-	str = p.coerceStr(str)
-	return p.ssa3(sStrSkipNCharRight, str, nChars, p.and(p.mask(str), p.mask(nChars)))
 }
 
 // SkipCharLeftConst skips a constant number of UTF-8 code-points from the left side of a string
