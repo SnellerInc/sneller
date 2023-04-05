@@ -94,7 +94,7 @@ TEXT ·decompressIguanaVBMI2(SB), NOSPLIT | NOFRAME, $0-40
     MOVQ            (stream__size*const_stridLiterals+stream_data + const_offsSliceHeaderData)(BX), SI // SI := Literals.Data
     MOVQ            lastOffs+32(FP), R9             // R9  := &lastOffs
     VMOVDQU8        CONST_GET_PTR(consts_uint24_expander, 0), Z21
-    VMOVDQU8        CONST_GET_PTR(consts_varuint_lengths, 0), Z26
+    VMOVDQU8        CONST_GET_PTR(consts_identity_b_8, 1), Z26
     VPADDD          Z30, Z30, Z31                   // Z31 := uint8{0x20*}
     VPADDB          Z1, Z29, Z24                    // Z24 := uint8{0x07*}
     MOVQ            dst_base+0(FP), DI              // DI  := dst.Data cursor
@@ -189,7 +189,7 @@ predecoded_tokens_available:
     // Z23 := uint8{0x0f*}
     // Z24 := uint8{0x07*}
     // Z25 := uint8{0xfd*}
-    // Z26 := uint8{consts_varuint_lengths}
+    // Z26 := uint8{varuint_lengths}
     // Z27 := uint8{0x02*}
     // Z28 := uint8{0x04*}
     // Z29 := uint8{0x08*}
@@ -254,7 +254,7 @@ varlitlen_decoded:
     // Z23 := uint8{0x0f*}
     // Z24 := uint8{0x07*}
     // Z25 := uint8{0xfd*}
-    // Z26 := uint8{consts_varuint_lengths}
+    // Z26 := uint8{varuint_lengths}
     // Z27 := uint8{0x02*}
     // Z28 := uint8{0x04*}
     // Z29 := uint8{0x08*}
@@ -310,7 +310,7 @@ varmatchlen_decoded:
     // Z23 := uint8{0x0f*}
     // Z24 := uint8{0x07*}
     // Z25 := uint8{0xfd*}
-    // Z26 := uint8{consts_varuint_lengths}
+    // Z26 := uint8{varuint_lengths}
     // Z27 := uint8{0x02*}
     // Z28 := uint8{0x04*}
     // Z29 := uint8{0x08*}
@@ -359,7 +359,7 @@ varmatchlen_decoded:
     // Z23 := uint8{0x0f*}
     // Z24 := uint8{0x07*}
     // Z25 := uint8{0xfd*}
-    // Z26 := uint8{consts_varuint_lengths}
+    // Z26 := uint8{varuint_lengths}
     // Z27 := uint8{0x02*}
     // Z28 := uint8{0x04*}
     // Z29 := uint8{0x08*}
@@ -480,7 +480,7 @@ decode_wide_varlitlen:
     // Z23 := uint8{0x0f*}
     // Z24 := uint8{0x07*}
     // Z25 := uint8{0xfd*}
-    // Z26 := uint8{consts_varuint_lengths}
+    // Z26 := uint8{varuint_lengths}
     // Z27 := uint8{0x02*}
     // Z28 := uint8{0x04*}
     // Z29 := uint8{0x08*}
@@ -491,16 +491,16 @@ decode_wide_varlitlen:
     KMOVQ           K2, AX                          // AX  := {VarLitLen.Data[i] <= 0xfd} for i in 63..0
     POPCNTL         DX, DX                          // DX  := the number of tokens needing VarLitLen values
     VPCOMPRESSB     Z2, K2, Z2                      // Z2  := uint8{the sequence of the payload bytes only}
-    VPADDB          Z27, Z26, Z5                    // Z5  := uint8{consts_varuint_lengths[i] + 2} for i in 63..0
+    VPADDB          Z27, Z26, Z5                    // Z5  := uint8{varuint_lengths[i] + 2} for i in 63..0
     DECL            DX                              // DX  := DX - 1 to correctly handle the zero requested tokens case
-    VPSUBB          Z27, Z5, K2, Z5                 // Z5  := uint8{restore consts_varuint_lengths[i] for VarLitLen.Data[i] <= 0xfd} for i in 63..0
+    VPSUBB          Z27, Z5, K2, Z5                 // Z5  := uint8{restore varuint_lengths[i] for VarLitLen.Data[i] <= 0xfd} for i in 63..0
     VPINSRB         $0, DX, X1, X6                  // X6  := uint8{[0]: the number of tokens needing VarLitLen values; [15..1]: 0xff}
     LEAQ            1(AX*2), CX                     // CX  := (AX << 1) | 0b0001
     LEAQ            3(AX*4), BX                     // BX  := (AX << 2) | 0b0011
     KMOVQ           K1, DX                          // DX  := {VarLitLen.Data[i] == 0xff} for i in 63..0
     NOTQ            AX                              // AX  := {VarLitLen.Data[i] > 0xfd} for i in 63..0
     ANDQ            BX, CX                          // CX  := {0b00 for the two payload bytes following 0xfe or 0xff, 1 otherwise}
-    VPSUBB          Z1, Z5, K1, Z5                  // Z5  := uint8{consts_varuint_lengths[i] + 3 for VarLitLen.Data[i] == 0xff} for i in 63..0
+    VPSUBB          Z1, Z5, K1, Z5                  // Z5  := uint8{varuint_lengths[i] + 3 for VarLitLen.Data[i] == 0xff} for i in 63..0
     LEAQ            (DX*8), BX                      // BX  := (DX << 3)
     ANDNQ           CX, BX, CX                      // CX  := {0b000 for the three payload bytes following 0xff; 0b00 for bytes following 0xfe; 1 otherwise}
     KMOVQ           CX, K1                          // K1  := {0b000 for the three payload bytes following 0xff; 0b00 for bytes following 0xfe; 1 otherwise}
@@ -560,7 +560,7 @@ decode_wide_varmatchlen:
     // Z23 := uint8{0x0f*}
     // Z24 := uint8{0x07*}
     // Z25 := uint8{0xfd*}
-    // Z26 := uint8{consts_varuint_lengths}
+    // Z26 := uint8{varuint_lengths}
     // Z27 := uint8{0x02*}
     // Z28 := uint8{0x04*}
     // Z29 := uint8{0x08*}
@@ -571,16 +571,16 @@ decode_wide_varmatchlen:
     KMOVQ           K2, AX                          // AX  := {VarMatchLen.Data[i] <= 0xfd} for i in 63..0
     POPCNTL         DX, DX                          // DX  := the number of tokens needing VarMatchLen values
     VPCOMPRESSB     Z3, K2, Z2                      // Z2  := uint8{the sequence of the payload bytes only}
-    VPADDB          Z27, Z26, Z5                    // Z5  := uint8{consts_varuint_lengths[i] + 2} for i in 63..0
+    VPADDB          Z27, Z26, Z5                    // Z5  := uint8{varuint_lengths[i] + 2} for i in 63..0
     DECL            DX                              // DX  := DX - 1 to correctly handle the zero requested tokens case
-    VPSUBB          Z27, Z5, K2, Z5                 // Z5  := uint8{restore consts_varuint_lengths[i] for VarMatchLen.Data[i] <= 0xfd} for i in 63..0
+    VPSUBB          Z27, Z5, K2, Z5                 // Z5  := uint8{restore varuint_lengths[i] for VarMatchLen.Data[i] <= 0xfd} for i in 63..0
     VPINSRB         $0, DX, X1, X6                  // X6  := uint8{[0]: the number of tokens needing VarMatchLen values; [15..1]: 0xff}
     LEAQ            1(AX*2), CX                     // CX  := (AX << 1) | 0b0001
     LEAQ            3(AX*4), BX                     // BX  := (AX << 2) | 0b0011
     KMOVQ           K1, DX                          // DX  := {VarMatchLen.Data[i] == 0xff} for i in 63..0
     NOTQ            AX                              // AX  := {VarMatchLen.Data[i] > 0xfd} for i in 63..0
     ANDQ            BX, CX                          // CX  := {0b00 for the two payload bytes following 0xfe or 0xff, 1 otherwise}
-    VPSUBB          Z1, Z5, K1, Z5                  // Z5  := uint8{consts_varuint_lengths[i] + 3 for VarMatchLen.Data[i] == 0xff} for i in 63..0
+    VPSUBB          Z1, Z5, K1, Z5                  // Z5  := uint8{varuint_lengths[i] + 3 for VarMatchLen.Data[i] == 0xff} for i in 63..0
     LEAQ            (DX*8), BX                      // BX  := (DX << 3)
     ANDNQ           CX, BX, CX                      // CX  := {0b000 for the three payload bytes following 0xff; 0b00 for bytes following 0xfe; 1 otherwise}
     KMOVQ           CX, K1                          // K1  := {0b000 for the three payload bytes following 0xff; 0b00 for bytes following 0xfe; 1 otherwise}
@@ -680,24 +680,6 @@ CONST_DATA_U32(consts_uint24_expander, (13*4),  $0x292827ff)
 CONST_DATA_U32(consts_uint24_expander, (14*4),  $0x2c2b2aff)
 CONST_DATA_U32(consts_uint24_expander, (15*4),  $0x2f2e2dff)
 CONST_GLOBAL(consts_uint24_expander, $64)
-
-CONST_DATA_U32(consts_varuint_lengths,  (0*4),  $0x04030201)
-CONST_DATA_U32(consts_varuint_lengths,  (1*4),  $0x08070605)
-CONST_DATA_U32(consts_varuint_lengths,  (2*4),  $0x0c0b0a09)
-CONST_DATA_U32(consts_varuint_lengths,  (3*4),  $0x100f0e0d)
-CONST_DATA_U32(consts_varuint_lengths,  (4*4),  $0x14131211)
-CONST_DATA_U32(consts_varuint_lengths,  (5*4),  $0x18171615)
-CONST_DATA_U32(consts_varuint_lengths,  (6*4),  $0x110b1a19)
-CONST_DATA_U32(consts_varuint_lengths,  (7*4),  $0x201f1e1d)
-CONST_DATA_U32(consts_varuint_lengths,  (8*4),  $0x24232221)
-CONST_DATA_U32(consts_varuint_lengths,  (9*4),  $0x28272625)
-CONST_DATA_U32(consts_varuint_lengths, (10*4),  $0x2c2b2a29)
-CONST_DATA_U32(consts_varuint_lengths, (11*4),  $0x302f2e2d)
-CONST_DATA_U32(consts_varuint_lengths, (12*4),  $0x34333231)
-CONST_DATA_U32(consts_varuint_lengths, (13*4),  $0x38373635)
-CONST_DATA_U32(consts_varuint_lengths, (14*4),  $0x3c3b3a39)
-CONST_DATA_U32(consts_varuint_lengths, (15*4),  $0x403f3e3d)
-CONST_GLOBAL(consts_varuint_lengths, $64)
 
 CONST_DATA_U32(consts_composite_remainder,  (0*4), $0b000_0)
 CONST_DATA_U32(consts_composite_remainder,  (1*4), $0b001_0)
