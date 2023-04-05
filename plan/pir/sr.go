@@ -20,7 +20,8 @@ import (
 
 // strengthReduce applies strength reduction rules until fixed point is achieved
 func strengthReduce(b *Trace) {
-	srFPO.optimize(b)
+	context := &fpoContext{trace: b}
+	srFPO.optimize(b, context)
 }
 
 // Fixed-Point Optimizer for Strength Reduction purposes
@@ -29,11 +30,12 @@ var srFPO fixedPointOptimizer
 func init() {
 	srFPO = newFixedPointOptimizer(
 		srDistinctUnpivot,
+		uniqueReplacement,
 	)
 }
 
 // srDistinctUnpivot rule is applicable to DISTINCT-UNPIVOT subtraces
-func srDistinctUnpivot(d *Distinct) (Step, fpoStatus) {
+func srDistinctUnpivot(d *Distinct, _ *fpoContext) (Step, fpoStatus) {
 	if u, ok := d.par.(*Unpivot); ok {
 		if u.Ast.As == nil && u.Ast.At != nil && len(d.Columns) == 1 && expr.IsIdentifier(d.Columns[0], *u.Ast.At) {
 			// Unpivot AT x

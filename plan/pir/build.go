@@ -54,6 +54,10 @@ func errorf(e expr.Node, f string, args ...interface{}) error {
 	}
 }
 
+func gensym(node, path int) string {
+	return fmt.Sprintf("$_%d_%d", node, path)
+}
+
 func (b *Trace) walkFrom(f expr.From, e Env) error {
 	if f == nil {
 		b.top = DummyOutput{}

@@ -25,25 +25,18 @@ import (
 // Currently we look for the following sub-trace:
 // - IterValue from a ListReplacement,
 // - Filter with equality with the replacement unique columns.
-func uniqueReplacement(b *Trace) {
-	u := &uniqueReplacementAux{trace: b}
-
-	for changed := true; changed; /**/ {
-		changed = false
-		var parent Step
-		for s := b.top; s != nil; s = s.parent() {
-			if !u.match(parent, s) {
-				parent = s
-				continue
-			}
-
-			if u.prunefilter() {
-				b.Rewrite(u)
-				changed = true
-				break
-			}
-		}
+func uniqueReplacement(filter *Filter, context *fpoContext) (Step, fpoStatus) {
+	u := &uniqueReplacementAux{trace: context.trace}
+	if !u.match(filter) {
+		return nil, fpoIntact
 	}
+
+	if u.simplify() {
+		context.trace.Rewrite(u)
+		return filter, fpoUpdate
+	}
+
+	return nil, fpoIntact
 }
 
 // uniqueReplacementAux is a helper keeping current state of optimization
@@ -59,12 +52,7 @@ type uniqueReplacementAux struct {
 
 // match looks for a trace IterValue(with ListReplacement) -> Filter.
 // (without detailed analysis)
-func (u *uniqueReplacementAux) match(parent, s Step) bool {
-	filter, ok := s.(*Filter)
-	if !ok {
-		return false
-	}
-
+func (u *uniqueReplacementAux) match(filter *Filter) bool {
 	p := filter.parent()
 	if p == nil {
 		return false
@@ -86,9 +74,9 @@ func (u *uniqueReplacementAux) match(parent, s Step) bool {
 	return true
 }
 
-// prunefilter checks if the filter has equality condition on
+// simplify checks if the filter has equality condition on
 // unique columns from the replacement.
-func (u *uniqueReplacementAux) prunefilter() bool {
+func (u *uniqueReplacementAux) simplify() bool {
 	id := u.listrepl.Args[0].(expr.Integer)
 	u.columns = distinctcolumns(u.trace.Replacements[id])
 	if len(u.columns) == 0 {
@@ -133,8 +121,8 @@ func (u *uniqueReplacementAux) prunefilter() bool {
 		u.filter.Where = expr.And(u.filter.Where, n)
 	}
 
-	// Remove only itervalue; the subsequent optimization passes will
-	// process the filter, no extra work at this step is needed.
+	// Remove only itervalue step; the subsequent optimization passes
+	// will process the filter, no extra work on our side is needed.
 	u.filter.setparent(u.itervalue.parent())
 	return true
 }
