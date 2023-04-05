@@ -81,7 +81,7 @@ TEXT bcbroadcasti64(SB), NOSPLIT|NOFRAME, $0
   VMOVDQU64 Z2, 0(VIRT_VALUES)(DX*1)
   VMOVDQU64 Z2, 64(VIRT_VALUES)(DX*1)
 
-  NEXT_ADVANCE(BC_SLOT_SIZE*1 + 8)
+  NEXT_ADVANCE(BC_SLOT_SIZE*1 + BC_IMM64_SIZE)
 
 // Integer Math Instructions - Abs
 // -------------------------------
@@ -258,7 +258,7 @@ TEXT bcaddi64(SB), NOSPLIT|NOFRAME, $0
 // i64[0].k[1] = add.i64@imm(i64[2], i64@imm[3]).k[4]
 TEXT bcaddi64imm(SB), NOSPLIT|NOFRAME, $0
   BC_ARITH_REVERSE_OP_I64_IMM_IMPL(VPADDQ)
-  NEXT_ADVANCE(BC_SLOT_SIZE*4 + 8)
+  NEXT_ADVANCE(BC_SLOT_SIZE*4 + BC_IMM64_SIZE)
 
 // Integer Math Instructions - Sub
 // -------------------------------
@@ -271,12 +271,12 @@ TEXT bcsubi64(SB), NOSPLIT|NOFRAME, $0
 // i64[0].k[1] = sub.i64@imm(i64[2], i64@imm[3]).k[4]
 TEXT bcsubi64imm(SB), NOSPLIT|NOFRAME, $0
   BC_ARITH_OP_I64_IMM_IMPL_K(VPSUBQ)
-  NEXT_ADVANCE(BC_SLOT_SIZE*4 + 8)
+  NEXT_ADVANCE(BC_SLOT_SIZE*4 + BC_IMM64_SIZE)
 
 // i64[0].k[1] = rsub.i64@imm(i64@imm[3], i64[2]).k[4]
 TEXT bcrsubi64imm(SB), NOSPLIT|NOFRAME, $0
   BC_ARITH_REVERSE_OP_I64_IMM_IMPL(VPSUBQ)
-  NEXT_ADVANCE(BC_SLOT_SIZE*4 + 8)
+  NEXT_ADVANCE(BC_SLOT_SIZE*4 + BC_IMM64_SIZE)
 
 // Integer Math Instructions - Mul
 // -------------------------------
@@ -289,7 +289,7 @@ TEXT bcmuli64(SB), NOSPLIT|NOFRAME, $0
 // i64[0].k[1] = mul.i64@imm(i64[2], i64@imm[3]).k[4]
 TEXT bcmuli64imm(SB), NOSPLIT|NOFRAME, $0
   BC_ARITH_OP_I64_IMM_IMPL_K(VPMULLQ)
-  NEXT_ADVANCE(BC_SLOT_SIZE*4 + 8)
+  NEXT_ADVANCE(BC_SLOT_SIZE*4 + BC_IMM64_SIZE)
 
 // Integer Math Instructions - Div
 // -------------------------------
@@ -326,7 +326,7 @@ TEXT bcdivi64imm(SB), NOSPLIT|NOFRAME, $0
   BC_STORE_I64_TO_SLOT(IN(Z16), IN(Z17), IN(DX))
   BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
 
-  NEXT_ADVANCE(BC_SLOT_SIZE*4 + 8)
+  NEXT_ADVANCE(BC_SLOT_SIZE*4 + BC_IMM64_SIZE)
 
 // i64[0].k[1] = rdiv.i64@imm(i64@imm[3], i64[2]).k[4]
 TEXT bcrdivi64imm(SB), NOSPLIT|NOFRAME, $0
@@ -342,7 +342,7 @@ TEXT bcrdivi64imm(SB), NOSPLIT|NOFRAME, $0
   BC_STORE_I64_TO_SLOT(IN(Z16), IN(Z17), IN(DX))
   BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
 
-  NEXT_ADVANCE(BC_SLOT_SIZE*4 + 8)
+  NEXT_ADVANCE(BC_SLOT_SIZE*4 + BC_IMM64_SIZE)
 
 // Integer Math Instructions - Mod
 // -------------------------------
@@ -379,7 +379,7 @@ TEXT bcmodi64imm(SB), NOSPLIT|NOFRAME, $0
   BC_STORE_I64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
   BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
 
-  NEXT_ADVANCE(BC_SLOT_SIZE*4 + 8)
+  NEXT_ADVANCE(BC_SLOT_SIZE*4 + BC_IMM64_SIZE)
 
 // i64[0].k[1] = rmod.i64@imm(i64@imm[3], i64[2]).k[4]
 TEXT bcrmodi64imm(SB), NOSPLIT|NOFRAME, $0
@@ -395,7 +395,7 @@ TEXT bcrmodi64imm(SB), NOSPLIT|NOFRAME, $0
   BC_STORE_I64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
   BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
 
-  NEXT_ADVANCE(BC_SLOT_SIZE*4 + 8)
+  NEXT_ADVANCE(BC_SLOT_SIZE*4 + BC_IMM64_SIZE)
 
 // Integer Math Instructions - FMA
 // -------------------------------
@@ -416,7 +416,7 @@ TEXT bcaddmuli64imm(SB), NOSPLIT|NOFRAME, $0
   BC_STORE_I64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
   BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
 
-  NEXT_ADVANCE(BC_SLOT_SIZE*5 + 8)
+  NEXT_ADVANCE(BC_SLOT_SIZE*5 + BC_IMM64_SIZE)
 
 // Integer Math Instructions - Min / Max
 // -------------------------------------
@@ -429,7 +429,7 @@ TEXT bcminvaluei64(SB), NOSPLIT|NOFRAME, $0
 // i64[0] = minvalue.i64@imm(i64[1], i64@imm[2]).k[3]
 TEXT bcminvaluei64imm(SB), NOSPLIT|NOFRAME, $0
   BC_ARITH_OP_I64_IMM_IMPL(VPMINSQ)
-  NEXT_ADVANCE(BC_SLOT_SIZE*3 + 8)
+  NEXT_ADVANCE(BC_SLOT_SIZE*3 + BC_IMM64_SIZE)
 
 // i64[0] = maxvalue.i64(i64[1], i64[2]).k[3]
 TEXT bcmaxvaluei64(SB), NOSPLIT|NOFRAME, $0
@@ -439,7 +439,7 @@ TEXT bcmaxvaluei64(SB), NOSPLIT|NOFRAME, $0
 // i64[0] = maxvalue.i64@imm(i64[1], i64@imm[2]).k[3]
 TEXT bcmaxvaluei64imm(SB), NOSPLIT|NOFRAME, $0
   BC_ARITH_OP_I64_IMM_IMPL(VPMAXSQ)
-  NEXT_ADVANCE(BC_SLOT_SIZE*3 + 8)
+  NEXT_ADVANCE(BC_SLOT_SIZE*3 + BC_IMM64_SIZE)
 
 // Integer Math Instructions - And
 // -------------------------------
@@ -452,7 +452,7 @@ TEXT bcandi64(SB), NOSPLIT|NOFRAME, $0
 // i64[0] = and.i64@imm(i64[1], i64@imm[2]).k[3]
 TEXT bcandi64imm(SB), NOSPLIT|NOFRAME, $0
   BC_ARITH_OP_I64_IMM_IMPL(VPANDQ)
-  NEXT_ADVANCE(BC_SLOT_SIZE*3 + 8)
+  NEXT_ADVANCE(BC_SLOT_SIZE*3 + BC_IMM64_SIZE)
 
 // Integer Math Instructions - Or
 // ------------------------------
@@ -465,7 +465,7 @@ TEXT bcori64(SB), NOSPLIT|NOFRAME, $0
 // i64[0] = or.i64@imm(i64[1], i64@imm[2]).k[3]
 TEXT bcori64imm(SB), NOSPLIT|NOFRAME, $0
   BC_ARITH_OP_I64_IMM_IMPL(VPORQ)
-  NEXT_ADVANCE(BC_SLOT_SIZE*3 + 8)
+  NEXT_ADVANCE(BC_SLOT_SIZE*3 + BC_IMM64_SIZE)
 
 // Integer Math Instructions - Xor
 // -------------------------------
@@ -478,7 +478,7 @@ TEXT bcxori64(SB), NOSPLIT|NOFRAME, $0
 // i64[0] = xor.i64@imm(i64[1], i64@imm[2]).k[3]
 TEXT bcxori64imm(SB), NOSPLIT|NOFRAME, $0
   BC_ARITH_OP_I64_IMM_IMPL(VPXORQ)
-  NEXT_ADVANCE(BC_SLOT_SIZE*3 + 8)
+  NEXT_ADVANCE(BC_SLOT_SIZE*3 + BC_IMM64_SIZE)
 
 // Integer Math Instructions - SLL
 // -------------------------------
@@ -491,7 +491,7 @@ TEXT bcslli64(SB), NOSPLIT|NOFRAME, $0
 // i64[0] = sll.i64@imm(i64[1], i64@imm[2]).k[3]
 TEXT bcslli64imm(SB), NOSPLIT|NOFRAME, $0
   BC_ARITH_OP_I64_IMM_IMPL(VPSLLVQ)
-  NEXT_ADVANCE(BC_SLOT_SIZE*3 + 8)
+  NEXT_ADVANCE(BC_SLOT_SIZE*3 + BC_IMM64_SIZE)
 
 // Integer Math Instructions - SRA
 // -------------------------------
@@ -504,7 +504,7 @@ TEXT bcsrai64(SB), NOSPLIT|NOFRAME, $0
 // i64[0] = sra.i64@imm(i64[1], i64@imm[2]).k[3]
 TEXT bcsrai64imm(SB), NOSPLIT|NOFRAME, $0
   BC_ARITH_OP_I64_IMM_IMPL(VPSRAVQ)
-  NEXT_ADVANCE(BC_SLOT_SIZE*3 + 8)
+  NEXT_ADVANCE(BC_SLOT_SIZE*3 + BC_IMM64_SIZE)
 
 // Integer Math Instructions - SRL
 // -------------------------------
@@ -517,7 +517,7 @@ TEXT bcsrli64(SB), NOSPLIT|NOFRAME, $0
 // i64[0] = srl.i64@imm(i64[1], i64@imm[2]).k[3]
 TEXT bcsrli64imm(SB), NOSPLIT|NOFRAME, $0
   BC_ARITH_OP_I64_IMM_IMPL(VPSRLVQ)
-  NEXT_ADVANCE(BC_SLOT_SIZE*3 + 8)
+  NEXT_ADVANCE(BC_SLOT_SIZE*3 + BC_IMM64_SIZE)
 
 // Integer Math Instructions - Cleanup
 // -----------------------------------

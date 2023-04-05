@@ -93,6 +93,12 @@ func evalSingleExpression(token any) (int, error) {
 			return bcSlotSize, nil
 		case "BC_AGGSLOT_SIZE":
 			return bcAggSlotSize, nil
+		case "BC_LITREF_SIZE":
+			return bcLitRefSize, nil
+		case "BC_IMM16_SIZE":
+			return bcImm16Size, nil
+		case "BC_IMM64_SIZE":
+			return bcImm64Size, nil
 		}
 	}
 

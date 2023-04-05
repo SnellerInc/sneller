@@ -1201,7 +1201,7 @@ TEXT bccmpvk(SB), NOSPLIT|NOFRAME, $0
 //
 TEXT bccmpvkimm(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_SLOT(BC_SLOT_SIZE*2, OUT(BX))
-  BC_UNPACK_SLOT(BC_SLOT_SIZE*3 + 2, OUT(R8))
+  BC_UNPACK_SLOT(BC_SLOT_SIZE*3 + BC_IMM16_SIZE, OUT(R8))
 
   VMOVDQU32 0(VIRT_VALUES)(BX*1), Z2
   BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
@@ -1228,7 +1228,7 @@ TEXT bccmpvkimm(SB), NOSPLIT|NOFRAME, $0
   BC_STORE_I64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
   BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
 
-  NEXT_ADVANCE(BC_SLOT_SIZE*4 + 2)
+  NEXT_ADVANCE(BC_SLOT_SIZE*4 + BC_IMM16_SIZE)
 
 
 // Comparison Instructions - Cmp(Value, Int64)
@@ -1542,7 +1542,7 @@ TEXT bccmpltkimm(SB), NOSPLIT|NOFRAME, $0
   ANDW 0(VIRT_VALUES)(R8*1), BX
   MOVW BX, 0(VIRT_VALUES)(DX*1)
 
-  NEXT_ADVANCE(BC_SLOT_SIZE*3 + 2)
+  NEXT_ADVANCE(BC_SLOT_SIZE*3 + BC_IMM16_SIZE)
 
 // `A <= B` => C (simplify to C = !A | B)
 // -------------
@@ -1573,7 +1573,7 @@ TEXT bccmplekimm(SB), NOSPLIT|NOFRAME, $0
   ANDW 0(VIRT_VALUES)(R8*1), BX
   MOVW BX, 0(VIRT_VALUES)(DX*1)
 
-  NEXT_ADVANCE(BC_SLOT_SIZE*3 + 2)
+  NEXT_ADVANCE(BC_SLOT_SIZE*3 + BC_IMM16_SIZE)
 
 // `A > B` => C (simplify to C = A & !B)
 // ------------
@@ -1603,7 +1603,7 @@ TEXT bccmpgtkimm(SB), NOSPLIT|NOFRAME, $0
   ANDW 0(VIRT_VALUES)(R8*1), BX
   MOVW BX, 0(VIRT_VALUES)(DX*1)
 
-  NEXT_ADVANCE(BC_SLOT_SIZE*3 + 2)
+  NEXT_ADVANCE(BC_SLOT_SIZE*3 + BC_IMM16_SIZE)
 
 // `A >= B` => C (simplify to C = A | !B)
 // -------------
@@ -1634,7 +1634,7 @@ TEXT bccmpgekimm(SB), NOSPLIT|NOFRAME, $0
   ANDW 0(VIRT_VALUES)(R8*1), BX
   MOVW BX, 0(VIRT_VALUES)(DX*1)
 
-  NEXT_ADVANCE(BC_SLOT_SIZE*3 + 2)
+  NEXT_ADVANCE(BC_SLOT_SIZE*3 + BC_IMM16_SIZE)
 
 
 // Comparison Instructions - Number
@@ -1711,7 +1711,7 @@ TEXT bccmpeqf64imm(SB), NOSPLIT|NOFRAME, $0
   // opportunity to make this function smaller as we know what the second
   // value isn't.
   BC_CMP_OP_F64_IMM($VCMP_IMM_EQ_OQ)
-  NEXT_ADVANCE(BC_SLOT_SIZE*3 + 8)
+  NEXT_ADVANCE(BC_SLOT_SIZE*3 + BC_IMM64_SIZE)
 
 // Implements `cmp_unordered_lt(a, b) ^ isnan(a)`:
 //   - `val < val` -> result
@@ -1744,7 +1744,7 @@ TEXT bccmpltf64(SB), NOSPLIT|NOFRAME, $0
 //
 TEXT bccmpltf64imm(SB), NOSPLIT|NOFRAME, $0
   BC_CMP_OP_F64_IMM($VCMP_IMM_LT_OQ)
-  NEXT_ADVANCE(BC_SLOT_SIZE*3 + 8)
+  NEXT_ADVANCE(BC_SLOT_SIZE*3 + BC_IMM64_SIZE)
 
 // Implements `cmp_ordered_le(a, b) | isnan(b)`:
 //   - `val <= val` -> result
@@ -1779,7 +1779,7 @@ TEXT bccmplef64(SB), NOSPLIT|NOFRAME, $0
 //
 TEXT bccmplef64imm(SB), NOSPLIT|NOFRAME, $0
   BC_CMP_OP_F64_IMM($VCMP_IMM_LE_OQ)
-  NEXT_ADVANCE(BC_SLOT_SIZE*3 + 8)
+  NEXT_ADVANCE(BC_SLOT_SIZE*3 + BC_IMM64_SIZE)
 
 // Implements `cmp_unordered_gt(a, b) ^ isnan(b)`
 //   - `val > val` -> result
@@ -1814,7 +1814,7 @@ TEXT bccmpgtf64(SB), NOSPLIT|NOFRAME, $0
 //
 TEXT bccmpgtf64imm(SB), NOSPLIT|NOFRAME, $0
   BC_CMP_OP_F64_IMM($VCMP_IMM_NLE_UQ)
-  NEXT_ADVANCE(BC_SLOT_SIZE*3 + 8)
+  NEXT_ADVANCE(BC_SLOT_SIZE*3 + BC_IMM64_SIZE)
 
 // Implements `cmp_ordered_ge(a, b) | isnan(a)`
 //   - `val >= val` -> result
@@ -1848,7 +1848,7 @@ TEXT bccmpgef64(SB), NOSPLIT|NOFRAME, $0
 //
 TEXT bccmpgef64imm(SB), NOSPLIT|NOFRAME, $0
   BC_CMP_OP_F64_IMM($VCMP_IMM_NLT_UQ)
-  NEXT_ADVANCE(BC_SLOT_SIZE*3 + 8)
+  NEXT_ADVANCE(BC_SLOT_SIZE*3 + BC_IMM64_SIZE)
 
 //
 // k[0] = cmpeq.i64(i64[1], i64[2]).k[3]
@@ -1862,7 +1862,7 @@ TEXT bccmpeqi64(SB), NOSPLIT|NOFRAME, $0
 //
 TEXT bccmpeqi64imm(SB), NOSPLIT|NOFRAME, $0
   BC_CMP_OP_I64_IMM($VPCMP_IMM_EQ)
-  NEXT_ADVANCE(BC_SLOT_SIZE*3 + 8)
+  NEXT_ADVANCE(BC_SLOT_SIZE*3 + BC_IMM64_SIZE)
 
 //
 // k[0] = cmplt.i64(i64[1], i64[2]).k[3]
@@ -1876,7 +1876,7 @@ TEXT bccmplti64(SB), NOSPLIT|NOFRAME, $0
 //
 TEXT bccmplti64imm(SB), NOSPLIT|NOFRAME, $0
   BC_CMP_OP_I64_IMM($VPCMP_IMM_LT)
-  NEXT_ADVANCE(BC_SLOT_SIZE*3 + 8)
+  NEXT_ADVANCE(BC_SLOT_SIZE*3 + BC_IMM64_SIZE)
 
 //
 // k[0] = cmple.i64(i64[1], i64[2]).k[3]
@@ -1890,7 +1890,7 @@ TEXT bccmplei64(SB), NOSPLIT|NOFRAME, $0
 //
 TEXT bccmplei64imm(SB), NOSPLIT|NOFRAME, $0
   BC_CMP_OP_I64_IMM($VPCMP_IMM_LE)
-  NEXT_ADVANCE(BC_SLOT_SIZE*3 + 8)
+  NEXT_ADVANCE(BC_SLOT_SIZE*3 + BC_IMM64_SIZE)
 
 //
 // k[0] = cmpgt.i64(i64[1], i64[2]).k[3]
@@ -1904,7 +1904,7 @@ TEXT bccmpgti64(SB), NOSPLIT|NOFRAME, $0
 //
 TEXT bccmpgti64imm(SB), NOSPLIT|NOFRAME, $0
   BC_CMP_OP_I64_IMM($VPCMP_IMM_GT)
-  NEXT_ADVANCE(BC_SLOT_SIZE*3 + 8)
+  NEXT_ADVANCE(BC_SLOT_SIZE*3 + BC_IMM64_SIZE)
 
 //
 // k[0] = cmpge.i64(i64[1], i64[2]).k[3]
@@ -1918,7 +1918,7 @@ TEXT bccmpgei64(SB), NOSPLIT|NOFRAME, $0
 //
 TEXT bccmpgei64imm(SB), NOSPLIT|NOFRAME, $0
   BC_CMP_OP_I64_IMM($VPCMP_IMM_GE)
-  NEXT_ADVANCE(BC_SLOT_SIZE*3 + 8)
+  NEXT_ADVANCE(BC_SLOT_SIZE*3 + BC_IMM64_SIZE)
 
 #undef BC_CMP_OP_F64_IMM
 #undef BC_CMP_OP_I64_IMM
@@ -1968,7 +1968,7 @@ TEXT bcchecktag(SB), NOSPLIT|NOFRAME, $0
   BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
   BC_STORE_VALUE_TO_SLOT(IN(Z2), IN(Z3), IN(Z4), IN(Z5), IN(DX))
 
-  NEXT_ADVANCE(BC_SLOT_SIZE*4 + 2)
+  NEXT_ADVANCE(BC_SLOT_SIZE*4 + BC_IMM16_SIZE)
 
 // LUT for ion type bits -> json "type" bits
 CONST_DATA_U8(consts_typebits_shuf, 0, $(1 << 0))  // null -> null
@@ -2215,7 +2215,7 @@ tail:
 next:
   BC_UNPACK_SLOT(0, OUT(DX))
   BC_STORE_K_TO_SLOT(IN(K1), IN(DX))
-  NEXT_ADVANCE(BC_SLOT_SIZE*3+10)
+  NEXT_ADVANCE(BC_SLOT_SIZE*3 + BC_LITREF_SIZE)
 
 // Timestamp Boxing, Unboxing, and Manipulation
 // ============================================
@@ -2712,7 +2712,7 @@ TEXT bcdatediffparam(SB), NOSPLIT|NOFRAME, $0
   BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
   BC_STORE_I64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
 
-  NEXT_ADVANCE(BC_SLOT_SIZE*5 + 8)
+  NEXT_ADVANCE(BC_SLOT_SIZE*5 + BC_IMM64_SIZE)
 
 // i64[0].k[1] = datediffmqy(ts[2], ts[3], i16@imm[4]).k[5]
 //
@@ -2815,7 +2815,7 @@ TEXT bcdatediffmqy(SB), NOSPLIT|NOFRAME, $0
   BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
   BC_STORE_I64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
 
-  NEXT_ADVANCE(BC_SLOT_SIZE*5 + 2)
+  NEXT_ADVANCE(BC_SLOT_SIZE*5 + BC_IMM16_SIZE)
 
 #define BC_EXTRACT_HMS_FROM_TIMESTAMP(OUT1, OUT2, IN1, IN2, TMP1, TMP2, TMP3, TMP4, TMP5) \
   /* First cut off some bits and convert to float64 without losing the precision. */      \
@@ -3347,7 +3347,7 @@ TEXT bcdatetruncdow(SB), NOSPLIT|NOFRAME, $0
   VPMULLQ Z6, Z5, K2, Z3                   // Z3 <- Truncated timestamp in unix microseconds (high)
 
   BC_STORE_I64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
-  NEXT_ADVANCE(BC_SLOT_SIZE*3 + 2)
+  NEXT_ADVANCE(BC_SLOT_SIZE*3 + BC_IMM16_SIZE)
 
 // ts[0] = datetruncmonth(ts[1]).k[2]
 TEXT bcdatetruncmonth(SB), NOSPLIT|NOFRAME, $0
@@ -5316,7 +5316,7 @@ TEXT bcunpack(SB), NOSPLIT|NOFRAME, $0
   BC_STORE_SLICE_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
   BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
 
-  NEXT_ADVANCE(BC_SLOT_SIZE*4 + 2)
+  NEXT_ADVANCE(BC_SLOT_SIZE*4 + BC_IMM16_SIZE)
 
 // v[0] = unsymbolize(v[1]).k[2]
 //
@@ -6643,7 +6643,7 @@ next:
   BC_UNPACK_SLOT(0, OUT(R8))
   BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
 
-  NEXT_ADVANCE(BC_SLOT_SIZE*3 + 2)
+  NEXT_ADVANCE(BC_SLOT_SIZE*3 + BC_IMM16_SIZE)
 
 // v[0].k[1] = hashlookup(h[2], imm16[3]).k[4]
 //
@@ -6806,7 +6806,7 @@ next:
   BC_STORE_VALUE_TO_SLOT(IN(Z30), IN(Z31), IN(Z2), IN(Z3), IN(DX))
   BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
 
-  NEXT_ADVANCE(BC_SLOT_SIZE*4 + 2)
+  NEXT_ADVANCE(BC_SLOT_SIZE*4 + BC_IMM16_SIZE)
 
 
 // Simple Aggregation Instructions
@@ -7653,7 +7653,7 @@ TEXT bclitref(SB), NOSPLIT|NOFRAME, $0
   VPBROADCASTB.Z (BC_SLOT_SIZE+9)(VIRT_PCREG), K7, X5       // X5 <- header length
 
   BC_STORE_VALUE_TO_SLOT_X(IN(Z2), IN(Z3), IN(X4), IN(X5), IN(DX))
-  NEXT_ADVANCE(BC_SLOT_SIZE + 10)
+  NEXT_ADVANCE(BC_SLOT_SIZE + BC_LITREF_SIZE)
 
 // v[0].k[1] = auxval(p[2])
 TEXT bcauxval(SB), NOSPLIT|NOFRAME, $0
@@ -7690,7 +7690,7 @@ TEXT bcauxval(SB), NOSPLIT|NOFRAME, $0
   BC_STORE_VALUE_TO_SLOT(IN(Z0), IN(Z1), IN(Z2), IN(Z3), IN(DX))
   BC_STORE_K_TO_SLOT(IN(K1), IN(CX))
 
-  NEXT_ADVANCE(BC_SLOT_SIZE*2 + 2)
+  NEXT_ADVANCE(BC_SLOT_SIZE*2 + BC_IMM16_SIZE)
 
 // v[0], s[1].k[2] = split(s[3]).k[4]
 //
@@ -12497,7 +12497,7 @@ TEXT bcpowuintf64(SB), NOSPLIT|NOFRAME, $0
 
     BC_UNPACK_SLOT(0, OUT(BX))
     BC_STORE_F64_TO_SLOT(IN(Z2), IN(Z3), IN(BX))
-    NEXT_ADVANCE(BC_SLOT_SIZE*3 + 8)
+    NEXT_ADVANCE(BC_SLOT_SIZE*3 + BC_IMM64_SIZE)
 
 
 // chacha8 random initialization vector

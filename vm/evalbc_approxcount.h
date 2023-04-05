@@ -55,7 +55,7 @@ loop_tail:
 next:
     MOVQ bytecode_spillArea(VIRT_BCPTR), R12
 
-    NEXT_ADVANCE(BC_SLOT_SIZE*2 + BC_AGGSLOT_SIZE + 2)
+    NEXT_ADVANCE(BC_SLOT_SIZE*2 + BC_AGGSLOT_SIZE + BC_IMM16_SIZE)
 
 // bcaggapproxcountmerge implements buckets filled by bcaggapproxcount opcode.
 //
@@ -131,7 +131,7 @@ skip:
     JNZ     main_loop
 
 end:
-    NEXT_ADVANCE(BC_SLOT_SIZE*2 + BC_AGGSLOT_SIZE + 2)
+    NEXT_ADVANCE(BC_SLOT_SIZE*2 + BC_AGGSLOT_SIZE + BC_IMM16_SIZE)
 
 wrong_input:
     FAIL()
@@ -241,7 +241,7 @@ skip:
 next:
     VMOVQ X12, R12
     VMOVQ X9, R9
-    NEXT_ADVANCE(BC_SLOT_SIZE*3 + BC_AGGSLOT_SIZE + 2)
+    NEXT_ADVANCE(BC_SLOT_SIZE*3 + BC_AGGSLOT_SIZE + BC_IMM16_SIZE)
 
 // bcaggslotapproxcountmerge implements update of HLL state for
 // aggregates executed in GROUP BY
@@ -331,4 +331,4 @@ skip:
 #undef VAL_BUFFER_PTR
 
 next:
-    NEXT_ADVANCE(BC_SLOT_SIZE*3 + BC_AGGSLOT_SIZE + 2)
+    NEXT_ADVANCE(BC_SLOT_SIZE*3 + BC_AGGSLOT_SIZE + BC_IMM16_SIZE)

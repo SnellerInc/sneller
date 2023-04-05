@@ -154,6 +154,8 @@ const (
 	bcAggSlotSize = 4
 	bcLitRefSize  = 10
 	bcSymbolSize  = 4
+	bcImm16Size   = 2
+	bcImm64Size   = 8
 )
 
 type opcodeAnalyser struct {

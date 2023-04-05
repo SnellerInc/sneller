@@ -133,7 +133,7 @@ TEXT bcbroadcastf64(SB), NOSPLIT|NOFRAME, $0
   VMOVUPD Z2, 0(VIRT_VALUES)(DX*1)
   VMOVUPD Z2, 64(VIRT_VALUES)(DX*1)
 
-  NEXT_ADVANCE(BC_SLOT_SIZE*1 + 8)
+  NEXT_ADVANCE(BC_SLOT_SIZE*1 + BC_IMM64_SIZE)
 
 // Floating Point Math Instructions - Abs
 // --------------------------------------
@@ -274,7 +274,7 @@ TEXT bcaddf64(SB), NOSPLIT|NOFRAME, $0
 // f64[0].k[1] = add.f64@imm(f64[2], f64@imm[3]).k[4]
 TEXT bcaddf64imm(SB), NOSPLIT|NOFRAME, $0
   BC_ARITH_REVERSE_OP_F64_IMM_IMPL(VADDPD)
-  NEXT_ADVANCE(BC_SLOT_SIZE*4 + 8)
+  NEXT_ADVANCE(BC_SLOT_SIZE*4 + BC_IMM64_SIZE)
 
 // Floating Point Math Instructions - Sub
 // --------------------------------------
@@ -287,12 +287,12 @@ TEXT bcsubf64(SB), NOSPLIT|NOFRAME, $0
 // f64[0].k[1] = sub.f64@imm(f64[2], f64@imm[3]).k[4]
 TEXT bcsubf64imm(SB), NOSPLIT|NOFRAME, $0
   BC_ARITH_OP_F64_IMM_IMPL_K(VSUBPD)
-  NEXT_ADVANCE(BC_SLOT_SIZE*4 + 8)
+  NEXT_ADVANCE(BC_SLOT_SIZE*4 + BC_IMM64_SIZE)
 
 // f64[0].k[1] = rsub.f64@imm(f64@imm[3], f64[2]).k[4]
 TEXT bcrsubf64imm(SB), NOSPLIT|NOFRAME, $0
   BC_ARITH_REVERSE_OP_F64_IMM_IMPL(VSUBPD)
-  NEXT_ADVANCE(BC_SLOT_SIZE*4 + 8)
+  NEXT_ADVANCE(BC_SLOT_SIZE*4 + BC_IMM64_SIZE)
 
 // Floating Point Math Instructions - Mul
 // --------------------------------------
@@ -305,7 +305,7 @@ TEXT bcmulf64(SB), NOSPLIT|NOFRAME, $0
 // f64[0].k[1] = mul.f64@imm(f64[2], f64@imm[3]).k[4]
 TEXT bcmulf64imm(SB), NOSPLIT|NOFRAME, $0
   BC_ARITH_OP_F64_IMM_IMPL_K(VMULPD)
-  NEXT_ADVANCE(BC_SLOT_SIZE*4 + 8)
+  NEXT_ADVANCE(BC_SLOT_SIZE*4 + BC_IMM64_SIZE)
 
 // Floating Point Math Instructions - Div
 // --------------------------------------
@@ -318,12 +318,12 @@ TEXT bcdivf64(SB), NOSPLIT|NOFRAME, $0
 // f64[0].k[1] = div.f64@imm(f64[2], f64@imm[3]).k[4]
 TEXT bcdivf64imm(SB), NOSPLIT|NOFRAME, $0
   BC_ARITH_OP_F64_IMM_IMPL_K(VDIVPD)
-  NEXT_ADVANCE(BC_SLOT_SIZE*4 + 8)
+  NEXT_ADVANCE(BC_SLOT_SIZE*4 + BC_IMM64_SIZE)
 
 // f64[0].k[1] = rdiv.f64@imm(f64@imm[3], f64[2]).k[4]
 TEXT bcrdivf64imm(SB), NOSPLIT|NOFRAME, $0
   BC_ARITH_REVERSE_OP_F64_IMM_IMPL(VDIVPD)
-  NEXT_ADVANCE(BC_SLOT_SIZE*4 + 8)
+  NEXT_ADVANCE(BC_SLOT_SIZE*4 + BC_IMM64_SIZE)
 
 // Floating Point Math Instructions - Mod
 // --------------------------------------
@@ -360,7 +360,7 @@ TEXT bcmodf64imm(SB), NOSPLIT|NOFRAME, $0
   BC_STORE_F64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
   BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
 
-  NEXT_ADVANCE(BC_SLOT_SIZE*4 + 8)
+  NEXT_ADVANCE(BC_SLOT_SIZE*4 + BC_IMM64_SIZE)
 
 // f64[0].k[1] = rmod.f64@imm(f64@imm[3], f64[2]).k[4]
 TEXT bcrmodf64imm(SB), NOSPLIT|NOFRAME, $0
@@ -376,7 +376,7 @@ TEXT bcrmodf64imm(SB), NOSPLIT|NOFRAME, $0
   BC_STORE_F64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
   BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
 
-  NEXT_ADVANCE(BC_SLOT_SIZE*4 + 8)
+  NEXT_ADVANCE(BC_SLOT_SIZE*4 + BC_IMM64_SIZE)
 
 // Floating Point Math Instructions - Min
 // --------------------------------------
@@ -389,7 +389,7 @@ TEXT bcminvaluef64(SB), NOSPLIT|NOFRAME, $0
 // f64[0] = minvalue.f64@imm(f64[1], f64@imm[2]).k[3]
 TEXT bcminvaluef64imm(SB), NOSPLIT|NOFRAME, $0
   BC_ARITH_OP_F64_IMM_IMPL(VMINPD)
-  NEXT_ADVANCE(BC_SLOT_SIZE*3 + 8)
+  NEXT_ADVANCE(BC_SLOT_SIZE*3 + BC_IMM64_SIZE)
 
 // Floating Point Math Instructions - Max
 // --------------------------------------
@@ -402,7 +402,7 @@ TEXT bcmaxvaluef64(SB), NOSPLIT|NOFRAME, $0
 // f64[0] = maxvalue.f64@imm(f64[1], f64@imm[2]).k[3]
 TEXT bcmaxvaluef64imm(SB), NOSPLIT|NOFRAME, $0
   BC_ARITH_OP_F64_IMM_IMPL(VMAXPD)
-  NEXT_ADVANCE(BC_SLOT_SIZE*3 + 8)
+  NEXT_ADVANCE(BC_SLOT_SIZE*3 + BC_IMM64_SIZE)
 
 // Floating Point Math Instructions - sqrt(x)
 // ------------------------------------------
