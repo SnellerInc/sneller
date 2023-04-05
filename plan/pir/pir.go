@@ -1297,10 +1297,10 @@ func conjunctions(e expr.Node, lst []expr.Node) []expr.Node {
 //
 // NOTE: conjunctions(x AND y AND z) returns [z, x, y],
 // so conjoinAll(x, y, z) returns "z AND y AND x".
-func conjoinAll(x []expr.Node, scope *Trace, whence Step) expr.Node {
+func conjoinAll(x []expr.Node, whence Step) expr.Node {
 	var node expr.Node
 	for i := range x {
-		node = conjoin(x[i], node, scope, whence)
+		node = conjoin(x[i], node, whence)
 	}
 	if node != nil {
 		node = expr.SimplifyLogic(node, &stepHint{whence.parent()})

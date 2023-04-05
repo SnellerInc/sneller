@@ -165,7 +165,7 @@ func (b *Trace) decorrelateWhere(x string, it *IterTable) (y expr.Node) {
 		}
 	}
 	if y != nil {
-		it.Filter = conjoinAll(where, b, it)
+		it.Filter = conjoinAll(where, it)
 	}
 	return y
 }

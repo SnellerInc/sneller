@@ -41,7 +41,7 @@ func filterelim(b *Trace) {
 	}
 }
 
-func conjoin(x, y expr.Node, scope *Trace, at Step) expr.Node {
+func conjoin(x, y expr.Node, at Step) expr.Node {
 	if x == nil {
 		return y
 	}
@@ -90,12 +90,12 @@ func onlyReferences(e expr.Node, bind string) bool {
 
 // tables accept filters directly
 func (i *IterTable) filter(e expr.Node, scope *Trace) {
-	i.Filter = conjoin(i.Filter, e, scope, i)
+	i.Filter = conjoin(i.Filter, e, i)
 }
 
 // filters accept filters directly (duh)
 func (f *Filter) filter(e expr.Node, scope *Trace) {
-	f.Where = conjoin(f.Where, e, scope, f)
+	f.Where = conjoin(f.Where, e, f)
 }
 
 // bindings can be filtered by replacing
@@ -159,7 +159,7 @@ func push(f *Filter, dst Step, s *Trace) bool {
 			if remaining == nil {
 				remaining = conj[j]
 			} else {
-				remaining = conjoin(remaining, conj[j], s, eqj)
+				remaining = conjoin(remaining, conj[j], eqj)
 			}
 		}
 		if remaining == nil {
@@ -184,7 +184,7 @@ func push(f *Filter, dst Step, s *Trace) bool {
 				if remaining == nil {
 					remaining = conj[j]
 				} else {
-					remaining = conjoin(remaining, conj[j], s, iv)
+					remaining = conjoin(remaining, conj[j], iv)
 				}
 			}
 		}
