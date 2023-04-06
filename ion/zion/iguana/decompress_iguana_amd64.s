@@ -26,8 +26,8 @@
 #define long_literal_register       Y2
 #define short_match_stride          32
 #define short_match_register        Y2
-#define long_match_stride           64
-#define long_match_register         Z2
+#define long_match_stride           32
+#define long_match_register         Y2
 
 // -------------------------------------------
 

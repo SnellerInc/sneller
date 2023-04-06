@@ -19,6 +19,8 @@ import (
 	"math"
 	"math/bits"
 
+	"github.com/SnellerInc/sneller/ints"
+
 	"golang.org/x/exp/slices"
 )
 
@@ -50,7 +52,7 @@ const (
 )
 
 const (
-	iguanaChunkSize = 64
+	iguanaChunkSize = 32
 	minOffset       = iguanaChunkSize
 	minLength       = iguanaChunkSize
 )
@@ -108,7 +110,6 @@ type hunk struct {
 	offsets [hunksize]uint32
 	next    uint32
 	valid   int8
-	epoch   uint8 // useed to match the table epoch
 }
 
 func (h *hunk) entries() []uint32 {
@@ -376,10 +377,6 @@ type matchDescriptor struct {
 	cost   int32
 }
 
-func hashMatch(c0, c1 byte) uint {
-	return uint(c1)<<8 | uint(c0)
-}
-
 func clamp(buf []byte, maxlen int) []byte {
 	if len(buf) > maxlen {
 		return buf[:maxlen]
@@ -404,7 +401,9 @@ func (ec *encodingContext) encodeIguanaHashChains() {
 	ec.pendingLiterals = append(ec.pendingLiterals, prefix...)
 	ec.table.insert(prefix, 0)
 
-	for ec.currentOffset < uint32(last) {
+	// search for matches up to *and including*
+	// the last allowed match position
+	for ec.currentOffset <= uint32(last) {
 		seq := src[ec.currentOffset:]
 		curmatch := matchDescriptor{cost: costInfinite}
 		for h := ec.table.chain(seq); h != nil; h = ec.table.next(h) {
@@ -421,6 +420,11 @@ func (ec *encodingContext) encodeIguanaHashChains() {
 			}
 			ec.currentOffset++
 		} else {
+			if ec.currentOffset+ints.AlignUp32(curmatch.length, minLength) > uint32(len(src)) {
+				// make sure we don't implicitly ask the decoder
+				// to write past the end of the target buffer
+				curmatch.length = ints.AlignDown32(curmatch.length, minLength)
+			}
 			clamp := curmatch.length
 			if clamp > minOffset {
 				// if we get a match longer than minOffset,
@@ -517,7 +521,6 @@ func (ec *encodingContext) emit(m *matchDescriptor) {
 			token = 0x00
 			ec.offsets16 = appendUint16(ec.offsets16, offs)
 		}
-
 		if litLen < maxShortLitLen {
 			token |= byte(litLen)
 		} else {
@@ -531,7 +534,6 @@ func (ec *encodingContext) emit(m *matchDescriptor) {
 			token |= byte(maxShortMatchLen << literalLenBits)
 			ec.varMatchLen = appendVarUint(ec.varMatchLen, matchLen-maxShortMatchLen)
 		}
-
 		ec.tokens = append(ec.tokens, token)
 
 	} else {

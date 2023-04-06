@@ -75,10 +75,16 @@ func TestRoundtrip(t *testing.T) {
 	})
 	// try a bunch of short-length strings
 	buf := []byte(`this is a short string that we will re-slice for small test-cases`)
-	for len(buf) < minOffset*2 {
+	for len(buf) < minOffset*3 {
 		buf = append(buf, buf...)
 	}
 	t.Run("short-strings", func(t *testing.T) {
+		for i := range buf {
+			testRoundtrip(t, buf[i:])
+		}
+	})
+	buf = bytes.Repeat([]byte{'a'}, 3*minOffset)
+	t.Run("short-repeats", func(t *testing.T) {
 		for i := range buf {
 			testRoundtrip(t, buf[i:])
 		}
@@ -109,14 +115,24 @@ func testRoundtrip(t *testing.T, src []byte) {
 	t.Logf("comprLen = %d\n", dstLen)
 	compressionRatio := 100.0 * (1.0 - float64(dstLen)/float64(srcLen))
 	t.Logf("compressed by = %f%%\n", compressionRatio)
-	out := make([]byte, 0, 1024*1024)
-	out, err = dec.DecompressTo(out, dst)
+
+	// provide a buffer that is perfectly-sized
+	// so we can see if there are any oob writes
+	out := make([]byte, len(src), len(src)+minLength)
+	ret, err := dec.DecompressTo(out[:0:len(src)], dst)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Equal(src, out) {
+	tail := out[len(out):cap(out)]
+	for i := range tail {
+		if tail[i] != 0 {
+			t.Logf("%x", tail)
+			t.Fatal("wrote garbage to the end of the buffer?")
+		}
+	}
+	if !bytes.Equal(src, ret) {
 		// print the diff of the hexdumps
-		delta, ok := tests.Diff(hex.Dump(src), hex.Dump(out))
+		delta, ok := tests.Diff(hex.Dump(src), hex.Dump(ret))
 		if ok {
 			t.Log(delta)
 		}

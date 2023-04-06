@@ -253,11 +253,12 @@ func decompressIguanaReference(dst []byte, streams *streamPack, lastOffset *int)
 				}
 				litLen = val + maxShortLitLen
 			}
-
-			if x, ec := streams[stridLiterals].fetchSequence(litLen); ec != ecOK {
-				return dst, ec
-			} else {
-				dst = append(dst, x...)
+			if litLen > 0 {
+				if x, ec := streams[stridLiterals].fetchSequence(litLen); ec != ecOK {
+					return dst, ec
+				} else {
+					dst = append(dst, x...)
+				}
 			}
 
 			// get offset
@@ -306,12 +307,14 @@ func decompressIguanaReference(dst []byte, streams *streamPack, lastOffset *int)
 
 	// last literals
 	remainderLen := streams[stridLiterals].remaining()
-
-	if x, ec := streams[stridLiterals].fetchSequence(remainderLen); ec != ecOK {
-		return dst, ec
-	} else {
-		dst = append(dst, x...)
+	if remainderLen > 0 {
+		if x, ec := streams[stridLiterals].fetchSequence(remainderLen); ec != ecOK {
+			return dst, ec
+		} else {
+			dst = append(dst, x...)
+		}
 	}
+
 	// end of decoding
 	*lastOffset = lastOffs
 	return dst, ecOK
