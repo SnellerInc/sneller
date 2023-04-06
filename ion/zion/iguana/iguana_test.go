@@ -73,6 +73,16 @@ func TestRoundtrip(t *testing.T) {
 			testRoundtrip(t, buf)
 		})
 	})
+	// try a bunch of short-length strings
+	buf := []byte(`this is a short string that we will re-slice for small test-cases`)
+	for len(buf) < minOffset*2 {
+		buf = append(buf, buf...)
+	}
+	t.Run("short-strings", func(t *testing.T) {
+		for i := range buf {
+			testRoundtrip(t, buf[i:])
+		}
+	})
 }
 
 func testRoundtrip(t *testing.T, src []byte) {

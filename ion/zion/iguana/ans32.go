@@ -50,7 +50,10 @@ type ansRawStatistics struct {
 	cumFreqs [256 + 1]uint32
 }
 
-type AnsStatistics [256]uint32
+type ANSStatistics struct {
+	table      [256]uint32
+	ctrl, data ansBitStream // re-used for serialization
+}
 
 func (s *ansRawStatistics) normalizeFreqs() {
 	s.calcCumFreqs()
@@ -110,12 +113,10 @@ func (s *ansRawStatistics) calcCumFreqs() {
 
 // Genuine Sneller code starts here
 
-func (s *ansRawStatistics) transcode() *AnsStatistics {
-	r := AnsStatistics{}
+func (s *ANSStatistics) set(raw *ansRawStatistics) {
 	for i := 0; i < 256; i++ {
-		r[i] = (s.cumFreqs[i] << ansStatisticsCumulativeFrequencyBits) | s.freqs[i]
+		s.table[i] = (raw.cumFreqs[i] << ansStatisticsCumulativeFrequencyBits) | raw.freqs[i]
 	}
-	return &r
 }
 
 const (
@@ -124,17 +125,18 @@ const (
 	ansDenseTableMaxLength  = ansCtrlBlockSize + ansNibbleBlockMaxLength
 )
 
-type AnsDenseTable [ansWordM]uint32
+type ANSDenseTable [ansWordM]uint32
 
 type ANSEncoder struct {
-	state  [32]uint32
-	bufFwd []byte
-	bufRev []byte
-	src    []byte
-	stats  *AnsStatistics
+	state   [32]uint32
+	bufFwd  []byte
+	bufRev  []byte
+	src     []byte
+	stats   *ANSStatistics
+	statbuf ANSStatistics
 }
 
-func (e *ANSEncoder) init(src []byte, stats *AnsStatistics) {
+func (e *ANSEncoder) init(src []byte, stats *ANSStatistics) {
 	e.src = src
 	e.bufFwd = slices.Grow(e.bufFwd[:0], ansInitialBufferSize)
 	e.bufRev = slices.Grow(e.bufRev[:0], ansInitialBufferSize)
@@ -149,7 +151,7 @@ func (e *ANSEncoder) put(chunk []byte) {
 	// the forward half
 	for lane := 15; lane >= 0; lane-- {
 		if lane < avail {
-			q := e.stats[chunk[lane]]
+			q := e.stats.table[chunk[lane]]
 			freq := q & ansStatisticsFrequencyMask
 			start := (q >> ansStatisticsFrequencyBits) & ansStatisticsCumulativeFrequencyMask
 			// renormalize
@@ -165,7 +167,7 @@ func (e *ANSEncoder) put(chunk []byte) {
 	// the reverse half
 	for lane := 31; lane >= 16; lane-- {
 		if lane < avail {
-			q := e.stats[chunk[lane]]
+			q := e.stats.table[chunk[lane]]
 			freq := q & ansStatisticsFrequencyMask
 			start := (q >> ansStatisticsFrequencyBits) & ansStatisticsCumulativeFrequencyMask
 			// renormalize
@@ -190,17 +192,16 @@ func (e *ANSEncoder) flush() {
 }
 
 func (e *ANSEncoder) Encode(src []byte) ([]byte, error) {
-	stats := AnsMakeStatistics(src)
+	stats := &e.statbuf
+	stats.observe(src)
 	dst, err := e.EncodeExplicit(src, stats)
 	if err != nil {
 		return dst, err
 	}
-	encStats := stats.Encode()
-	dst = append(dst, encStats...)
-	return dst, nil
+	return stats.Encode(dst), nil
 }
 
-func (e *ANSEncoder) EncodeExplicit(src []byte, stats *AnsStatistics) ([]byte, error) {
+func (e *ANSEncoder) EncodeExplicit(src []byte, stats *ANSStatistics) ([]byte, error) {
 	// Initialize the rANS encoder
 	e.init(src, stats)
 	ansCompress(e)
@@ -231,7 +232,7 @@ func ansCompressReference(enc *ANSEncoder) {
 	enc.src = enc.src[:0]
 }
 
-func AnsDecode(src []byte, dstLen int) ([]byte, error) {
+func ANSDecode(src []byte, dstLen int) ([]byte, error) {
 	r, ec := ansDecode(src, dstLen)
 	if ec != ecOK {
 		return nil, errs[ec]
@@ -239,7 +240,7 @@ func AnsDecode(src []byte, dstLen int) ([]byte, error) {
 	return r, nil
 }
 
-func AnsDecodeExplicit(src []byte, tab *AnsDenseTable, dstLen int, dst []byte) ([]byte, error) {
+func ANSDecodeExplicit(src []byte, tab *ANSDenseTable, dstLen int, dst []byte) ([]byte, error) {
 	r, ec := ansDecodeExplicit(src, tab, dstLen, dst)
 	if ec != ecOK {
 		return nil, errs[ec]
@@ -249,7 +250,7 @@ func AnsDecodeExplicit(src []byte, tab *AnsDenseTable, dstLen int, dst []byte) (
 
 func ansDecode(src []byte, dstLen int) ([]byte, errorCode) {
 	dst := make([]byte, 0, dstLen)
-	var tab AnsDenseTable
+	var tab ANSDenseTable
 	data, ec := tab.decode(src)
 	if ec != ecOK {
 		return nil, ec
@@ -257,7 +258,7 @@ func ansDecode(src []byte, dstLen int) ([]byte, errorCode) {
 	return ansDecodeExplicit(data, &tab, dstLen, dst)
 }
 
-func ansDecodeExplicit(src []byte, tab *AnsDenseTable, dstLen int, dst []byte) ([]byte, errorCode) {
+func ansDecodeExplicit(src []byte, tab *ANSDenseTable, dstLen int, dst []byte) ([]byte, errorCode) {
 	r, ec := ansDecompress(dst, dstLen, src, tab)
 	if ec != ecOK {
 		return nil, ec
@@ -265,7 +266,7 @@ func ansDecodeExplicit(src []byte, tab *AnsDenseTable, dstLen int, dst []byte) (
 	return r, ecOK
 }
 
-func ansDecompressReference(dst []byte, dstLen int, src []byte, tab *AnsDenseTable) ([]byte, errorCode) {
+func ansDecompressReference(dst []byte, dstLen int, src []byte, tab *ANSDenseTable) ([]byte, errorCode) {
 	var state [32]uint32
 	cursorFwd := 64
 	cursorRev := len(src) - 64
@@ -315,9 +316,12 @@ Outer:
 	return dst, ecOK
 }
 
-func (s *AnsStatistics) Encode() []byte {
-	var ctrl ansBitStream
-	var data ansBitStream
+// Encode appends the serialized representation of
+// the statistics s to the buffer dst and returns
+// the extended buffer.
+func (s *ANSStatistics) Encode(dst []byte) []byte {
+	s.ctrl.reset()
+	s.data.reset()
 
 	// 000 => 0
 	// 001 => 1
@@ -329,36 +333,47 @@ func (s *AnsStatistics) Encode() []byte {
 	// 111 => three nibbles f - 277
 
 	for i := 0; i < 256; i++ {
-		f := s[i] & ansStatisticsFrequencyMask
+		f := s.table[i] & ansStatisticsFrequencyMask
 		if f < 5 {
-			ctrl.add(f, 3)
+			s.ctrl.add(f, 3)
 		} else if f < 21 {
-			ctrl.add(0b101, 3)
-			data.add(f-5, 4)
+			s.ctrl.add(0b101, 3)
+			s.data.add(f-5, 4)
 		} else if f < 277 {
-			ctrl.add(0b110, 3)
-			data.add(f-21, 8)
+			s.ctrl.add(0b110, 3)
+			s.data.add(f-21, 8)
 		} else {
-			ctrl.add(0b111, 3)
-			data.add(f-277, 12)
+			s.ctrl.add(0b111, 3)
+			s.data.add(f-277, 12)
 		}
 	}
 
-	ctrl.flush()
-	data.flush()
+	s.ctrl.flush()
+	s.data.flush()
 
-	lenCtrl := len(ctrl.buf)
-	lenData := len(data.buf)
-	res := make([]byte, lenData+lenCtrl)
+	lenCtrl := len(s.ctrl.buf)
+	lenData := len(s.data.buf)
 
-	for i := 0; i < lenData; i++ {
-		res[lenData-i-1] = data.buf[i]
+	base := len(dst)
+	res := slices.Grow(dst, lenData+lenCtrl)
+	res = res[:base+lenData+lenCtrl]
+
+	for i := range s.data.buf {
+		res[base+lenData-i-1] = s.data.buf[i]
 	}
-	copy(res[lenData:], ctrl.buf)
+	copy(res[base+lenData:], s.ctrl.buf)
 	return res
 }
 
-func AnsMakeStatistics(src []byte) *AnsStatistics {
+// NewANSStatistics computes an ANS frequency table
+// on the buffer src.
+func NewANSStatistics(src []byte) *ANSStatistics {
+	stats := &ANSStatistics{}
+	stats.observe(src)
+	return stats
+}
+
+func (s *ANSStatistics) observe(src []byte) {
 	stats := &ansRawStatistics{}
 	srcLen := len(src)
 
@@ -368,7 +383,8 @@ func AnsMakeStatistics(src []byte) *AnsStatistics {
 		stats.freqs[255] = ansWordM / 2
 		stats.cumFreqs[255] = ansWordM / 2
 		stats.cumFreqs[256] = ansWordM
-		return stats.transcode()
+		s.set(stats)
+		return
 	}
 
 	nonZeroFreqIdx := ansHistogram(&stats.freqs, src)
@@ -392,14 +408,15 @@ func AnsMakeStatistics(src []byte) *AnsStatistics {
 		for i := nonZeroFreqIdx + 1; i < 257; i++ {
 			stats.cumFreqs[i] = ansWordM - 1
 		}
-		return stats.transcode()
+		s.set(stats)
+		return
 	}
 
 	stats.normalizeFreqs()
-	return stats.transcode()
+	s.set(stats)
 }
 
-func ansHistogramReference(freqs *[256]uint32, src []byte) int {
+func ansHistogram(freqs *[256]uint32, src []byte) int {
 	// 4-way histogram calculation to compensate for the store-to-load forwarding issues observed here:
 	// https://fastcompression.blogspot.com/2014/09/counting-bytes-fast-little-trick-from.html
 	var histograms [4][256]uint32
@@ -435,6 +452,12 @@ type ansBitStream struct {
 	buf []byte
 }
 
+func (s *ansBitStream) reset() {
+	s.acc = 0
+	s.cnt = 0
+	s.buf = s.buf[:0]
+}
+
 func (s *ansBitStream) add(v uint32, k uint32) {
 	m := ^(^uint32(0) << k)
 	s.acc |= uint64(v&m) << s.cnt
@@ -468,7 +491,7 @@ func ansFetchNibble(src []byte, idx int) (uint32, int, errorCode) {
 
 // Decode deserializes the probability distribution table into *tab and returns
 // the prefix that precedes the serialized data.
-func (tab *AnsDenseTable) Decode(src []byte) ([]byte, error) {
+func (tab *ANSDenseTable) Decode(src []byte) ([]byte, error) {
 	r, ec := ansDecodeTable(tab, src)
 	if ec != ecOK {
 		return nil, errs[ec]
@@ -476,7 +499,7 @@ func (tab *AnsDenseTable) Decode(src []byte) ([]byte, error) {
 	return r, nil
 }
 
-func (tab *AnsDenseTable) decode(src []byte) ([]byte, errorCode) {
+func (tab *ANSDenseTable) decode(src []byte) ([]byte, errorCode) {
 	r, ec := ansDecodeTable(tab, src)
 	if ec != ecOK {
 		return nil, ec
@@ -484,7 +507,7 @@ func (tab *AnsDenseTable) decode(src []byte) ([]byte, errorCode) {
 	return r, ecOK
 }
 
-func ansDecodeTableReference(tab *AnsDenseTable, src []byte) ([]byte, errorCode) {
+func ansDecodeTableReference(tab *ANSDenseTable, src []byte) ([]byte, errorCode) {
 	// The code part is encoded as 256 3-bit values, making it 96 bytes in total.
 	// Decoding it in groups of 24 bits is convenient: 8 words at a time.
 	srcLen := len(src)
@@ -565,7 +588,6 @@ func init() {
 	}
 }
 
-var ansHistogram func(freqs *[256]uint32, src []byte) int = ansHistogramReference
 var ansCompress func(enc *ANSEncoder) = ansCompressReference
-var ansDecompress func(dst []byte, dstLen int, src []byte, tab *AnsDenseTable) ([]byte, errorCode) = ansDecompressReference
-var ansDecodeTable func(tab *AnsDenseTable, src []byte) ([]byte, errorCode) = ansDecodeTableReference
+var ansDecompress func(dst []byte, dstLen int, src []byte, tab *ANSDenseTable) ([]byte, errorCode) = ansDecompressReference
+var ansDecodeTable func(tab *ANSDenseTable, src []byte) ([]byte, errorCode) = ansDecodeTableReference

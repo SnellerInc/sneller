@@ -63,17 +63,13 @@ func ansCompressAVX512Generic(enc *ANSEncoder) {
 }
 
 //go:noescape
-//go:nosplit
-func ansDecompressAVX512VBMI(dst []byte, dstLen int, src []byte, tab *AnsDenseTable) ([]byte, errorCode)
+func ansDecompressAVX512VBMI(dst []byte, dstLen int, src []byte, tab *ANSDenseTable) ([]byte, errorCode)
 
 //go:noescape
-//go:nosplit
-func ansDecompressAVX512Generic(dst []byte, dstLen int, src []byte, tab *AnsDenseTable) ([]byte, errorCode)
+func ansDecompressAVX512Generic(dst []byte, dstLen int, src []byte, tab *ANSDenseTable) ([]byte, errorCode)
 
 //go:noescape
-//go:nosplit
-func ansDecodeTableAVX512Generic(tab *AnsDenseTable, src []byte) ([]byte, errorCode)
+func ansDecodeTableAVX512Generic(tab *ANSDenseTable, src []byte) ([]byte, errorCode)
 
 //go:noescape
-//go:nosplit
 func ansCompressCoreAVX512Generic(enc *ANSEncoder) ansCoreFlags

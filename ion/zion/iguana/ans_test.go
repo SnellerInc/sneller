@@ -32,7 +32,7 @@ func TestANS(t *testing.T) {
 	lenANS := len(ans)
 	ratio := 100.0 * (1.0 - float64(lenANS)/float64(lenIn))
 	t.Logf("ANS input size: %d, output size %d, compression ratio %f%%\n", lenIn, lenANS, ratio)
-	dec, err := AnsDecode(ans, lenIn)
+	dec, err := ANSDecode(ans, lenIn)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -57,7 +57,7 @@ func FuzzANSRoundtrip(f *testing.F) {
 		if err != nil {
 			return // when would this fail?
 		}
-		decompressed, err := AnsDecode(compressed, refLen)
+		decompressed, err := ANSDecode(compressed, refLen)
 		if err != nil {
 			t.Fatalf("round-trip failed: %s", err)
 		}

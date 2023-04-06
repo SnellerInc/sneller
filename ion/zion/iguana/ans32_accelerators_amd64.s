@@ -221,7 +221,7 @@ out_of_buffer_common:
     RET
 
 
-// func ansDecompressAVX512VBMI(dst []byte, dstLen int, src []byte, tab *AnsDenseTable) ([]byte, errorCode)
+// func ansDecompressAVX512VBMI(dst []byte, dstLen int, src []byte, tab *ANSDenseTable) ([]byte, errorCode)
 TEXT ·ansDecompressAVX512VBMI(SB), NOSPLIT | NOFRAME, $0-64
     MOVL            $(const_ansWordM - 1), AX                       // AX  := uint32{ansWordM - 1}
     MOVQ            src_base+32(FP), SI                             // SI  := uint64{src.Data}
@@ -365,7 +365,7 @@ handle_short_input:
     RET
 
 
-// func ansDecompressAVX512Generic(dst []byte, dstLen int, src []byte, tab *AnsDenseTable) ([]byte, errorCode)
+// func ansDecompressAVX512Generic(dst []byte, dstLen int, src []byte, tab *ANSDenseTable) ([]byte, errorCode)
 TEXT ·ansDecompressAVX512Generic(SB), NOSPLIT | NOFRAME, $0-64
     MOVL            $(const_ansWordM - 1), AX                       // AX  := uint32{ansWordM - 1}
     MOVQ            src_base+32(FP), SI                             // SI  := uint64{src.Data}
@@ -514,7 +514,7 @@ handle_short_input:
     RET
 
 
-// func ansDecodeTableAVX512Generic(tab *AnsDenseTable, src []byte) ([]byte, errorCode)
+// func ansDecodeTableAVX512Generic(tab *ANSDenseTable, src []byte) ([]byte, errorCode)
 TEXT ·ansDecodeTableAVX512Generic(SB), NOSPLIT | NOFRAME, $0-32
     MOVQ            src_base+8(FP), SI                              // SI  := uint64{src.Data}
     MOVQ            src_len+16(FP), R12                             // R12 := uint64{src.Len}

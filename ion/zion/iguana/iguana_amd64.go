@@ -37,9 +37,7 @@ const offsSliceHeaderCap = unsafe.Offsetof(reflect.SliceHeader{}.Cap)   //lint:i
 const sizeSliceHeader = unsafe.Sizeof(reflect.SliceHeader{})            //lint:ignore U1000 used in assembly
 
 //go:noescape
-//go:nosplit
 func decompressIguanaVBMI2(dst []byte, streams *streamPack, lastOffs *int) ([]byte, errorCode)
 
 //go:noescape
-//go:nosplit
 func pickBestMatchCD(ec *encodingContext, src []byte, candidates []uint32) matchDescriptor

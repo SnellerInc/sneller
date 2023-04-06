@@ -18,6 +18,8 @@ import (
 	"fmt"
 	"math"
 	"math/bits"
+
+	"golang.org/x/exp/slices"
 )
 
 const (
@@ -93,7 +95,78 @@ type encodingContext struct {
 	currentOffset     uint32
 	lastEncodedOffset uint32
 
-	table [256 * 256][]uint32
+	table matchtable
+}
+
+const (
+	hunksize  = 16 // selected to be friendly to assembly
+	chainbits = 19 // selected empirically; seems to work better than 16
+	hashbytes = 3  // bytes necessary to hash data
+)
+
+type hunk struct {
+	offsets [hunksize]uint32
+	next    uint32
+	valid   int8
+	epoch   uint8 // useed to match the table epoch
+}
+
+func (h *hunk) entries() []uint32 {
+	return h.offsets[:h.valid]
+}
+
+// matchtable is a table of match chains
+// that is optimized for fast lookups
+type matchtable struct {
+	chains [1 << chainbits]uint32
+	hunks  []hunk
+}
+
+func (m *matchtable) pos(c0, c1, c2 byte) uint {
+	return (uint(c0) << (chainbits - 8)) |
+		(uint(c1) << (chainbits - 8 - 8)) |
+		(uint(c2) & ((1 << (chainbits - 8 - 8)) - 1))
+}
+
+func (m *matchtable) reset(wantcap int) {
+	m.hunks = slices.Grow(m.hunks[:0], (wantcap*2)/hunksize)
+	for i := range m.chains {
+		m.chains[i] = 0
+	}
+}
+
+func (m *matchtable) next(h *hunk) *hunk {
+	if h.next == 0 {
+		return nil
+	}
+	return &m.hunks[^h.next]
+}
+
+func (m *matchtable) chain(seq []byte) *hunk {
+	e := m.chains[m.pos(seq[0], seq[1], seq[2])]
+	if e == 0 {
+		return nil
+	}
+	return &m.hunks[^e]
+}
+
+func (m *matchtable) insert(seq []byte, pos uint32) {
+	j := m.pos(seq[0], seq[1], seq[2])
+	e := m.chains[j]
+	if e == 0 || m.hunks[^e].valid == hunksize {
+		// grow
+		idx := len(m.hunks)
+		m.hunks = append(m.hunks, hunk{})
+		h := &m.hunks[idx]
+		h.offsets[0] = pos
+		h.valid = 1
+		h.next = e
+		m.chains[j] = ^uint32(idx)
+		return
+	}
+	h := &m.hunks[^e]
+	h.offsets[h.valid] = pos
+	h.valid++
 }
 
 func (ec *encodingContext) reset() {
@@ -189,7 +262,9 @@ func (es *encodingStation) encodeANS(src []byte, threshold float32) error {
 }
 
 func (es *encodingStation) encodeIguana(src []byte, threshold float32) error {
-	if len(src) < minLength {
+	if len(src) < (minLength + hashbytes) {
+		// we need enough bytes to actually produce a hash-chain match
+		// within the preceding minLength bytes
 		return es.encodeRaw(src)
 	}
 	ec := &es.ctx
@@ -305,51 +380,72 @@ func hashMatch(c0, c1 byte) uint {
 	return uint(c1)<<8 | uint(c0)
 }
 
+func clamp(buf []byte, maxlen int) []byte {
+	if len(buf) > maxlen {
+		return buf[:maxlen]
+	}
+	return buf
+}
+
 func (ec *encodingContext) encodeIguanaHashChains() {
 	src := ec.src
 	srcLen := len(src)
 	if srcLen < minOffset {
 		panic("satisfying this constraint should have been ensured by the caller")
 	}
-	last := srcLen - minOffset
-	data := src[:last]
+	last := srcLen - minOffset // last allowed match position
 
-	for i := range ec.table {
-		ec.table[i] = ec.table[i][:0]
-	}
+	ec.table.reset(len(src))
 	ec.lastEncodedOffset = 0
 
 	// encode the very first possible match position
-	ec.currentOffset = minOffset
-	ec.pendingLiterals = append(ec.pendingLiterals, data[:minOffset]...)
-	h := hashMatch(data[0], data[1])
-	ec.table[h] = append(ec.table[h], 0)
+	prefix := clamp(src, minOffset)
+	ec.currentOffset = uint32(len(prefix))
+	ec.pendingLiterals = append(ec.pendingLiterals, prefix...)
+	ec.table.insert(prefix, 0)
 
 	for ec.currentOffset < uint32(last) {
-		c0 := src[ec.currentOffset]
-		c1 := src[ec.currentOffset+1]
-		// Find the lowest cost match in table[]
-		if match := pickBestMatch(ec, data, ec.table[hashMatch(c0, c1)]); match.cost >= 0 {
-			ec.pendingLiterals = append(ec.pendingLiterals, c0)
+		seq := src[ec.currentOffset:]
+		curmatch := matchDescriptor{cost: costInfinite}
+		for h := ec.table.chain(seq); h != nil; h = ec.table.next(h) {
+			maybe := pickBestMatch(ec, src, h.entries())
+			if maybe.cost < curmatch.cost {
+				curmatch = maybe
+			}
+		}
+		if curmatch.cost >= 0 {
+			ec.pendingLiterals = append(ec.pendingLiterals, seq[0])
 			if ec.currentOffset > minOffset {
 				start := ec.currentOffset - minOffset + 1
-				h := hashMatch(src[start], src[start+1])
-				ec.table[h] = append(ec.table[h], start)
+				ec.table.insert(src[start:], start)
 			}
 			ec.currentOffset++
 		} else {
-			for i := uint32(0); i < match.length; i++ {
-				start := ec.currentOffset - minOffset + i + 1
-				h := hashMatch(src[start], src[start+1])
-				ec.table[h] = append(ec.table[h], start)
+			clamp := curmatch.length
+			if clamp > minOffset {
+				// if we get a match longer than minOffset,
+				// then by definition we are inserting a repetition
+				// (i.e. we are extending the current position forward),
+				// which means inserting the repetition into the match table
+				// duplicates a substring that's already in the table
+				//
+				// it is much *faster* to avoid inserting the duplicate
+				// substring into the table, but it also decreases the compression
+				// ratio slightly because we end up encoding larger (longer)
+				// match-offset+length descriptors than we would otherwise
+				clamp = minOffset
 			}
-			ec.emit(&match)
-			ec.currentOffset += match.length
+			for i := uint32(0); i < clamp; i++ {
+				start := ec.currentOffset - minOffset + i + 1
+				ec.table.insert(src[start:], start)
+			}
+			ec.emit(&curmatch)
+			ec.currentOffset += curmatch.length
 		}
 	}
 
 	// Flush the pendingLiterals buffer and append the non-compressed part of the input
-	ec.literals = append(append(ec.literals, ec.pendingLiterals...), src[last:]...)
+	ec.literals = append(append(ec.literals, ec.pendingLiterals...), src[ec.currentOffset:]...)
 	ec.pendingLiterals = ec.pendingLiterals[:0]
 }
 

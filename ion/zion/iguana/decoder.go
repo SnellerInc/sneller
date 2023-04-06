@@ -25,14 +25,14 @@ import (
 // It is not safe to use a Decoder from multiple goroutines simultaneously.
 type Decoder struct {
 	pack     streamPack
-	anstab   AnsDenseTable
+	anstab   ANSDenseTable
 	ansbuf   []byte
 	lastOffs int
 }
 
 func (d *Decoder) reset() {
 	d.pack = streamPack{}
-	d.anstab = AnsDenseTable{}
+	d.anstab = ANSDenseTable{}
 }
 
 // Decompress returns the decompressed result of src as a new slice.
