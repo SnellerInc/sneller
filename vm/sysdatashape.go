@@ -489,7 +489,6 @@ func (m *minMaxFloat64) merge(o *minMaxFloat64) {
 	if o.min < m.min {
 		m.min = o.min
 	}
-
 	if o.max > m.max {
 		m.max = o.max
 	}
@@ -614,10 +613,7 @@ type systemDatashapeMerge struct {
 }
 
 func (s *systemDatashapeMerge) Open() (io.WriteCloser, error) {
-	return splitter(&systemDatashapeMergeTable{
-		parent:    s,
-		datashape: newQueryDatashapeMerge(),
-	}), nil
+	return splitter(&systemDatashapeMergeTable{parent: s}), nil
 }
 
 func (s *systemDatashapeMerge) Close() error {
@@ -634,9 +630,8 @@ func (s *systemDatashapeMerge) Close() error {
 }
 
 type systemDatashapeMergeTable struct {
-	parent    *systemDatashapeMerge
-	datashape *queryDatashapeFinal
-	symtab    *symtab
+	parent *systemDatashapeMerge
+	symtab *symtab
 }
 
 var (
@@ -661,24 +656,30 @@ func (s *systemDatashapeMergeTable) writeRows(delims []vmref, params *rowParams)
 		return fmt.Errorf("systemDatashapeMergeTable: expected exactly one input row, got %d", n)
 	}
 
-	return s.datashape.unmarshal(&s.symtab.Symtab, delims[0].mem())
+	ds := newQueryDatashapeFinal()
+	err := ds.unmarshal(&s.symtab.Symtab, delims[0].mem())
+	if err != nil {
+		return err
+	}
+
+	s.parent.mutex.Lock()
+	if s.parent.datashape == nil {
+		s.parent.datashape = ds
+	} else {
+		s.parent.datashape.merge(ds)
+	}
+	s.parent.mutex.Unlock()
+
+	return nil
 }
 
 func (s *systemDatashapeMergeTable) Close() error {
-	s.parent.mutex.Lock()
-	defer s.parent.mutex.Unlock()
-
-	if s.parent.datashape == nil {
-		s.parent.datashape = newQueryDatashapeMerge()
-	}
-
-	s.parent.datashape.merge(s.datashape)
 	return nil
 }
 
 // --------------------------------------------------
 
-func newQueryDatashapeMerge() *queryDatashapeFinal {
+func newQueryDatashapeFinal() *queryDatashapeFinal {
 	return &queryDatashapeFinal{
 		fields: make(map[string]*ionStatistics),
 	}
@@ -712,6 +713,7 @@ func (q *queryDatashapeFinal) unmarshal(st *ion.Symtab, msg []byte) error {
 		case fieldsField:
 			_, err := ion.UnpackStruct(st, val, func(name string, msg []byte) error {
 				stats := &ionStatistics{}
+				stats.init()
 				q.fields[name] = stats
 				return stats.unmarshal(st, msg)
 			})
