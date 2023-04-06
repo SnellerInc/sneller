@@ -19,8 +19,8 @@
 #include "../../../internal/asmutils/bc_constant.h"
 
 
-// func pickBestMatchVPOPCNTDQ(ec *encodingContext, src []byte, candidates []uint32) matchDescriptor
-TEXT ·pickBestMatchVPOPCNTDQ(SB), NOSPLIT | NOFRAME, $0-56
+// func pickBestMatchCD(ec *encodingContext, src []byte, candidates []uint32) matchDescriptor
+TEXT ·pickBestMatchCD(SB), NOSPLIT | NOFRAME, $0-56
     MOVQ            candidates_len+40(FP), R15                          // R15 := uint64{candidates.Len}
     MOVQ            ec+0(FP), BX                                        // BX  := uint64{ec}
     TESTQ           R15, R15
@@ -28,6 +28,7 @@ TEXT ·pickBestMatchVPOPCNTDQ(SB), NOSPLIT | NOFRAME, $0-56
 
     // There are some candidates
 
+    VPXORD          X0, X0, X0                                          // Z0  := {0*}
     VPXORD          X16, X16, X16                                       // Z16 := uint32{best_start[i]} for i in 15..0
     VPTERNLOGD      $0xff, Z1, Z1, Z1                                   // Z1  := {-1*}
     VPXORD          X17, X17, X17                                       // Z17 := uint32{best_length[i]} for i in 15..0
@@ -40,7 +41,6 @@ TEXT ·pickBestMatchVPOPCNTDQ(SB), NOSPLIT | NOFRAME, $0-56
     VPBROADCASTD    SI, Z14                                             // Z14 := uint32{(lastLongOffset + mmLongOffsets) times 16}
     MOVL            encodingContext_currentOffset(BX), R13        // R13 := uint32{ec.currentOffset}
     VPSLLD          $2, Z26, Z28                                        // Z28 := uint32{4 times 16}
-    VPSUBB          Z1, Z16, Z11                                        // Z11 := uint8{0x01 times 64}
     MOVL            $1, SI                                              // SI  := uint32{1}
     VPADDD          Z26, Z26, Z27                                       // Z27 := uint32{2 times 16}
     VPBROADCASTD    CONST_GET_PTR(consts_varUIntThreshold1B, 0), Z29    // Z29 := uint32{varUIntThreshold1B times 16}
@@ -79,9 +79,9 @@ TEXT ·pickBestMatchVPOPCNTDQ(SB), NOSPLIT | NOFRAME, $0-56
     // R13 := uint64{&src[ec.currentOffset]}
     // R14 := uint64{candidates.Data}
     // R15 := uint64{candidates.Len}
+    // Z0  := {0*}
     // Z1  := {-1*}
     // Z10 := uint32{(src.Len - ec.currentOffset) times 16}
-    // Z11 := uint8{0x01 times 64}
     // Z12 := uint32{(src[ec.currentOffset+5..2]) times 16}
     // Z13 := uint32{(1 if litLen > 0; 0 otherwise) times 16}
     // Z14 := uint32{(lastLongOffset + mmLongOffsets) times 16}
@@ -142,22 +142,27 @@ candidates_fetched:
     // is equal to the j-th byte of the reference, whereas 1 indicates a mismatch. We are interested in the position of
     // the first mismatch, as it defines the match length. However, the position will indicate the 1-byte position, not a bit
     // position, so it needs to be corrected by 8. As there is no intrinsic vector BSF capability, it is emulated with
-    // VPOPCNTD, as described here: http://0x80.pl/notesen/2023-01-31-avx512-bsf.html
+    // VPLZCNTD, as described here: https://stackoverflow.com/questions/73930875/trying-to-write-a-vectorized-implementation-of-gerd-isenbergs-bit-scan-forward
 
     VPCMPD          $VPCMP_IMM_EQ, Z12, Z3, K6, K1                  // K1  := {candidate[i][5..2] == reference[5..2]} for i in 15..0
     VPSUBB          Z12, Z3, Z3                                     // Z3  := uint8{0 <=> candidate[i][j]-reference[j]} for i in 15..0, j in 5..2
-    VPMINUB         Z11, Z3, Z3                                     // Z3  := uint8{0 if candidate[i][j]==reference[j]; 1 otherwise} for i in 15..0, j in 5..2
-    //p5
-    VPADDD          Z1, Z3, Z4                                      // Z4  := uint32{candidate[i][5..2] - 1} for i in 15..0
     //p05
-    VPANDND         Z4, Z3, Z3                                      // Z3  := uint32{(candidate[i][5..2] - 1) & ^candidate[i][5..2]} for i in 15..0
+    VPSUBD          Z3, Z0, Z4                                      // Z4  := uint32{-(candidate[i][5..2])} for i in 15..0
+    //p05
+    VPANDD          Z3, Z4, Z3                                      // Z3  := uint32{candidate[i][5..2] & -(candidate[i][5..2])} for i in 15..0
     KTESTW          K1, K1                                          // EFLAGS.ZF == 1 <=> there exists a candidate[i][5..2] where all the four bytes equal to reference[j]
-    VPOPCNTD        Z3, Z3                                          // Z3  := uint32{bsf(candidate[i][5..2]==reference[5..2]) * 8}
-    KANDNW          K6, K3, K5                                      // K5  := {(offs[i] == ec.lastEncodedOffset) || (offs[i] <= maxUint16)} for i in 15..0
-    //p0+p5
-    //p0+p5
-    VPSRLD          $3, Z3, Z3                                      // Z3  := uint32{bsf(candidate[i][5..2]==reference[5..2])}: the length of the matching 5..2 part for candidate[i]
+    VPLZCNTD        Z3, Z3                                          // Z3  := uint32{bsr(candidate[i][5..2] & -(candidate[i][5..2]))} for i in 15..0
     //p5
+    KANDNW          K6, K3, K5                                      // K5  := {(offs[i] == ec.lastEncodedOffset) || (offs[i] <= maxUint16)} for i in 15..0
+    //p5
+    //p05
+    //p05
+    VPSRLD          $3, Z3, Z3                                      // Z3  := uint32{bsr(candidate[i][5..2] & -(candidate[i][5..2])) >> 3} for i in 15..0
+    //p5
+    VPXORD          Z15, Z3, Z3                                     // Z3  := uint32{(bsr(candidate[i][5..2] & -(candidate[i][5..2])) >> 3) ^ 0x03} for i in 15..0
+    //p05
+    VPMINUD         Z3, Z28, Z3                                     // Z3  := uint32{the length of the matching 5..2 part for candidate[i]} for i in 15..0
+    //p05
     VPADDD          Z27, Z3, Z9                                     // Z9  := uint32{length[i] := Z3[i] + 2}: the 2 is to account for bytes 1..0 being equal by design
     JNZ             long_match                                      // There still exists a candidate[i][5..0]==reference[5..0], so the follow-up chunks need to be inspected
 
@@ -261,18 +266,23 @@ long_match_loop:
     VPGATHERDD      (AX)(Z8*1), K1, Z3                              // Z3  := uint32{src[start[i]+CX+3..start[i]+CX} for i in 15..0
     VPCMPD          $VPCMP_IMM_EQ, Z2, Z3, K7, K1                   // K1  := {candidate[i][start[i]+CX+3..start[i]+CX] == reference[CX+3..CX]} for i in 15..0
     VPSUBB          Z2, Z3, Z3                                      // Z3  := uint8{0 <=> candidate[i][start[i]+CX+3..start[i]+CX]==reference[CX+3..CX]} for i in 15..0
-    VPMINUB         Z11, Z3, Z3                                     // Z3  := uint32{Z3[i] - 1} for i in 15..0
     ADDQ            $4, AX                                          // Adjust the reference cursor
-    VPADDD          Z1, Z3, Z2                                      // Z3  := uint8{0 if candidate[i][start[i]+CX+3..start[i]+CX]==reference[CX+3..CX]; 1 otherwise} for i in 15..0
+    VPSUBD          Z3, Z0, Z2                                      // Z2  := uint32{-(candidate[i][start[i]+CX+3..start[i]+CX])} for i in 15..0
     ADDL            $4, CX                                          // Adjust the candidates' cursor
-    VPANDND         Z2, Z3, Z3                                      // Z3  := uint32{(Z3[i] - 1) & ^Z3} for i in 15..0
+    VPANDD          Z2, Z3, Z2                                      // Z2  := uint32{(candidate[i][start[i]+CX+3..start[i]+CX]) & -(candidate[i][start[i]+CX+3..start[i]+CX])} for i in 15..0
     KTESTW          K1, K1                                          // EFLAGS.ZF == 1 <=> there exists a candidate[i][CX+3..CX] where all the four bytes equal to reference[CX+3..CX]
-    VPOPCNTD        Z3, Z3                                          // Z3  := uint32{bsf(candidate[i][CX+3..CX]==reference[CX+3..CX]) * 8}
-    //p0+p5
-    //p0+p5
-    VPSRLD          $3, Z3, Z3                                      // Z3  := uint32{bsf(candidate[i][CX+3..CX]==reference[CX+3..CX])}: the length of the matching CX+3..CX part for candidate[i]
+    VPLZCNTD        Z2, Z2                                          // Z2  := uint32{bsr(candidate[i][start[i]+CX+3..start[i]+CX] & -(candidate[i][start[i]+CX+3..start[i]+CX]))} for i in 15..0
     //p5
-    VPADDD          Z3, Z9, K7, Z9                                  // Z9  := uint32{length[i] += Z3[i]}: adjust the currently calculated length
+    //p05
+    //p05
+    //p05
+    VPSRLD          $3, Z2, Z2                                      // Z2  := uint32{bsf(candidate[i][start[i]+CX+3..start[i]+CX]==reference[start[i]+CX+3..start[i]+CX]) >> 3}: the length of the matching CX+3..CX part for candidate[i]
+    //p5
+    VPXORD          Z15, Z2, Z2                                     // Z2  := uint32{(bsr(candidate[i][start[i]+CX+3..start[i]+CX] & -(candidate[i][start[i]+CX+3..start[i]+CX])) >> 3) ^ 0x03} for i in 15..0
+    //p05
+    VPMINUD         Z2, Z28, Z2                                     // Z2  := uint32{the length of the matching start[i]+CX+3..start[i]+CX part for candidate[i]} for i in 15..0
+    //p5
+    VPADDD          Z2, Z9, K7, Z9                                  // Z9  := uint32{length[i] += Z2[i]}: adjust the currently calculated length
     KMOVW           K1, K7                                          // K7  := {the candidates that need to have the succeeding chunks inspected}
     JZ              length_computed                                 // No more candidates require further inspection
     JMP             long_match_loop                                 // Inspect the next chunk

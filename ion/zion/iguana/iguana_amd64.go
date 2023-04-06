@@ -23,8 +23,8 @@ import (
 )
 
 func init() {
-	if cpu.X86.HasAVX512VPOPCNTDQ {
-		pickBestMatch = pickBestMatchVPOPCNTDQ
+	if cpu.X86.HasAVX512CD {
+		pickBestMatch = pickBestMatchCD
 	}
 	if cpu.X86.HasAVX512VBMI2 && cpu.X86.HasAVX512VBMI {
 		decompressIguana = decompressIguanaVBMI2
@@ -40,6 +40,6 @@ const sizeSliceHeader = unsafe.Sizeof(reflect.SliceHeader{})            //lint:i
 //go:nosplit
 func decompressIguanaVBMI2(dst []byte, streams *streamPack, lastOffs *int) ([]byte, errorCode)
 
-//gox:noescape
+//go:noescape
 //go:nosplit
-func pickBestMatchVPOPCNTDQ(ec *encodingContext, src []byte, candidates []uint32) matchDescriptor
+func pickBestMatchCD(ec *encodingContext, src []byte, candidates []uint32) matchDescriptor
