@@ -258,10 +258,7 @@ func (p *parallelchunks) SplitBy(parts []string) ([]plan.TablePart, error) {
 	return ret, nil
 }
 
-/* FIXME: uncomment this once BOOL_AND() is fixed
-      so that partitions for which the condition is not satisfied
-      do not cause the merged result to short-circuit to FALSE
-   func (p *parallelchunks) Split() (plan.Subtables, error) {
+func (p *parallelchunks) Split() (plan.Subtables, error) {
 	tp := &plan.LocalTransport{Threads: 1}
 	if len(p.chunks) == 1 {
 		return plan.SubtableList{{Transport: tp, Handle: p}}, nil
@@ -271,15 +268,14 @@ func (p *parallelchunks) SplitBy(parts []string) ([]plan.TablePart, error) {
 	return plan.SubtableList{
 		{
 			Transport: tp,
-			Handle: &parallelchunks{chunks: first, fields: p.fields},
+			Handle:    &parallelchunks{chunks: first, fields: p.fields},
 		},
 		{
 			Transport: tp,
-			Handle: &parallelchunks{chunks: second, fields: p.fields},
+			Handle:    &parallelchunks{chunks: second, fields: p.fields},
 		},
 	}, nil
-   }
-*/
+}
 
 func (p *parallelchunks) Open(_ context.Context) (vm.Table, error) {
 	return p, nil
