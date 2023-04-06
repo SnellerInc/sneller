@@ -172,23 +172,49 @@ func BenchmarkRef(b *testing.B) {
 	}
 }
 
-func BenchmarkCompress(b *testing.B) {
-	src, err := fetchTestData("testdata/ref.bin.gz")
-	if err != nil {
-		b.Fatal(err)
-	}
-	var enc Encoder
-	dst, err := enc.Compress(src, nil, DefaultANSThreshold)
-	if err != nil {
-		b.Fatal(err)
-	}
-	b.ReportAllocs()
-	b.SetBytes(int64(len(src)))
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		dst, err = enc.Compress(src, dst[:0], DefaultANSThreshold)
-		if err != nil {
-			b.Fatal(err)
-		}
-	}
+func BenchmarkTestdata(b *testing.B) {
+	b.Run("decompress", func(b *testing.B) {
+		runTestdata(b, func(b *testing.B, name string, src []byte) {
+			b.Run(name, func(b *testing.B) {
+				var enc Encoder
+				var dec Decoder
+				dst, err := enc.Compress(src, nil, DefaultANSThreshold)
+				if err != nil {
+					b.Fatal(err)
+				}
+				b.ReportAllocs()
+				b.SetBytes(int64(len(src)))
+				b.ResetTimer()
+				var tmp []byte
+				for i := 0; i < b.N; i++ {
+					tmp, err = dec.DecompressTo(tmp[:0], dst)
+					if err != nil {
+						b.Fatal(err)
+					}
+				}
+			})
+		})
+	})
+	b.Run("compress", func(b *testing.B) {
+		runTestdata(b, func(b *testing.B, name string, src []byte) {
+			b.Run(name, func(b *testing.B) {
+				var enc Encoder
+				dst, err := enc.Compress(src, nil, DefaultANSThreshold)
+				if err != nil {
+					b.Fatal(err)
+				}
+				b.ReportAllocs()
+				b.SetBytes(int64(len(src)))
+				b.ResetTimer()
+				b.ReportMetric(float64(len(src)), "input-bytes")
+				b.ReportMetric(float64(len(dst)), "output-bytes")
+				for i := 0; i < b.N; i++ {
+					dst, err = enc.Compress(src, dst[:0], DefaultANSThreshold)
+					if err != nil {
+						b.Fatal(err)
+					}
+				}
+			})
+		})
+	})
 }
