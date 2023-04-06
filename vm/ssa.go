@@ -3404,6 +3404,8 @@ type compilestate struct {
 	asm    assembler
 	dict   []string
 	litbuf []byte // output datum literals
+
+	symtab *ion.Symtab // current symtab
 }
 
 func (c *compilestate) emit(v *value, op bcop, args ...any) {
@@ -3724,8 +3726,7 @@ func emitconstcmp(v *value, c *compilestate) {
 		}
 
 		var b ion.Buffer
-		var st ion.Symtab // TODO: pass input symbol table in here!
-		d.Encode(&b, &st)
+		d.Encode(&b, c.symtab)
 		raw = b.Bytes()
 	}
 
@@ -4097,7 +4098,7 @@ func (p *prog) eliminateOutputMoves(c *compilestate) {
 }
 
 func (p *prog) compile(dst *bytecode, st *symtab, callerName string) error {
-	var c compilestate
+	c := compilestate{symtab: &st.Symtab}
 
 	if err := p.compileinto(&c); err != nil {
 		return err
