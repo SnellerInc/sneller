@@ -3406,6 +3406,7 @@ type compilestate struct {
 	litbuf []byte // output datum literals
 
 	symtab *ion.Symtab // current symtab
+	buf    ion.Buffer  // temporary buffer
 }
 
 func (c *compilestate) emit(v *value, op bcop, args ...any) {
@@ -3587,8 +3588,8 @@ func encodeLitRef(off int, buf []byte) litref {
 }
 
 func (c *compilestate) storeLitRef(imm any) litref {
-	var b ion.Buffer
-
+	b := &c.buf
+	b.Reset()
 	switch t := imm.(type) {
 	case nil:
 		b.WriteNull()
@@ -3725,9 +3726,9 @@ func emitconstcmp(v *value, c *compilestate) {
 			}
 		}
 
-		var b ion.Buffer
-		d.Encode(&b, c.symtab)
-		raw = b.Bytes()
+		c.buf.Reset()
+		d.Encode(&c.buf, c.symtab)
+		raw = c.buf.Bytes()
 	}
 
 	off := len(c.litbuf)
