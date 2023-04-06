@@ -319,21 +319,29 @@ func (ec *encodingContext) encodeIguanaHashChains() {
 	}
 	ec.lastEncodedOffset = 0
 
-	for ec.currentOffset = 0; ec.currentOffset < uint32(last); {
+	// encode the very first possible match position
+	ec.currentOffset = minOffset
+	ec.pendingLiterals = append(ec.pendingLiterals, data[:minOffset]...)
+	h := hashMatch(data[0], data[1])
+	ec.table[h] = append(ec.table[h], 0)
+
+	for ec.currentOffset < uint32(last) {
 		c0 := src[ec.currentOffset]
 		c1 := src[ec.currentOffset+1]
 		// Find the lowest cost match in table[]
 		if match := pickBestMatch(ec, data, ec.table[hashMatch(c0, c1)]); match.cost >= 0 {
 			ec.pendingLiterals = append(ec.pendingLiterals, c0)
-			if ec.currentOffset > 0 {
-				h := hashMatch(src[ec.currentOffset-1], c0)
-				ec.table[h] = append(ec.table[h], ec.currentOffset-1)
+			if ec.currentOffset > minOffset {
+				start := ec.currentOffset - minOffset + 1
+				h := hashMatch(src[start], src[start+1])
+				ec.table[h] = append(ec.table[h], start)
 			}
 			ec.currentOffset++
 		} else {
 			for i := uint32(0); i < match.length; i++ {
-				h := hashMatch(src[ec.currentOffset+i-1], src[ec.currentOffset+i])
-				ec.table[h] = append(ec.table[h], ec.currentOffset+i-1)
+				start := ec.currentOffset - minOffset + i + 1
+				h := hashMatch(src[start], src[start+1])
+				ec.table[h] = append(ec.table[h], start)
 			}
 			ec.emit(&match)
 			ec.currentOffset += match.length
@@ -481,11 +489,11 @@ func pickBestMatchReference(ec *encodingContext, src []byte, candidates []uint32
 	for i := cLen - 1; i >= 0; i-- {
 		start := candidates[i]
 		if start >= ec.currentOffset {
-			continue
+			panic("should never happen")
 		}
 		offs := ec.currentOffset - start
 		if offs < minOffset {
-			continue
+			panic("should never happen")
 		}
 
 		length := uint32(0)
