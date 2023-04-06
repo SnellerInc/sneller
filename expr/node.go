@@ -633,7 +633,6 @@ func Count(e Node) *Aggregate { return &Aggregate{Op: OpCount, Inner: e} }
 
 // CountNonNull counts the number of non-null rows
 func CountNonNull(e Node) *Aggregate {
-	// Consider creating ASM aggregator comparable to the row counter in average aggregator
 	return SumInt(IfThenElse(Is(e, IsNotNull), Integer(1), Integer(0)))
 }
 
