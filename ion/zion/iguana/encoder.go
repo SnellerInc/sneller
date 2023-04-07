@@ -55,6 +55,10 @@ const (
 	iguanaChunkSize = 32
 	minOffset       = iguanaChunkSize
 	minLength       = iguanaChunkSize
+
+	// turn this on to get a much more expensive
+	// (but optimal) matcher
+	forceOptimalMatching = false
 )
 
 type encodingStation struct {
@@ -426,7 +430,7 @@ func (ec *encodingContext) encodeIguanaHashChains() {
 				curmatch.length = ints.AlignDown32(curmatch.length, minLength)
 			}
 			clamp := curmatch.length
-			if clamp > minOffset {
+			if clamp > minOffset && !forceOptimalMatching {
 				// if we get a match longer than minOffset,
 				// then by definition we are inserting a repetition
 				// (i.e. we are extending the current position forward),
