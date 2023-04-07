@@ -4273,9 +4273,9 @@ func (p *prog) isStale(st *symtab, aux *auxbindings) bool {
 		return true
 	}
 	for i := range p.resolvedAux {
-		if p.resolvedAux[i].id > len(aux.bound) ||
+		if p.resolvedAux[i].id >= len(aux.bound) ||
 			aux.bound[p.resolvedAux[i].id] != p.resolvedAux[i].val {
-			return false
+			return true
 		}
 	}
 	for i := range p.resolved {
