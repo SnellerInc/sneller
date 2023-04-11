@@ -2754,8 +2754,7 @@ func (p *prog) aacd(op ssaop, child, filter *value, slot aggregateslot, precisio
 	}
 
 	h := p.hash(child)
-
-	return p.ssa2imm(saggapproxcount, h, mask, (uint64(slot)<<8)|uint64(precision))
+	return p.ssa2imm(op, h, mask, (uint64(slot)<<8)|uint64(precision))
 }
 
 func (p *prog) aggregateApproxCountDistinct(child, filter *value, slot aggregateslot, precision uint8) *value {
@@ -2766,9 +2765,9 @@ func (p *prog) aggregateApproxCountDistinctPartial(child, filter *value, slot ag
 	return p.aacd(saggapproxcountpartial, child, filter, slot, precision)
 }
 
-func (p *prog) aggregateApproxCountDistinctMerge(child *value, slot aggregateslot, precision uint8) *value {
+func (p *prog) aggregateMergeState(child *value, slot aggregateslot) *value {
 	blob := p.ssa2(stoblob, child, p.mask(child))
-	return p.ssa2imm(saggapproxcountmerge, blob, p.mask(blob), (uint64(slot)<<8)|uint64(precision))
+	return p.ssa2imm(saggmergestate, blob, p.mask(blob), slot)
 }
 
 // Slot aggregate operations
@@ -3983,23 +3982,6 @@ func emitaggapproxcount(v *value, c *compilestate) {
 	c.emit(v, op,
 		aggSlot,
 		c.slotOf(hash, regH),
-		precision,
-		c.slotOf(mask, regK),
-	)
-}
-
-func emitaggapproxcountmerge(v *value, c *compilestate) {
-	op := ssainfo[v.op].bc
-	blob := v.args[0]
-	mask := v.args[1]
-
-	imm := v.imm.(uint64)
-	aggSlot := aggregateslot(imm >> 8)
-	precision := imm & 0xFF
-
-	c.emit(v, op,
-		aggSlot,
-		c.slotOf(blob, regS),
 		precision,
 		c.slotOf(mask, regK),
 	)

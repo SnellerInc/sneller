@@ -318,6 +318,7 @@ const (
 	saggori
 	saggxori
 	saggcount
+	saggmergestate
 
 	saggbucket
 	saggslotandk
@@ -403,7 +404,6 @@ const (
 	schecktag                  // check encoded tag bits
 	saggapproxcount            // APPROX_COUNT_DISTINCT
 	saggapproxcountpartial     // the partial step of APPROX_COUNT_DISTINCT (for split queries)
-	saggapproxcountmerge       // the merge step of APPROX_COUNT_DISTINCT (for split queries)
 	saggslotapproxcount        // APPROX_COUNT_DISTINCT aggregate in GROUP BY
 	saggslotapproxcountpartial // the partial step of APPROX_COUNT_DISTINCT (for split queries with GROUP BY)
 	saggslotapproxcountmerge   // the merge step of APPROX_COUNT_DISTINCT (for split queries with GROUP BY)
@@ -1060,6 +1060,13 @@ var _ssainfo = [_ssamax]ssaopinfo{
 	sarraysize:     {text: "arraysize", argtypes: []ssatype{stList, stBool}, rettype: stInt, bc: oparraysize},
 	sarrayposition: {text: "arrayposition", argtypes: []ssatype{stList, stValue, stBool}, rettype: stIntMasked, bc: oparrayposition},
 
+	saggmergestate: {
+		text:     "aggmegestate",
+		argtypes: []ssatype{stBlob, stBool},
+		rettype:  stMem,
+		bc:       opaggmergestate,
+		immfmt:   fmtaggslot,
+	},
 	saggapproxcount: {
 		text:     "aggapproxcount",
 		argtypes: []ssatype{stHash, stBool},
@@ -1075,14 +1082,6 @@ var _ssainfo = [_ssamax]ssaopinfo{
 		bc:       opaggapproxcount,
 		emit:     emitaggapproxcount,
 		immfmt:   fmtother,
-	},
-	saggapproxcountmerge: {
-		text:     "aggapproxcount.merge",
-		argtypes: []ssatype{stBlob, stBool},
-		rettype:  stMem,
-		bc:       opaggapproxcountmerge,
-		emit:     emitaggapproxcountmerge,
-		immfmt:   fmtaggslot,
 	},
 	saggslotapproxcount: {
 		text:     "aggslotapproxcount",

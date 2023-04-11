@@ -112,6 +112,31 @@ func (o AggregateOpFn) String() string {
 	}
 }
 
+// aggregateOpMergeBufferSize is an extra buffer added for aggregates
+// that does aggregation basedon on internal states, not actual
+// values.
+const aggregateOpMergeBufferSize = 8
+
+// The operation needs to pass its whole internal state to the master
+// machine (the buffer is used to perform actual aggregation).
+func (o AggregateOpFn) mergestate() bool {
+	switch o {
+	case AggregateOpApproxCountDistinctMerge:
+		return true
+	}
+
+	return false
+}
+
+func (o AggregateOpFn) savestate() bool {
+	switch o {
+	case AggregateOpApproxCountDistinctPartial:
+		return true
+	}
+
+	return false
+}
+
 // AggregateOp describes aggregate operation
 type AggregateOp struct {
 	fn AggregateOpFn
@@ -218,27 +243,45 @@ func (a *AggregateOp) dataSize() int {
 }
 
 func initAggregateValues(data []byte, aggregateOps []AggregateOp) {
-	offset := int(0)
 	for i := range aggregateOps {
 		// First value is initialized to `initUInt64`.
 		op := &aggregateOps[i]
 		info := &aggregateOpInfoTable[op.fn]
 		dataSize := op.dataSize()
+		if op.fn.mergestate() {
+			data = data[aggregateOpMergeBufferSize:]
+		}
 
 		if info.initFunc != nil {
-			info.initFunc(data[offset : offset+dataSize])
+			info.initFunc(data[:dataSize])
 		} else {
-			binary.LittleEndian.PutUint64(data[offset:], info.initUInt64)
+			binary.LittleEndian.PutUint64(data, info.initUInt64)
 		}
 
 		// All succeeding values were already zero initialized.
-		offset += dataSize
+		data = data[dataSize:]
 	}
+}
+
+func mergeAggregateBuffers(dst, src []byte, op AggregateOp) bool {
+	switch op.fn {
+	case AggregateOpApproxCountDistinctMerge:
+		n := op.dataSize()
+		aggApproxCountDistinctUpdateBuckets(n, dst, src)
+		return true
+	}
+
+	return false
 }
 
 func mergeAggregatedValues(dst, src []byte, aggregateOps []AggregateOp) {
 	for i := range aggregateOps {
-		switch aggregateOps[i].fn {
+		fn := aggregateOps[i].fn
+		if fn.mergestate() {
+			dst = dst[aggregateOpMergeBufferSize:]
+			src = src[aggregateOpMergeBufferSize:]
+		}
+		switch fn {
 		case AggregateOpSumF, AggregateOpAvgF:
 			neumaierSummationMerge(dst, src)
 			dst = dst[aggregateOpSumFDataSize:]
@@ -427,6 +470,12 @@ func mergeAggregatedValuesAtomically(dst, src []byte, aggregateOps []AggregateOp
 
 // writeAggregatedValue writes the final result of the Aggregation to the ion.Buffer
 func writeAggregatedValue(b *ion.Buffer, data []byte, op AggregateOp) int {
+	if op.fn.savestate() {
+		d := op.dataSize()
+		b.WriteBlob(data[:d])
+		return d
+	}
+
 	switch op.fn {
 	case AggregateOpSumF, AggregateOpAvgF:
 		count := getuint64(data, 1)
@@ -501,11 +550,6 @@ func writeAggregatedValue(b *ion.Buffer, data []byte, op AggregateOp) int {
 		b.WriteUint(count)
 		return n
 
-	case AggregateOpApproxCountDistinctPartial:
-		n := op.dataSize()
-		b.WriteBlob(data[:n])
-		return n
-
 	case AggregateOpTDigest:
 		percentiles, err := calcPercentiles(data[:tDigestDataSize], []float32{op.misc})
 		if err != nil {
@@ -571,6 +615,7 @@ type aggregateLocal struct {
 	bc          bytecode
 	rowCount    uint64
 	partialData []byte
+	mergestate  bool
 }
 
 // AggBinding is a binding
@@ -607,15 +652,22 @@ func (a Aggregation) Equals(x Aggregation) bool {
 	return slices.EqualFunc(a, x, AggBinding.Equals)
 }
 
-func (q *Aggregate) Open() (io.WriteCloser, error) {
-	aggregateDataSize := len(q.initialData)
-	partialData := make([]byte, aggregateDataSize)
-	copy(partialData, q.initialData)
+func (q *Aggregate) mergestate() bool {
+	for i := range q.aggregateOps {
+		if q.aggregateOps[i].fn.mergestate() {
+			return true
+		}
+	}
 
+	return false
+}
+
+func (q *Aggregate) Open() (io.WriteCloser, error) {
 	return splitter(&aggregateLocal{
 		parent:      q,
 		rowCount:    0,
-		partialData: partialData,
+		partialData: slices.Clone(q.initialData),
+		mergestate:  q.mergestate(),
 	}), nil
 }
 
@@ -638,6 +690,9 @@ func (q *Aggregate) Close() error {
 		sym := st.Intern(q.bind[i].Result)
 		b.BeginField(sym)
 		fn := q.aggregateOps[i].fn
+		if fn.mergestate() {
+			data = data[aggregateOpMergeBufferSize:]
+		}
 		if finalize := aggregateOpInfoTable[fn].finalizeFunc; finalize != nil {
 			finalize(data)
 		}
@@ -677,11 +732,39 @@ func (p *aggregateLocal) writeRows(delims []vmref, rp *rowParams) error {
 
 	p.bc.prepare(rp)
 
-	rowsCount := evalaggregatebc(&p.bc, delims, p.partialData)
-	if p.bc.err != 0 {
-		return bytecodeerror("aggregate", &p.bc)
+	if p.mergestate {
+		delim := make([]vmref, 1)
+		for i := range delims {
+			delim[0] = delims[i]
+			rowsCount := evalaggregatebc(&p.bc, delim, p.partialData)
+			if p.bc.err != 0 {
+				return bytecodeerror("aggregate", &p.bc)
+			}
+
+			dst := p.partialData
+			for i := range p.parent.aggregateOps {
+				op := p.parent.aggregateOps[i]
+				n := op.dataSize()
+				if op.fn.mergestate() {
+					offset := binary.LittleEndian.Uint32(dst[0:])
+					size := binary.LittleEndian.Uint32(dst[4:])
+					v := vmref{offset, size}
+					dst = dst[aggregateOpMergeBufferSize:]
+					mergeAggregateBuffers(dst, v.mem(), op)
+				}
+
+				dst = dst[n:]
+			}
+			p.rowCount += uint64(rowsCount)
+		}
+	} else {
+		rowsCount := evalaggregatebc(&p.bc, delims, p.partialData)
+		if p.bc.err != 0 {
+			return bytecodeerror("aggregate", &p.bc)
+		}
+		p.rowCount += uint64(rowsCount)
 	}
-	p.rowCount += uint64(rowsCount)
+
 	return nil
 }
 
@@ -718,10 +801,8 @@ func NewAggregate(bind Aggregation, rest QuerySink) (*Aggregate, error) {
 	if err != nil {
 		return nil, err
 	}
-	aggregatedData := make([]byte, len(q.initialData))
-	copy(aggregatedData, q.initialData)
-	q.AggregatedData = aggregatedData
 
+	q.AggregatedData = slices.Clone(q.initialData)
 	return q, nil
 }
 
@@ -780,7 +861,7 @@ func (q *Aggregate) compileAggregate(agg Aggregation) error {
 				ops[i].fn = AggregateOpApproxCountDistinctPartial
 
 			case expr.OpApproxCountDistinctMerge:
-				mem[i] = p.aggregateApproxCountDistinctMerge(v, offset, agg[i].Expr.Precision)
+				mem[i] = p.aggregateMergeState(v, offset)
 				ops[i].fn = AggregateOpApproxCountDistinctMerge
 			}
 
@@ -872,6 +953,9 @@ func (q *Aggregate) compileAggregate(agg Aggregation) error {
 		// are present in the input row rather than the order in which the
 		// query presents them.
 		offset += aggregateslot(ops[i].dataSize())
+		if ops[i].fn.mergestate() {
+			offset += aggregateOpMergeBufferSize
+		}
 	}
 
 	aggregateDataSize := offset

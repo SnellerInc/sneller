@@ -53,22 +53,22 @@ var opinfo = [_maxbcop]bcopinfo{
 	opfloorf64:                {text: "floor.f64", out: bcargs[0:1] /* {bcS} */, in: bcargs[3:5] /* {bcS, bcK} */},
 	opceilf64:                 {text: "ceil.f64", out: bcargs[0:1] /* {bcS} */, in: bcargs[3:5] /* {bcS, bcK} */},
 	opaddf64:                  {text: "add.f64", out: bcargs[3:5] /* {bcS, bcK} */, in: bcargs[2:5] /* {bcS, bcS, bcK} */},
-	opaddf64imm:               {text: "add.f64@imm", out: bcargs[3:5] /* {bcS, bcK} */, in: bcargs[106:109] /* {bcS, bcImmF64, bcK} */},
+	opaddf64imm:               {text: "add.f64@imm", out: bcargs[3:5] /* {bcS, bcK} */, in: bcargs[16:19] /* {bcS, bcImmF64, bcK} */},
 	opsubf64:                  {text: "sub.f64", out: bcargs[3:5] /* {bcS, bcK} */, in: bcargs[2:5] /* {bcS, bcS, bcK} */},
-	opsubf64imm:               {text: "sub.f64@imm", out: bcargs[3:5] /* {bcS, bcK} */, in: bcargs[106:109] /* {bcS, bcImmF64, bcK} */},
-	oprsubf64imm:              {text: "rsub.f64@imm", out: bcargs[3:5] /* {bcS, bcK} */, in: bcargs[106:109] /* {bcS, bcImmF64, bcK} */},
+	opsubf64imm:               {text: "sub.f64@imm", out: bcargs[3:5] /* {bcS, bcK} */, in: bcargs[16:19] /* {bcS, bcImmF64, bcK} */},
+	oprsubf64imm:              {text: "rsub.f64@imm", out: bcargs[3:5] /* {bcS, bcK} */, in: bcargs[16:19] /* {bcS, bcImmF64, bcK} */},
 	opmulf64:                  {text: "mul.f64", out: bcargs[3:5] /* {bcS, bcK} */, in: bcargs[2:5] /* {bcS, bcS, bcK} */},
-	opmulf64imm:               {text: "mul.f64@imm", out: bcargs[3:5] /* {bcS, bcK} */, in: bcargs[106:109] /* {bcS, bcImmF64, bcK} */},
+	opmulf64imm:               {text: "mul.f64@imm", out: bcargs[3:5] /* {bcS, bcK} */, in: bcargs[16:19] /* {bcS, bcImmF64, bcK} */},
 	opdivf64:                  {text: "div.f64", out: bcargs[3:5] /* {bcS, bcK} */, in: bcargs[2:5] /* {bcS, bcS, bcK} */},
-	opdivf64imm:               {text: "div.f64@imm", out: bcargs[3:5] /* {bcS, bcK} */, in: bcargs[106:109] /* {bcS, bcImmF64, bcK} */},
-	oprdivf64imm:              {text: "rdiv.f64@imm", out: bcargs[3:5] /* {bcS, bcK} */, in: bcargs[106:109] /* {bcS, bcImmF64, bcK} */},
+	opdivf64imm:               {text: "div.f64@imm", out: bcargs[3:5] /* {bcS, bcK} */, in: bcargs[16:19] /* {bcS, bcImmF64, bcK} */},
+	oprdivf64imm:              {text: "rdiv.f64@imm", out: bcargs[3:5] /* {bcS, bcK} */, in: bcargs[16:19] /* {bcS, bcImmF64, bcK} */},
 	opmodf64:                  {text: "mod.f64", out: bcargs[3:5] /* {bcS, bcK} */, in: bcargs[2:5] /* {bcS, bcS, bcK} */},
-	opmodf64imm:               {text: "mod.f64@imm", out: bcargs[3:5] /* {bcS, bcK} */, in: bcargs[106:109] /* {bcS, bcImmF64, bcK} */},
-	oprmodf64imm:              {text: "rmod.f64@imm", out: bcargs[3:5] /* {bcS, bcK} */, in: bcargs[106:109] /* {bcS, bcImmF64, bcK} */},
+	opmodf64imm:               {text: "mod.f64@imm", out: bcargs[3:5] /* {bcS, bcK} */, in: bcargs[16:19] /* {bcS, bcImmF64, bcK} */},
+	oprmodf64imm:              {text: "rmod.f64@imm", out: bcargs[3:5] /* {bcS, bcK} */, in: bcargs[16:19] /* {bcS, bcImmF64, bcK} */},
 	opminvaluef64:             {text: "minvalue.f64", out: bcargs[0:1] /* {bcS} */, in: bcargs[2:5] /* {bcS, bcS, bcK} */},
-	opminvaluef64imm:          {text: "minvalue.f64@imm", out: bcargs[0:1] /* {bcS} */, in: bcargs[106:109] /* {bcS, bcImmF64, bcK} */},
+	opminvaluef64imm:          {text: "minvalue.f64@imm", out: bcargs[0:1] /* {bcS} */, in: bcargs[16:19] /* {bcS, bcImmF64, bcK} */},
 	opmaxvaluef64:             {text: "maxvalue.f64", out: bcargs[0:1] /* {bcS} */, in: bcargs[2:5] /* {bcS, bcS, bcK} */},
-	opmaxvaluef64imm:          {text: "maxvalue.f64@imm", out: bcargs[0:1] /* {bcS} */, in: bcargs[106:109] /* {bcS, bcImmF64, bcK} */},
+	opmaxvaluef64imm:          {text: "maxvalue.f64@imm", out: bcargs[0:1] /* {bcS} */, in: bcargs[16:19] /* {bcS, bcImmF64, bcK} */},
 	opsqrtf64:                 {text: "sqrt.f64", out: bcargs[3:5] /* {bcS, bcK} */, in: bcargs[3:5] /* {bcS, bcK} */},
 	opcbrtf64:                 {text: "cbrt.f64", out: bcargs[3:5] /* {bcS, bcK} */, in: bcargs[3:5] /* {bcS, bcK} */},
 	opexpf64:                  {text: "exp.f64", out: bcargs[3:5] /* {bcS, bcK} */, in: bcargs[3:5] /* {bcS, bcK} */},
@@ -90,10 +90,10 @@ var opinfo = [_maxbcop]bcopinfo{
 	oppowf64:                  {text: "pow.f64", out: bcargs[3:5] /* {bcS, bcK} */, in: bcargs[2:5] /* {bcS, bcS, bcK} */},
 	opret:                     {text: "ret"},
 	opretk:                    {text: "ret.k", in: bcargs[4:5] /* {bcK} */},
-	opretbk:                   {text: "ret.b.k", in: bcargs[44:46] /* {bcB, bcK} */},
+	opretbk:                   {text: "ret.b.k", in: bcargs[45:47] /* {bcB, bcK} */},
 	opretsk:                   {text: "ret.s.k", in: bcargs[3:5] /* {bcS, bcK} */},
 	opretbhk:                  {text: "ret.b.h.k", in: bcargs[35:38] /* {bcB, bcH, bcK} */},
-	opinit:                    {text: "init", out: bcargs[44:46] /* {bcB, bcK} */},
+	opinit:                    {text: "init", out: bcargs[45:47] /* {bcB, bcK} */},
 	opbroadcast0k:             {text: "broadcast0.k", out: bcargs[4:5] /* {bcK} */},
 	opbroadcast1k:             {text: "broadcast1.k", out: bcargs[4:5] /* {bcK} */},
 	opfalse:                   {text: "false.k", out: bcargs[10:12] /* {bcV, bcK} */},
@@ -112,15 +112,15 @@ var opinfo = [_maxbcop]bcopinfo{
 	opcvtfloorf64toi64:        {text: "cvtfloor.f64toi64", out: bcargs[3:5] /* {bcS, bcK} */, in: bcargs[3:5] /* {bcS, bcK} */},
 	opcvtceilf64toi64:         {text: "cvtceil.f64toi64", out: bcargs[3:5] /* {bcS, bcK} */, in: bcargs[3:5] /* {bcS, bcK} */},
 	opcvti64tostr:             {text: "cvt.i64tostr", out: bcargs[3:5] /* {bcS, bcK} */, in: bcargs[3:5] /* {bcS, bcK} */, scratch: 20 * 16},
-	opcmpv:                    {text: "cmpv", out: bcargs[3:5] /* {bcS, bcK} */, in: bcargs[99:102] /* {bcV, bcV, bcK} */},
-	opsortcmpvnf:              {text: "sortcmpv@nf", out: bcargs[3:5] /* {bcS, bcK} */, in: bcargs[99:102] /* {bcV, bcV, bcK} */},
-	opsortcmpvnl:              {text: "sortcmpv@nl", out: bcargs[3:5] /* {bcS, bcK} */, in: bcargs[99:102] /* {bcV, bcV, bcK} */},
-	opcmpvk:                   {text: "cmpv.k", out: bcargs[3:5] /* {bcS, bcK} */, in: bcargs[72:75] /* {bcV, bcK, bcK} */},
-	opcmpvkimm:                {text: "cmpv.k@imm", out: bcargs[3:5] /* {bcS, bcK} */, in: bcargs[53:56] /* {bcV, bcImmU16, bcK} */},
-	opcmpvi64:                 {text: "cmpv.i64", out: bcargs[3:5] /* {bcS, bcK} */, in: bcargs[56:59] /* {bcV, bcS, bcK} */},
+	opcmpv:                    {text: "cmpv", out: bcargs[3:5] /* {bcS, bcK} */, in: bcargs[50:53] /* {bcV, bcV, bcK} */},
+	opsortcmpvnf:              {text: "sortcmpv@nf", out: bcargs[3:5] /* {bcS, bcK} */, in: bcargs[50:53] /* {bcV, bcV, bcK} */},
+	opsortcmpvnl:              {text: "sortcmpv@nl", out: bcargs[3:5] /* {bcS, bcK} */, in: bcargs[50:53] /* {bcV, bcV, bcK} */},
+	opcmpvk:                   {text: "cmpv.k", out: bcargs[3:5] /* {bcS, bcK} */, in: bcargs[53:56] /* {bcV, bcK, bcK} */},
+	opcmpvkimm:                {text: "cmpv.k@imm", out: bcargs[3:5] /* {bcS, bcK} */, in: bcargs[66:69] /* {bcV, bcImmU16, bcK} */},
+	opcmpvi64:                 {text: "cmpv.i64", out: bcargs[3:5] /* {bcS, bcK} */, in: bcargs[47:50] /* {bcV, bcS, bcK} */},
 	opcmpvi64imm:              {text: "cmpv.i64@imm", out: bcargs[3:5] /* {bcS, bcK} */, in: bcargs[75:78] /* {bcV, bcImmI64, bcK} */},
-	opcmpvf64:                 {text: "cmpv.f64", out: bcargs[3:5] /* {bcS, bcK} */, in: bcargs[56:59] /* {bcV, bcS, bcK} */},
-	opcmpvf64imm:              {text: "cmpv.f64@imm", out: bcargs[3:5] /* {bcS, bcK} */, in: bcargs[16:19] /* {bcV, bcImmF64, bcK} */},
+	opcmpvf64:                 {text: "cmpv.f64", out: bcargs[3:5] /* {bcS, bcK} */, in: bcargs[47:50] /* {bcV, bcS, bcK} */},
+	opcmpvf64imm:              {text: "cmpv.f64@imm", out: bcargs[3:5] /* {bcS, bcK} */, in: bcargs[81:84] /* {bcV, bcImmF64, bcK} */},
 	opcmpltstr:                {text: "cmplt.str", out: bcargs[4:5] /* {bcK} */, in: bcargs[2:5] /* {bcS, bcS, bcK} */},
 	opcmplestr:                {text: "cmple.str", out: bcargs[4:5] /* {bcK} */, in: bcargs[2:5] /* {bcS, bcS, bcK} */},
 	opcmpgtstr:                {text: "cmpgt.str", out: bcargs[4:5] /* {bcK} */, in: bcargs[2:5] /* {bcS, bcS, bcK} */},
@@ -134,15 +134,15 @@ var opinfo = [_maxbcop]bcopinfo{
 	opcmpgek:                  {text: "cmpge.k", out: bcargs[4:5] /* {bcK} */, in: bcargs[39:42] /* {bcK, bcK, bcK} */},
 	opcmpgekimm:               {text: "cmpge.k@imm", out: bcargs[4:5] /* {bcK} */, in: bcargs[41:44] /* {bcK, bcImmU16, bcK} */},
 	opcmpeqf64:                {text: "cmpeq.f64", out: bcargs[4:5] /* {bcK} */, in: bcargs[2:5] /* {bcS, bcS, bcK} */},
-	opcmpeqf64imm:             {text: "cmpeq.f64@imm", out: bcargs[4:5] /* {bcK} */, in: bcargs[106:109] /* {bcS, bcImmF64, bcK} */},
+	opcmpeqf64imm:             {text: "cmpeq.f64@imm", out: bcargs[4:5] /* {bcK} */, in: bcargs[16:19] /* {bcS, bcImmF64, bcK} */},
 	opcmpltf64:                {text: "cmplt.f64", out: bcargs[4:5] /* {bcK} */, in: bcargs[2:5] /* {bcS, bcS, bcK} */},
-	opcmpltf64imm:             {text: "cmplt.f64@imm", out: bcargs[4:5] /* {bcK} */, in: bcargs[106:109] /* {bcS, bcImmF64, bcK} */},
+	opcmpltf64imm:             {text: "cmplt.f64@imm", out: bcargs[4:5] /* {bcK} */, in: bcargs[16:19] /* {bcS, bcImmF64, bcK} */},
 	opcmplef64:                {text: "cmple.f64", out: bcargs[4:5] /* {bcK} */, in: bcargs[2:5] /* {bcS, bcS, bcK} */},
-	opcmplef64imm:             {text: "cmple.f64@imm", out: bcargs[4:5] /* {bcK} */, in: bcargs[106:109] /* {bcS, bcImmF64, bcK} */},
+	opcmplef64imm:             {text: "cmple.f64@imm", out: bcargs[4:5] /* {bcK} */, in: bcargs[16:19] /* {bcS, bcImmF64, bcK} */},
 	opcmpgtf64:                {text: "cmpgt.f64", out: bcargs[4:5] /* {bcK} */, in: bcargs[2:5] /* {bcS, bcS, bcK} */},
-	opcmpgtf64imm:             {text: "cmpgt.f64@imm", out: bcargs[4:5] /* {bcK} */, in: bcargs[106:109] /* {bcS, bcImmF64, bcK} */},
+	opcmpgtf64imm:             {text: "cmpgt.f64@imm", out: bcargs[4:5] /* {bcK} */, in: bcargs[16:19] /* {bcS, bcImmF64, bcK} */},
 	opcmpgef64:                {text: "cmpge.f64", out: bcargs[4:5] /* {bcK} */, in: bcargs[2:5] /* {bcS, bcS, bcK} */},
-	opcmpgef64imm:             {text: "cmpge.f64@imm", out: bcargs[4:5] /* {bcK} */, in: bcargs[106:109] /* {bcS, bcImmF64, bcK} */},
+	opcmpgef64imm:             {text: "cmpge.f64@imm", out: bcargs[4:5] /* {bcK} */, in: bcargs[16:19] /* {bcS, bcImmF64, bcK} */},
 	opcmpeqi64:                {text: "cmpeq.i64", out: bcargs[4:5] /* {bcK} */, in: bcargs[2:5] /* {bcS, bcS, bcK} */},
 	opcmpeqi64imm:             {text: "cmpeq.i64@imm", out: bcargs[4:5] /* {bcK} */, in: bcargs[13:16] /* {bcS, bcImmI64, bcK} */},
 	opcmplti64:                {text: "cmplt.i64", out: bcargs[4:5] /* {bcK} */, in: bcargs[2:5] /* {bcS, bcS, bcK} */},
@@ -154,22 +154,22 @@ var opinfo = [_maxbcop]bcopinfo{
 	opcmpgei64:                {text: "cmpge.i64", out: bcargs[4:5] /* {bcK} */, in: bcargs[2:5] /* {bcS, bcS, bcK} */},
 	opcmpgei64imm:             {text: "cmpge.i64@imm", out: bcargs[4:5] /* {bcK} */, in: bcargs[13:16] /* {bcS, bcImmI64, bcK} */},
 	opisnanf:                  {text: "isnan.f", out: bcargs[4:5] /* {bcK} */, in: bcargs[3:5] /* {bcS, bcK} */},
-	opchecktag:                {text: "checktag", out: bcargs[10:12] /* {bcV, bcK} */, in: bcargs[53:56] /* {bcV, bcImmU16, bcK} */},
+	opchecktag:                {text: "checktag", out: bcargs[10:12] /* {bcV, bcK} */, in: bcargs[66:69] /* {bcV, bcImmU16, bcK} */},
 	optypebits:                {text: "typebits", out: bcargs[0:1] /* {bcS} */, in: bcargs[10:12] /* {bcV, bcK} */},
 	opisnullv:                 {text: "isnull.v", out: bcargs[4:5] /* {bcK} */, in: bcargs[10:12] /* {bcV, bcK} */},
 	opisnotnullv:              {text: "isnotnull.v", out: bcargs[4:5] /* {bcK} */, in: bcargs[10:12] /* {bcV, bcK} */},
 	opistruev:                 {text: "istrue.v", out: bcargs[4:5] /* {bcK} */, in: bcargs[10:12] /* {bcV, bcK} */},
 	opisfalsev:                {text: "isfalse.v", out: bcargs[4:5] /* {bcK} */, in: bcargs[10:12] /* {bcV, bcK} */},
 	opcmpeqslice:              {text: "cmpeq.slice", out: bcargs[4:5] /* {bcK} */, in: bcargs[2:5] /* {bcS, bcS, bcK} */},
-	opcmpeqv:                  {text: "cmpeq.v", out: bcargs[4:5] /* {bcK} */, in: bcargs[99:102] /* {bcV, bcV, bcK} */},
+	opcmpeqv:                  {text: "cmpeq.v", out: bcargs[4:5] /* {bcK} */, in: bcargs[50:53] /* {bcV, bcV, bcK} */},
 	opcmpeqvimm:               {text: "cmpeq.v@imm", out: bcargs[4:5] /* {bcK} */, in: bcargs[19:22] /* {bcV, bcLitRef, bcK} */},
 	opdateaddmonth:            {text: "dateaddmonth", out: bcargs[3:5] /* {bcS, bcK} */, in: bcargs[2:5] /* {bcS, bcS, bcK} */},
 	opdateaddmonthimm:         {text: "dateaddmonth.imm", out: bcargs[3:5] /* {bcS, bcK} */, in: bcargs[13:16] /* {bcS, bcImmI64, bcK} */},
 	opdateaddyear:             {text: "dateaddyear", out: bcargs[3:5] /* {bcS, bcK} */, in: bcargs[2:5] /* {bcS, bcS, bcK} */},
 	opdateaddquarter:          {text: "dateaddquarter", out: bcargs[3:5] /* {bcS, bcK} */, in: bcargs[2:5] /* {bcS, bcS, bcK} */},
 	opdatediffmicrosecond:     {text: "datediffmicrosecond", out: bcargs[3:5] /* {bcS, bcK} */, in: bcargs[2:5] /* {bcS, bcS, bcK} */},
-	opdatediffparam:           {text: "datediffparam", out: bcargs[3:5] /* {bcS, bcK} */, in: bcargs[46:50] /* {bcS, bcS, bcImmU64, bcK} */},
-	opdatediffmqy:             {text: "datediffmqy", out: bcargs[3:5] /* {bcS, bcK} */, in: bcargs[88:92] /* {bcS, bcS, bcImmU16, bcK} */},
+	opdatediffparam:           {text: "datediffparam", out: bcargs[3:5] /* {bcS, bcK} */, in: bcargs[62:66] /* {bcS, bcS, bcImmU64, bcK} */},
+	opdatediffmqy:             {text: "datediffmqy", out: bcargs[3:5] /* {bcS, bcK} */, in: bcargs[101:105] /* {bcS, bcS, bcImmU16, bcK} */},
 	opdateextractmicrosecond:  {text: "dateextractmicrosecond", out: bcargs[0:1] /* {bcS} */, in: bcargs[3:5] /* {bcS, bcK} */},
 	opdateextractmillisecond:  {text: "dateextractmillisecond", out: bcargs[0:1] /* {bcS} */, in: bcargs[3:5] /* {bcS, bcK} */},
 	opdateextractsecond:       {text: "dateextractsecond", out: bcargs[0:1] /* {bcS} */, in: bcargs[3:5] /* {bcS, bcK} */},
@@ -198,19 +198,19 @@ var opinfo = [_maxbcop]bcopinfo{
 	opwidthbucketi64:          {text: "widthbucket.i64", out: bcargs[0:1] /* {bcS} */, in: bcargs[0:5] /* {bcS, bcS, bcS, bcS, bcK} */},
 	optimebucketts:            {text: "timebucket.ts", out: bcargs[0:1] /* {bcS} */, in: bcargs[2:5] /* {bcS, bcS, bcK} */},
 	opgeohash:                 {text: "geohash", out: bcargs[0:1] /* {bcS} */, in: bcargs[1:5] /* {bcS, bcS, bcS, bcK} */, scratch: 16 * 16},
-	opgeohashimm:              {text: "geohashimm", out: bcargs[0:1] /* {bcS} */, in: bcargs[88:92] /* {bcS, bcS, bcImmU16, bcK} */, scratch: 16 * 16},
+	opgeohashimm:              {text: "geohashimm", out: bcargs[0:1] /* {bcS} */, in: bcargs[101:105] /* {bcS, bcS, bcImmU16, bcK} */, scratch: 16 * 16},
 	opgeotilex:                {text: "geotilex", out: bcargs[0:1] /* {bcS} */, in: bcargs[2:5] /* {bcS, bcS, bcK} */},
 	opgeotiley:                {text: "geotiley", out: bcargs[0:1] /* {bcS} */, in: bcargs[2:5] /* {bcS, bcS, bcK} */},
 	opgeotilees:               {text: "geotilees", out: bcargs[0:1] /* {bcS} */, in: bcargs[1:5] /* {bcS, bcS, bcS, bcK} */, scratch: 32 * 16},
-	opgeotileesimm:            {text: "geotilees.imm", out: bcargs[0:1] /* {bcS} */, in: bcargs[88:92] /* {bcS, bcS, bcImmU16, bcK} */, scratch: 32 * 16},
+	opgeotileesimm:            {text: "geotilees.imm", out: bcargs[0:1] /* {bcS} */, in: bcargs[101:105] /* {bcS, bcS, bcImmU16, bcK} */, scratch: 32 * 16},
 	opgeodistance:             {text: "geodistance", out: bcargs[3:5] /* {bcS, bcK} */, in: bcargs[0:5] /* {bcS, bcS, bcS, bcS, bcK} */},
 	opalloc:                   {text: "alloc", out: bcargs[3:5] /* {bcS, bcK} */, in: bcargs[3:5] /* {bcS, bcK} */, scratch: PageSize},
 	opconcatstr:               {text: "concatstr", out: bcargs[3:5] /* {bcS, bcK} */, va: bcargs[3:5] /* {bcS, bcK} */, scratch: PageSize},
-	opfindsym:                 {text: "findsym", out: bcargs[10:12] /* {bcV, bcK} */, in: bcargs[66:69] /* {bcB, bcSymbolID, bcK} */},
-	opfindsym2:                {text: "findsym2", out: bcargs[10:12] /* {bcV, bcK} */, in: bcargs[83:88] /* {bcB, bcV, bcK, bcSymbolID, bcK} */},
-	opblendv:                  {text: "blend.v", out: bcargs[10:12] /* {bcV, bcK} */, in: bcargs[70:74] /* {bcV, bcK, bcV, bcK} */},
-	opblendf64:                {text: "blend.f64", out: bcargs[3:5] /* {bcS, bcK} */, in: bcargs[61:65] /* {bcS, bcK, bcS, bcK} */},
-	opunpack:                  {text: "unpack", out: bcargs[3:5] /* {bcS, bcK} */, in: bcargs[53:56] /* {bcV, bcImmU16, bcK} */},
+	opfindsym:                 {text: "findsym", out: bcargs[10:12] /* {bcV, bcK} */, in: bcargs[78:81] /* {bcB, bcSymbolID, bcK} */},
+	opfindsym2:                {text: "findsym2", out: bcargs[10:12] /* {bcV, bcK} */, in: bcargs[88:93] /* {bcB, bcV, bcK, bcSymbolID, bcK} */},
+	opblendv:                  {text: "blend.v", out: bcargs[10:12] /* {bcV, bcK} */, in: bcargs[51:55] /* {bcV, bcK, bcV, bcK} */},
+	opblendf64:                {text: "blend.f64", out: bcargs[3:5] /* {bcS, bcK} */, in: bcargs[71:75] /* {bcS, bcK, bcS, bcK} */},
+	opunpack:                  {text: "unpack", out: bcargs[3:5] /* {bcS, bcK} */, in: bcargs[66:69] /* {bcV, bcImmU16, bcK} */},
 	opunsymbolize:             {text: "unsymbolize", out: bcargs[10:11] /* {bcV} */, in: bcargs[10:12] /* {bcV, bcK} */},
 	opunboxktoi64:             {text: "unbox.k@i64", out: bcargs[3:5] /* {bcS, bcK} */, in: bcargs[10:12] /* {bcV, bcK} */},
 	opunboxcoercef64:          {text: "unbox.coerce.f64", out: bcargs[3:5] /* {bcS, bcK} */, in: bcargs[10:12] /* {bcV, bcK} */},
@@ -223,43 +223,44 @@ var opinfo = [_maxbcop]bcopinfo{
 	opboxstr:                  {text: "box.str", out: bcargs[10:11] /* {bcV} */, in: bcargs[3:5] /* {bcS, bcK} */, scratch: PageSize},
 	opboxlist:                 {text: "box.list", out: bcargs[10:11] /* {bcV} */, in: bcargs[3:5] /* {bcS, bcK} */, scratch: PageSize},
 	opmakelist:                {text: "makelist", out: bcargs[10:12] /* {bcV, bcK} */, in: bcargs[4:5] /* {bcK} */, va: bcargs[10:12] /* {bcV, bcK} */, scratch: PageSize},
-	opmakestruct:              {text: "makestruct", out: bcargs[10:12] /* {bcV, bcK} */, in: bcargs[4:5] /* {bcK} */, va: bcargs[96:99] /* {bcSymbolID, bcV, bcK} */, scratch: PageSize},
+	opmakestruct:              {text: "makestruct", out: bcargs[10:12] /* {bcV, bcK} */, in: bcargs[4:5] /* {bcK} */, va: bcargs[59:62] /* {bcSymbolID, bcV, bcK} */, scratch: PageSize},
 	ophashvalue:               {text: "hashvalue", out: bcargs[9:10] /* {bcH} */, in: bcargs[10:12] /* {bcV, bcK} */},
 	ophashvalueplus:           {text: "hashvalue+", out: bcargs[9:10] /* {bcH} */, in: bcargs[9:12] /* {bcH, bcV, bcK} */},
-	ophashmember:              {text: "hashmember", out: bcargs[4:5] /* {bcK} */, in: bcargs[27:30] /* {bcH, bcImmU16, bcK} */},
-	ophashlookup:              {text: "hashlookup", out: bcargs[10:12] /* {bcV, bcK} */, in: bcargs[27:30] /* {bcH, bcImmU16, bcK} */},
+	ophashmember:              {text: "hashmember", out: bcargs[4:5] /* {bcK} */, in: bcargs[23:26] /* {bcH, bcImmU16, bcK} */},
+	ophashlookup:              {text: "hashlookup", out: bcargs[10:12] /* {bcV, bcK} */, in: bcargs[23:26] /* {bcH, bcImmU16, bcK} */},
 	opaggandk:                 {text: "aggand.k", in: bcargs[38:41] /* {bcAggSlot, bcK, bcK} */},
 	opaggork:                  {text: "aggor.k", in: bcargs[38:41] /* {bcAggSlot, bcK, bcK} */},
-	opaggslotsumf:             {text: "aggslotsum.f64", in: bcargs[92:96] /* {bcAggSlot, bcL, bcS, bcK} */},
-	opaggsumf:                 {text: "aggsum.f64", in: bcargs[50:53] /* {bcAggSlot, bcS, bcK} */},
-	opaggsumi:                 {text: "aggsum.i64", in: bcargs[50:53] /* {bcAggSlot, bcS, bcK} */},
-	opaggminf:                 {text: "aggmin.f64", in: bcargs[50:53] /* {bcAggSlot, bcS, bcK} */},
-	opaggmini:                 {text: "aggmin.i64", in: bcargs[50:53] /* {bcAggSlot, bcS, bcK} */},
-	opaggmaxf:                 {text: "aggmax.f64", in: bcargs[50:53] /* {bcAggSlot, bcS, bcK} */},
-	opaggmaxi:                 {text: "aggmax.i64", in: bcargs[50:53] /* {bcAggSlot, bcS, bcK} */},
-	opaggandi:                 {text: "aggand.i64", in: bcargs[50:53] /* {bcAggSlot, bcS, bcK} */},
-	opaggori:                  {text: "aggor.i64", in: bcargs[50:53] /* {bcAggSlot, bcS, bcK} */},
-	opaggxori:                 {text: "aggxor.i64", in: bcargs[50:53] /* {bcAggSlot, bcS, bcK} */},
+	opaggslotsumf:             {text: "aggslotsum.f64", in: bcargs[69:73] /* {bcAggSlot, bcL, bcS, bcK} */},
+	opaggsumf:                 {text: "aggsum.f64", in: bcargs[56:59] /* {bcAggSlot, bcS, bcK} */},
+	opaggsumi:                 {text: "aggsum.i64", in: bcargs[56:59] /* {bcAggSlot, bcS, bcK} */},
+	opaggminf:                 {text: "aggmin.f64", in: bcargs[56:59] /* {bcAggSlot, bcS, bcK} */},
+	opaggmini:                 {text: "aggmin.i64", in: bcargs[56:59] /* {bcAggSlot, bcS, bcK} */},
+	opaggmaxf:                 {text: "aggmax.f64", in: bcargs[56:59] /* {bcAggSlot, bcS, bcK} */},
+	opaggmaxi:                 {text: "aggmax.i64", in: bcargs[56:59] /* {bcAggSlot, bcS, bcK} */},
+	opaggandi:                 {text: "aggand.i64", in: bcargs[56:59] /* {bcAggSlot, bcS, bcK} */},
+	opaggori:                  {text: "aggor.i64", in: bcargs[56:59] /* {bcAggSlot, bcS, bcK} */},
+	opaggxori:                 {text: "aggxor.i64", in: bcargs[56:59] /* {bcAggSlot, bcS, bcK} */},
 	opaggcount:                {text: "aggcount", in: bcargs[38:40] /* {bcAggSlot, bcK} */},
+	opaggmergestate:           {text: "aggmergestate", in: bcargs[56:59] /* {bcAggSlot, bcS, bcK} */},
 	opaggbucket:               {text: "aggbucket", out: bcargs[6:7] /* {bcL} */, in: bcargs[36:38] /* {bcH, bcK} */},
 	opaggslotandk:             {text: "aggslotand.k", in: bcargs[5:9] /* {bcAggSlot, bcL, bcK, bcK} */},
 	opaggslotork:              {text: "aggslotor.k", in: bcargs[5:9] /* {bcAggSlot, bcL, bcK, bcK} */},
-	opaggslotsumi:             {text: "aggslotsum.i64", in: bcargs[92:96] /* {bcAggSlot, bcL, bcS, bcK} */},
-	opaggslotavgf:             {text: "aggslotavg.f64", in: bcargs[92:96] /* {bcAggSlot, bcL, bcS, bcK} */},
-	opaggslotavgi:             {text: "aggslotavg.i64", in: bcargs[92:96] /* {bcAggSlot, bcL, bcS, bcK} */},
-	opaggslotminf:             {text: "aggslotmin.f64", in: bcargs[92:96] /* {bcAggSlot, bcL, bcS, bcK} */},
-	opaggslotmini:             {text: "aggslotmin.i64", in: bcargs[92:96] /* {bcAggSlot, bcL, bcS, bcK} */},
-	opaggslotmaxf:             {text: "aggslotmax.f64", in: bcargs[92:96] /* {bcAggSlot, bcL, bcS, bcK} */},
-	opaggslotmaxi:             {text: "aggslotmax.i64", in: bcargs[92:96] /* {bcAggSlot, bcL, bcS, bcK} */},
-	opaggslotandi:             {text: "aggslotand.i64", in: bcargs[92:96] /* {bcAggSlot, bcL, bcS, bcK} */},
-	opaggslotori:              {text: "aggslotor.i64", in: bcargs[92:96] /* {bcAggSlot, bcL, bcS, bcK} */},
-	opaggslotxori:             {text: "aggslotxor.i64", in: bcargs[92:96] /* {bcAggSlot, bcL, bcS, bcK} */},
+	opaggslotsumi:             {text: "aggslotsum.i64", in: bcargs[69:73] /* {bcAggSlot, bcL, bcS, bcK} */},
+	opaggslotavgf:             {text: "aggslotavg.f64", in: bcargs[69:73] /* {bcAggSlot, bcL, bcS, bcK} */},
+	opaggslotavgi:             {text: "aggslotavg.i64", in: bcargs[69:73] /* {bcAggSlot, bcL, bcS, bcK} */},
+	opaggslotminf:             {text: "aggslotmin.f64", in: bcargs[69:73] /* {bcAggSlot, bcL, bcS, bcK} */},
+	opaggslotmini:             {text: "aggslotmin.i64", in: bcargs[69:73] /* {bcAggSlot, bcL, bcS, bcK} */},
+	opaggslotmaxf:             {text: "aggslotmax.f64", in: bcargs[69:73] /* {bcAggSlot, bcL, bcS, bcK} */},
+	opaggslotmaxi:             {text: "aggslotmax.i64", in: bcargs[69:73] /* {bcAggSlot, bcL, bcS, bcK} */},
+	opaggslotandi:             {text: "aggslotand.i64", in: bcargs[69:73] /* {bcAggSlot, bcL, bcS, bcK} */},
+	opaggslotori:              {text: "aggslotor.i64", in: bcargs[69:73] /* {bcAggSlot, bcL, bcS, bcK} */},
+	opaggslotxori:             {text: "aggslotxor.i64", in: bcargs[69:73] /* {bcAggSlot, bcL, bcS, bcK} */},
 	opaggslotcount:            {text: "aggslotcount", in: bcargs[5:8] /* {bcAggSlot, bcL, bcK} */},
 	opaggslotcountv2:          {text: "aggslotcount", in: bcargs[5:8] /* {bcAggSlot, bcL, bcK} */},
 	oplitref:                  {text: "litref", out: bcargs[10:11] /* {bcV} */, in: bcargs[20:21] /* {bcLitRef} */},
-	opauxval:                  {text: "auxval", out: bcargs[10:12] /* {bcV, bcK} */, in: bcargs[65:66] /* {bcAuxSlot} */},
-	opsplit:                   {text: "split", out: bcargs[56:59] /* {bcV, bcS, bcK} */, in: bcargs[3:5] /* {bcS, bcK} */},
-	optuple:                   {text: "tuple", out: bcargs[44:46] /* {bcB, bcK} */, in: bcargs[10:12] /* {bcV, bcK} */},
+	opauxval:                  {text: "auxval", out: bcargs[10:12] /* {bcV, bcK} */, in: bcargs[44:45] /* {bcAuxSlot} */},
+	opsplit:                   {text: "split", out: bcargs[47:50] /* {bcV, bcS, bcK} */, in: bcargs[3:5] /* {bcS, bcK} */},
+	optuple:                   {text: "tuple", out: bcargs[45:47] /* {bcB, bcK} */, in: bcargs[10:12] /* {bcV, bcK} */},
 	opmovk:                    {text: "mov.k", out: bcargs[4:5] /* {bcK} */, in: bcargs[4:5] /* {bcK} */},
 	opzerov:                   {text: "zero.v", out: bcargs[10:11] /* {bcV} */},
 	opmovv:                    {text: "mov.v", out: bcargs[10:11] /* {bcV} */, in: bcargs[10:12] /* {bcV, bcK} */},
@@ -268,71 +269,69 @@ var opinfo = [_maxbcop]bcopinfo{
 	opmovi64:                  {text: "mov.i64", out: bcargs[0:1] /* {bcS} */, in: bcargs[3:5] /* {bcS, bcK} */},
 	opobjectsize:              {text: "objectsize", out: bcargs[3:5] /* {bcS, bcK} */, in: bcargs[10:12] /* {bcV, bcK} */},
 	oparraysize:               {text: "arraysize", out: bcargs[0:1] /* {bcS} */, in: bcargs[3:5] /* {bcS, bcK} */},
-	oparrayposition:           {text: "arrayposition", out: bcargs[3:5] /* {bcS, bcK} */, in: bcargs[69:72] /* {bcS, bcV, bcK} */},
-	opCmpStrEqCs:              {text: "cmp_str_eq_cs", out: bcargs[4:5] /* {bcK} */, in: bcargs[23:26] /* {bcS, bcDictSlot, bcK} */},
-	opCmpStrEqCi:              {text: "cmp_str_eq_ci", out: bcargs[4:5] /* {bcK} */, in: bcargs[23:26] /* {bcS, bcDictSlot, bcK} */},
-	opCmpStrEqUTF8Ci:          {text: "cmp_str_eq_utf8_ci", out: bcargs[4:5] /* {bcK} */, in: bcargs[23:26] /* {bcS, bcDictSlot, bcK} */},
-	opCmpStrFuzzyA3:           {text: "cmp_str_fuzzy_A3", out: bcargs[4:5] /* {bcK} */, in: bcargs[22:26] /* {bcS, bcS, bcDictSlot, bcK} */},
-	opCmpStrFuzzyUnicodeA3:    {text: "cmp_str_fuzzy_unicode_A3", out: bcargs[4:5] /* {bcK} */, in: bcargs[22:26] /* {bcS, bcS, bcDictSlot, bcK} */},
-	opHasSubstrFuzzyA3:        {text: "contains_fuzzy_A3", out: bcargs[4:5] /* {bcK} */, in: bcargs[22:26] /* {bcS, bcS, bcDictSlot, bcK} */},
-	opHasSubstrFuzzyUnicodeA3: {text: "contains_fuzzy_unicode_A3", out: bcargs[4:5] /* {bcK} */, in: bcargs[22:26] /* {bcS, bcS, bcDictSlot, bcK} */},
+	oparrayposition:           {text: "arrayposition", out: bcargs[3:5] /* {bcS, bcK} */, in: bcargs[93:96] /* {bcS, bcV, bcK} */},
+	opCmpStrEqCs:              {text: "cmp_str_eq_cs", out: bcargs[4:5] /* {bcK} */, in: bcargs[27:30] /* {bcS, bcDictSlot, bcK} */},
+	opCmpStrEqCi:              {text: "cmp_str_eq_ci", out: bcargs[4:5] /* {bcK} */, in: bcargs[27:30] /* {bcS, bcDictSlot, bcK} */},
+	opCmpStrEqUTF8Ci:          {text: "cmp_str_eq_utf8_ci", out: bcargs[4:5] /* {bcK} */, in: bcargs[27:30] /* {bcS, bcDictSlot, bcK} */},
+	opCmpStrFuzzyA3:           {text: "cmp_str_fuzzy_A3", out: bcargs[4:5] /* {bcK} */, in: bcargs[26:30] /* {bcS, bcS, bcDictSlot, bcK} */},
+	opCmpStrFuzzyUnicodeA3:    {text: "cmp_str_fuzzy_unicode_A3", out: bcargs[4:5] /* {bcK} */, in: bcargs[26:30] /* {bcS, bcS, bcDictSlot, bcK} */},
+	opHasSubstrFuzzyA3:        {text: "contains_fuzzy_A3", out: bcargs[4:5] /* {bcK} */, in: bcargs[26:30] /* {bcS, bcS, bcDictSlot, bcK} */},
+	opHasSubstrFuzzyUnicodeA3: {text: "contains_fuzzy_unicode_A3", out: bcargs[4:5] /* {bcK} */, in: bcargs[26:30] /* {bcS, bcS, bcDictSlot, bcK} */},
 	opSkip1charLeft:           {text: "skip_1char_left", out: bcargs[3:5] /* {bcS, bcK} */, in: bcargs[3:5] /* {bcS, bcK} */},
 	opSkip1charRight:          {text: "skip_1char_right", out: bcargs[3:5] /* {bcS, bcK} */, in: bcargs[3:5] /* {bcS, bcK} */},
 	opSkipNcharLeft:           {text: "skip_nchar_left", out: bcargs[3:5] /* {bcS, bcK} */, in: bcargs[2:5] /* {bcS, bcS, bcK} */},
 	opSkipNcharRight:          {text: "skip_nchar_right", out: bcargs[3:5] /* {bcS, bcK} */, in: bcargs[2:5] /* {bcS, bcS, bcK} */},
 	opTrimWsLeft:              {text: "trim_ws_left", out: bcargs[0:1] /* {bcS} */, in: bcargs[3:5] /* {bcS, bcK} */},
 	opTrimWsRight:             {text: "trim_ws_right", out: bcargs[0:1] /* {bcS} */, in: bcargs[3:5] /* {bcS, bcK} */},
-	opTrim4charLeft:           {text: "trim_char_left", out: bcargs[0:1] /* {bcS} */, in: bcargs[23:26] /* {bcS, bcDictSlot, bcK} */},
-	opTrim4charRight:          {text: "trim_char_right", out: bcargs[0:1] /* {bcS} */, in: bcargs[23:26] /* {bcS, bcDictSlot, bcK} */},
+	opTrim4charLeft:           {text: "trim_char_left", out: bcargs[0:1] /* {bcS} */, in: bcargs[27:30] /* {bcS, bcDictSlot, bcK} */},
+	opTrim4charRight:          {text: "trim_char_right", out: bcargs[0:1] /* {bcS} */, in: bcargs[27:30] /* {bcS, bcDictSlot, bcK} */},
 	opoctetlength:             {text: "octetlength", out: bcargs[0:1] /* {bcS} */, in: bcargs[3:5] /* {bcS, bcK} */},
 	opcharlength:              {text: "characterlength", out: bcargs[0:1] /* {bcS} */, in: bcargs[3:5] /* {bcS, bcK} */},
 	opSubstr:                  {text: "substr", out: bcargs[0:1] /* {bcS} */, in: bcargs[1:5] /* {bcS, bcS, bcS, bcK} */},
-	opSplitPart:               {text: "split_part", out: bcargs[3:5] /* {bcS, bcK} */, in: bcargs[59:63] /* {bcS, bcDictSlot, bcS, bcK} */},
-	opContainsPrefixCs:        {text: "contains_prefix_cs", out: bcargs[3:5] /* {bcS, bcK} */, in: bcargs[23:26] /* {bcS, bcDictSlot, bcK} */},
-	opContainsPrefixCi:        {text: "contains_prefix_ci", out: bcargs[3:5] /* {bcS, bcK} */, in: bcargs[23:26] /* {bcS, bcDictSlot, bcK} */},
-	opContainsPrefixUTF8Ci:    {text: "contains_prefix_utf8_ci", out: bcargs[3:5] /* {bcS, bcK} */, in: bcargs[23:26] /* {bcS, bcDictSlot, bcK} */},
-	opContainsSuffixCs:        {text: "contains_suffix_cs", out: bcargs[3:5] /* {bcS, bcK} */, in: bcargs[23:26] /* {bcS, bcDictSlot, bcK} */},
-	opContainsSuffixCi:        {text: "contains_suffix_ci", out: bcargs[3:5] /* {bcS, bcK} */, in: bcargs[23:26] /* {bcS, bcDictSlot, bcK} */},
-	opContainsSuffixUTF8Ci:    {text: "contains_suffix_utf8_ci", out: bcargs[3:5] /* {bcS, bcK} */, in: bcargs[23:26] /* {bcS, bcDictSlot, bcK} */},
-	opContainsSubstrCs:        {text: "contains_substr_cs", out: bcargs[3:5] /* {bcS, bcK} */, in: bcargs[23:26] /* {bcS, bcDictSlot, bcK} */},
-	opContainsSubstrCi:        {text: "contains_substr_ci", out: bcargs[3:5] /* {bcS, bcK} */, in: bcargs[23:26] /* {bcS, bcDictSlot, bcK} */},
-	opContainsSubstrUTF8Ci:    {text: "contains_substr_utf8_ci", out: bcargs[3:5] /* {bcS, bcK} */, in: bcargs[23:26] /* {bcS, bcDictSlot, bcK} */},
-	opEqPatternCs:             {text: "eq_pattern_cs", out: bcargs[3:5] /* {bcS, bcK} */, in: bcargs[23:26] /* {bcS, bcDictSlot, bcK} */},
-	opEqPatternCi:             {text: "eq_pattern_ci", out: bcargs[3:5] /* {bcS, bcK} */, in: bcargs[23:26] /* {bcS, bcDictSlot, bcK} */},
-	opEqPatternUTF8Ci:         {text: "eq_pattern_utf8_ci", out: bcargs[3:5] /* {bcS, bcK} */, in: bcargs[23:26] /* {bcS, bcDictSlot, bcK} */},
-	opContainsPatternCs:       {text: "contains_pattern_cs", out: bcargs[3:5] /* {bcS, bcK} */, in: bcargs[23:26] /* {bcS, bcDictSlot, bcK} */},
-	opContainsPatternCi:       {text: "contains_pattern_ci", out: bcargs[3:5] /* {bcS, bcK} */, in: bcargs[23:26] /* {bcS, bcDictSlot, bcK} */},
-	opContainsPatternUTF8Ci:   {text: "contains_pattern_utf8_ci", out: bcargs[3:5] /* {bcS, bcK} */, in: bcargs[23:26] /* {bcS, bcDictSlot, bcK} */},
-	opIsSubnetOfIP4:           {text: "is_subnet_of_ip4", out: bcargs[4:5] /* {bcK} */, in: bcargs[23:26] /* {bcS, bcDictSlot, bcK} */},
-	opDfaT6:                   {text: "dfa_tiny6", out: bcargs[4:5] /* {bcK} */, in: bcargs[23:26] /* {bcS, bcDictSlot, bcK} */},
-	opDfaT7:                   {text: "dfa_tiny7", out: bcargs[4:5] /* {bcK} */, in: bcargs[23:26] /* {bcS, bcDictSlot, bcK} */},
-	opDfaT8:                   {text: "dfa_tiny8", out: bcargs[4:5] /* {bcK} */, in: bcargs[23:26] /* {bcS, bcDictSlot, bcK} */},
-	opDfaT6Z:                  {text: "dfa_tiny6Z", out: bcargs[4:5] /* {bcK} */, in: bcargs[23:26] /* {bcS, bcDictSlot, bcK} */},
-	opDfaT7Z:                  {text: "dfa_tiny7Z", out: bcargs[4:5] /* {bcK} */, in: bcargs[23:26] /* {bcS, bcDictSlot, bcK} */},
-	opDfaT8Z:                  {text: "dfa_tiny8Z", out: bcargs[4:5] /* {bcK} */, in: bcargs[23:26] /* {bcS, bcDictSlot, bcK} */},
-	opDfaLZ:                   {text: "dfa_largeZ", out: bcargs[4:5] /* {bcK} */, in: bcargs[23:26] /* {bcS, bcDictSlot, bcK} */},
-	opAggTDigest:              {text: "aggtdigest.f64", in: bcargs[50:53] /* {bcAggSlot, bcS, bcK} */},
+	opSplitPart:               {text: "split_part", out: bcargs[3:5] /* {bcS, bcK} */, in: bcargs[84:88] /* {bcS, bcDictSlot, bcS, bcK} */},
+	opContainsPrefixCs:        {text: "contains_prefix_cs", out: bcargs[3:5] /* {bcS, bcK} */, in: bcargs[27:30] /* {bcS, bcDictSlot, bcK} */},
+	opContainsPrefixCi:        {text: "contains_prefix_ci", out: bcargs[3:5] /* {bcS, bcK} */, in: bcargs[27:30] /* {bcS, bcDictSlot, bcK} */},
+	opContainsPrefixUTF8Ci:    {text: "contains_prefix_utf8_ci", out: bcargs[3:5] /* {bcS, bcK} */, in: bcargs[27:30] /* {bcS, bcDictSlot, bcK} */},
+	opContainsSuffixCs:        {text: "contains_suffix_cs", out: bcargs[3:5] /* {bcS, bcK} */, in: bcargs[27:30] /* {bcS, bcDictSlot, bcK} */},
+	opContainsSuffixCi:        {text: "contains_suffix_ci", out: bcargs[3:5] /* {bcS, bcK} */, in: bcargs[27:30] /* {bcS, bcDictSlot, bcK} */},
+	opContainsSuffixUTF8Ci:    {text: "contains_suffix_utf8_ci", out: bcargs[3:5] /* {bcS, bcK} */, in: bcargs[27:30] /* {bcS, bcDictSlot, bcK} */},
+	opContainsSubstrCs:        {text: "contains_substr_cs", out: bcargs[3:5] /* {bcS, bcK} */, in: bcargs[27:30] /* {bcS, bcDictSlot, bcK} */},
+	opContainsSubstrCi:        {text: "contains_substr_ci", out: bcargs[3:5] /* {bcS, bcK} */, in: bcargs[27:30] /* {bcS, bcDictSlot, bcK} */},
+	opContainsSubstrUTF8Ci:    {text: "contains_substr_utf8_ci", out: bcargs[3:5] /* {bcS, bcK} */, in: bcargs[27:30] /* {bcS, bcDictSlot, bcK} */},
+	opEqPatternCs:             {text: "eq_pattern_cs", out: bcargs[3:5] /* {bcS, bcK} */, in: bcargs[27:30] /* {bcS, bcDictSlot, bcK} */},
+	opEqPatternCi:             {text: "eq_pattern_ci", out: bcargs[3:5] /* {bcS, bcK} */, in: bcargs[27:30] /* {bcS, bcDictSlot, bcK} */},
+	opEqPatternUTF8Ci:         {text: "eq_pattern_utf8_ci", out: bcargs[3:5] /* {bcS, bcK} */, in: bcargs[27:30] /* {bcS, bcDictSlot, bcK} */},
+	opContainsPatternCs:       {text: "contains_pattern_cs", out: bcargs[3:5] /* {bcS, bcK} */, in: bcargs[27:30] /* {bcS, bcDictSlot, bcK} */},
+	opContainsPatternCi:       {text: "contains_pattern_ci", out: bcargs[3:5] /* {bcS, bcK} */, in: bcargs[27:30] /* {bcS, bcDictSlot, bcK} */},
+	opContainsPatternUTF8Ci:   {text: "contains_pattern_utf8_ci", out: bcargs[3:5] /* {bcS, bcK} */, in: bcargs[27:30] /* {bcS, bcDictSlot, bcK} */},
+	opIsSubnetOfIP4:           {text: "is_subnet_of_ip4", out: bcargs[4:5] /* {bcK} */, in: bcargs[27:30] /* {bcS, bcDictSlot, bcK} */},
+	opDfaT6:                   {text: "dfa_tiny6", out: bcargs[4:5] /* {bcK} */, in: bcargs[27:30] /* {bcS, bcDictSlot, bcK} */},
+	opDfaT7:                   {text: "dfa_tiny7", out: bcargs[4:5] /* {bcK} */, in: bcargs[27:30] /* {bcS, bcDictSlot, bcK} */},
+	opDfaT8:                   {text: "dfa_tiny8", out: bcargs[4:5] /* {bcK} */, in: bcargs[27:30] /* {bcS, bcDictSlot, bcK} */},
+	opDfaT6Z:                  {text: "dfa_tiny6Z", out: bcargs[4:5] /* {bcK} */, in: bcargs[27:30] /* {bcS, bcDictSlot, bcK} */},
+	opDfaT7Z:                  {text: "dfa_tiny7Z", out: bcargs[4:5] /* {bcK} */, in: bcargs[27:30] /* {bcS, bcDictSlot, bcK} */},
+	opDfaT8Z:                  {text: "dfa_tiny8Z", out: bcargs[4:5] /* {bcK} */, in: bcargs[27:30] /* {bcS, bcDictSlot, bcK} */},
+	opDfaLZ:                   {text: "dfa_largeZ", out: bcargs[4:5] /* {bcK} */, in: bcargs[27:30] /* {bcS, bcDictSlot, bcK} */},
+	opAggTDigest:              {text: "aggtdigest.f64", in: bcargs[56:59] /* {bcAggSlot, bcS, bcK} */},
 	opslower:                  {text: "slower", out: bcargs[3:5] /* {bcS, bcK} */, in: bcargs[3:5] /* {bcS, bcK} */, scratch: PageSize},
 	opsupper:                  {text: "supper", out: bcargs[3:5] /* {bcS, bcK} */, in: bcargs[3:5] /* {bcS, bcK} */, scratch: PageSize},
-	opaggapproxcount:          {text: "aggapproxcount", in: bcargs[26:30] /* {bcAggSlot, bcH, bcImmU16, bcK} */},
-	opaggapproxcountmerge:     {text: "aggapproxcountmerge", in: bcargs[102:106] /* {bcAggSlot, bcS, bcImmU16, bcK} */},
-	opaggslotapproxcount:      {text: "aggslotapproxcount", in: bcargs[78:83] /* {bcAggSlot, bcL, bcH, bcImmU16, bcK} */},
+	opaggapproxcount:          {text: "aggapproxcount", in: bcargs[22:26] /* {bcAggSlot, bcH, bcImmU16, bcK} */},
+	opaggslotapproxcount:      {text: "aggslotapproxcount", in: bcargs[96:101] /* {bcAggSlot, bcL, bcH, bcImmU16, bcK} */},
 	opaggslotapproxcountmerge: {text: "aggslotapproxcountmerge", in: bcargs[30:35] /* {bcAggSlot, bcL, bcS, bcImmU16, bcK} */},
 	oppowuintf64:              {text: "powuint.f64", out: bcargs[0:1] /* {bcS} */, in: bcargs[13:16] /* {bcS, bcImmI64, bcK} */},
 }
 
-var bcargs = [109]bcArgType{bcS, bcS, bcS, bcS, bcK, bcAggSlot, bcL, bcK,
-	bcK, bcH, bcV, bcK, bcS, bcS, bcImmI64, bcK, bcV, bcImmF64, bcK,
-	bcV, bcLitRef, bcK, bcS, bcS, bcDictSlot, bcK, bcAggSlot, bcH,
-	bcImmU16, bcK, bcAggSlot, bcL, bcS, bcImmU16, bcK, bcB, bcH, bcK,
-	bcAggSlot, bcK, bcK, bcK, bcImmU16, bcK, bcB, bcK, bcS, bcS,
-	bcImmU64, bcK, bcAggSlot, bcS, bcK, bcV, bcImmU16, bcK, bcV, bcS,
-	bcK, bcS, bcDictSlot, bcS, bcK, bcS, bcK, bcAuxSlot, bcB,
-	bcSymbolID, bcK, bcS, bcV, bcK, bcV, bcK, bcK, bcV, bcImmI64, bcK,
-	bcAggSlot, bcL, bcH, bcImmU16, bcK, bcB, bcV, bcK, bcSymbolID, bcK,
-	bcS, bcS, bcImmU16, bcK, bcAggSlot, bcL, bcS, bcK, bcSymbolID, bcV,
-	bcK, bcV, bcV, bcK, bcAggSlot, bcS, bcImmU16, bcK, bcS, bcImmF64,
-	bcK}
+var bcargs = [105]bcArgType{bcS, bcS, bcS, bcS, bcK, bcAggSlot, bcL, bcK,
+	bcK, bcH, bcV, bcK, bcS, bcS, bcImmI64, bcK, bcS, bcImmF64, bcK,
+	bcV, bcLitRef, bcK, bcAggSlot, bcH, bcImmU16, bcK, bcS, bcS,
+	bcDictSlot, bcK, bcAggSlot, bcL, bcS, bcImmU16, bcK, bcB, bcH, bcK,
+	bcAggSlot, bcK, bcK, bcK, bcImmU16, bcK, bcAuxSlot, bcB, bcK, bcV,
+	bcS, bcK, bcV, bcV, bcK, bcV, bcK, bcK, bcAggSlot, bcS, bcK,
+	bcSymbolID, bcV, bcK, bcS, bcS, bcImmU64, bcK, bcV, bcImmU16, bcK,
+	bcAggSlot, bcL, bcS, bcK, bcS, bcK, bcV, bcImmI64, bcK, bcB,
+	bcSymbolID, bcK, bcV, bcImmF64, bcK, bcS, bcDictSlot, bcS, bcK,
+	bcB, bcV, bcK, bcSymbolID, bcK, bcS, bcV, bcK, bcAggSlot, bcL, bcH,
+	bcImmU16, bcK, bcS, bcS, bcImmU16, bcK}
 
 const (
 	optrap                    bcop = 0
@@ -573,81 +572,81 @@ const (
 	opaggori                  bcop = 235
 	opaggxori                 bcop = 236
 	opaggcount                bcop = 237
-	opaggbucket               bcop = 238
-	opaggslotandk             bcop = 239
-	opaggslotork              bcop = 240
-	opaggslotsumi             bcop = 241
-	opaggslotavgf             bcop = 242
-	opaggslotavgi             bcop = 243
-	opaggslotminf             bcop = 244
-	opaggslotmini             bcop = 245
-	opaggslotmaxf             bcop = 246
-	opaggslotmaxi             bcop = 247
-	opaggslotandi             bcop = 248
-	opaggslotori              bcop = 249
-	opaggslotxori             bcop = 250
-	opaggslotcount            bcop = 251
-	opaggslotcountv2          bcop = 252
-	oplitref                  bcop = 253
-	opauxval                  bcop = 254
-	opsplit                   bcop = 255
-	optuple                   bcop = 256
-	opmovk                    bcop = 257
-	opzerov                   bcop = 258
-	opmovv                    bcop = 259
-	opmovvk                   bcop = 260
-	opmovf64                  bcop = 261
-	opmovi64                  bcop = 262
-	opobjectsize              bcop = 263
-	oparraysize               bcop = 264
-	oparrayposition           bcop = 265
-	opCmpStrEqCs              bcop = 266
-	opCmpStrEqCi              bcop = 267
-	opCmpStrEqUTF8Ci          bcop = 268
-	opCmpStrFuzzyA3           bcop = 269
-	opCmpStrFuzzyUnicodeA3    bcop = 270
-	opHasSubstrFuzzyA3        bcop = 271
-	opHasSubstrFuzzyUnicodeA3 bcop = 272
-	opSkip1charLeft           bcop = 273
-	opSkip1charRight          bcop = 274
-	opSkipNcharLeft           bcop = 275
-	opSkipNcharRight          bcop = 276
-	opTrimWsLeft              bcop = 277
-	opTrimWsRight             bcop = 278
-	opTrim4charLeft           bcop = 279
-	opTrim4charRight          bcop = 280
-	opoctetlength             bcop = 281
-	opcharlength              bcop = 282
-	opSubstr                  bcop = 283
-	opSplitPart               bcop = 284
-	opContainsPrefixCs        bcop = 285
-	opContainsPrefixCi        bcop = 286
-	opContainsPrefixUTF8Ci    bcop = 287
-	opContainsSuffixCs        bcop = 288
-	opContainsSuffixCi        bcop = 289
-	opContainsSuffixUTF8Ci    bcop = 290
-	opContainsSubstrCs        bcop = 291
-	opContainsSubstrCi        bcop = 292
-	opContainsSubstrUTF8Ci    bcop = 293
-	opEqPatternCs             bcop = 294
-	opEqPatternCi             bcop = 295
-	opEqPatternUTF8Ci         bcop = 296
-	opContainsPatternCs       bcop = 297
-	opContainsPatternCi       bcop = 298
-	opContainsPatternUTF8Ci   bcop = 299
-	opIsSubnetOfIP4           bcop = 300
-	opDfaT6                   bcop = 301
-	opDfaT7                   bcop = 302
-	opDfaT8                   bcop = 303
-	opDfaT6Z                  bcop = 304
-	opDfaT7Z                  bcop = 305
-	opDfaT8Z                  bcop = 306
-	opDfaLZ                   bcop = 307
-	opAggTDigest              bcop = 308
-	opslower                  bcop = 309
-	opsupper                  bcop = 310
-	opaggapproxcount          bcop = 311
-	opaggapproxcountmerge     bcop = 312
+	opaggmergestate           bcop = 238
+	opaggbucket               bcop = 239
+	opaggslotandk             bcop = 240
+	opaggslotork              bcop = 241
+	opaggslotsumi             bcop = 242
+	opaggslotavgf             bcop = 243
+	opaggslotavgi             bcop = 244
+	opaggslotminf             bcop = 245
+	opaggslotmini             bcop = 246
+	opaggslotmaxf             bcop = 247
+	opaggslotmaxi             bcop = 248
+	opaggslotandi             bcop = 249
+	opaggslotori              bcop = 250
+	opaggslotxori             bcop = 251
+	opaggslotcount            bcop = 252
+	opaggslotcountv2          bcop = 253
+	oplitref                  bcop = 254
+	opauxval                  bcop = 255
+	opsplit                   bcop = 256
+	optuple                   bcop = 257
+	opmovk                    bcop = 258
+	opzerov                   bcop = 259
+	opmovv                    bcop = 260
+	opmovvk                   bcop = 261
+	opmovf64                  bcop = 262
+	opmovi64                  bcop = 263
+	opobjectsize              bcop = 264
+	oparraysize               bcop = 265
+	oparrayposition           bcop = 266
+	opCmpStrEqCs              bcop = 267
+	opCmpStrEqCi              bcop = 268
+	opCmpStrEqUTF8Ci          bcop = 269
+	opCmpStrFuzzyA3           bcop = 270
+	opCmpStrFuzzyUnicodeA3    bcop = 271
+	opHasSubstrFuzzyA3        bcop = 272
+	opHasSubstrFuzzyUnicodeA3 bcop = 273
+	opSkip1charLeft           bcop = 274
+	opSkip1charRight          bcop = 275
+	opSkipNcharLeft           bcop = 276
+	opSkipNcharRight          bcop = 277
+	opTrimWsLeft              bcop = 278
+	opTrimWsRight             bcop = 279
+	opTrim4charLeft           bcop = 280
+	opTrim4charRight          bcop = 281
+	opoctetlength             bcop = 282
+	opcharlength              bcop = 283
+	opSubstr                  bcop = 284
+	opSplitPart               bcop = 285
+	opContainsPrefixCs        bcop = 286
+	opContainsPrefixCi        bcop = 287
+	opContainsPrefixUTF8Ci    bcop = 288
+	opContainsSuffixCs        bcop = 289
+	opContainsSuffixCi        bcop = 290
+	opContainsSuffixUTF8Ci    bcop = 291
+	opContainsSubstrCs        bcop = 292
+	opContainsSubstrCi        bcop = 293
+	opContainsSubstrUTF8Ci    bcop = 294
+	opEqPatternCs             bcop = 295
+	opEqPatternCi             bcop = 296
+	opEqPatternUTF8Ci         bcop = 297
+	opContainsPatternCs       bcop = 298
+	opContainsPatternCi       bcop = 299
+	opContainsPatternUTF8Ci   bcop = 300
+	opIsSubnetOfIP4           bcop = 301
+	opDfaT6                   bcop = 302
+	opDfaT7                   bcop = 303
+	opDfaT8                   bcop = 304
+	opDfaT6Z                  bcop = 305
+	opDfaT7Z                  bcop = 306
+	opDfaT8Z                  bcop = 307
+	opDfaLZ                   bcop = 308
+	opAggTDigest              bcop = 309
+	opslower                  bcop = 310
+	opsupper                  bcop = 311
+	opaggapproxcount          bcop = 312
 	opaggslotapproxcount      bcop = 313
 	opaggslotapproxcountmerge bcop = 314
 	oppowuintf64              bcop = 315
@@ -661,4 +660,4 @@ var patchAVX512Level2 []opreplace = []opreplace{
 	{from: opaggslotcountv2, to: opaggslotcount},
 }
 
-// checksum: 9c40839f70b0e7abb602805922305323
+// checksum: a9d20ada1a3c133ed506d2e57931c4e4

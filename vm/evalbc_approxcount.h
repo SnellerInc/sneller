@@ -57,92 +57,6 @@ next:
 
     NEXT_ADVANCE(BC_SLOT_SIZE*2 + BC_AGGSLOT_SIZE + BC_IMM16_SIZE)
 
-// bcaggapproxcountmerge implements buckets filled by bcaggapproxcount opcode.
-//
-// The merge operation is merely a max operation - please see
-// aggApproxCountDistinctUpdateBuckets function from aggcountdistinct.go.
-//
-// _ = aggapproxcountmerge(a[0], s[1], u16@imm[2]).k[3]
-TEXT bcaggapproxcountmerge(SB), NOSPLIT|NOFRAME, $0
-#define BUFFER_SIZE             BX
-#define AGG_BUFFER_PTR_ORIG     CX
-#define AGG_BUFFER_PTR          DX
-#define VAL_OFFSETS             R8
-#define VAL_BUFFER_PTR          R13
-#define ACTIVE_MASK             R14
-#define COUNTER                 R15
-
-    // bcAggSlot, bcReadS, bcImmU16, bcPredicate
-    BC_UNPACK_RU32(0, OUT(AGG_BUFFER_PTR_ORIG))
-    BC_UNPACK_SLOT_RU16_SLOT(BC_AGGSLOT_SIZE, OUT(BX), OUT(DX), OUT(R8))
-
-    BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
-    BC_LOAD_SLICE_FROM_SLOT_MASKED(OUT(Z2), OUT(Z3), IN(BX), IN(K1))
-
-    /* BUFFER_SIZE = 1 << precision - the expected size of input buffers */
-    XORQ    BUFFER_SIZE, BUFFER_SIZE
-    BTSQ    DX, BUFFER_SIZE             // 1 << precision
-
-    /* Check if all lengths equal to 1 << precision */
-    VPBROADCASTQ    BUFFER_SIZE, Z29
-    VPCMPQ          $VPCMP_IMM_NE, Z29, Z3, K1, K2
-    KTESTQ          K2, K2
-    JNZ wrong_input
-
-    // Note: the minimum precision of APPROX_COUNT_DISTINCT is 4 (ApproxCountDistinctMinPrecision),
-    //       thus we can safely process the buffers in 16-byte chunks.
-    SHRQ        $4, BUFFER_SIZE
-
-    /* Input buffers offsets (we already validated all have the correct size) */
-    LEAQ        bytecode_spillArea(VIRT_BCPTR), VAL_OFFSETS
-    VMOVDQU32   Z2, (VAL_OFFSETS)
-
-    /* Aggregate buffer pointer */
-    ADDQ    VIRT_AGG_BUFFER, AGG_BUFFER_PTR_ORIG
-
-    KMOVW   K1, ACTIVE_MASK
-
-main_loop:
-    TESTQ   $1, ACTIVE_MASK
-    JZ      skip
-
-    // update n-th buffer
-    MOVL    (VAL_OFFSETS), VAL_BUFFER_PTR
-    ADDQ    VIRT_BASE, VAL_BUFFER_PTR
-    MOVQ    BUFFER_SIZE, COUNTER
-    MOVQ    AGG_BUFFER_PTR_ORIG, AGG_BUFFER_PTR
-
-update:
-    // agg_buffer[j] := max(agg_buffer[j], val_buffer[k])
-    VMOVDQU (AGG_BUFFER_PTR), X5
-    VMOVDQU (VAL_BUFFER_PTR), X6
-    VPMAXUB X6, X5, X5
-    VMOVDQU X5, (AGG_BUFFER_PTR)
-
-    // j++; k++
-    ADDQ    $16, AGG_BUFFER_PTR
-    ADDQ    $16, VAL_BUFFER_PTR
-    DECQ    COUNTER
-    JNZ     update
-
-skip:
-    ADDQ    $4, VAL_OFFSETS
-    SHRQ    $1, ACTIVE_MASK
-    JNZ     main_loop
-
-end:
-    NEXT_ADVANCE(BC_SLOT_SIZE*2 + BC_AGGSLOT_SIZE + BC_IMM16_SIZE)
-
-wrong_input:
-    FAIL()
-
-#undef BUFFER_SIZE
-#undef AGG_BUFFER_PTR
-#undef VAL_OFFSETS
-#undef VAL_BUFFER_PTR
-#undef ACTIVE_MASK
-#undef COUNTER
-
 
 #define CURRENT_MASK        R9
 #define HASHMEM_PTR         R8
@@ -236,7 +150,6 @@ skip:
 #undef BYTEBUCKET_PTR
 #undef BITS_PER_HLL_BUCKET
 #undef BITS_PER_HLL_HASH
-#undef AGG_BUFFER_PTR_ORIG
 
 next:
     VMOVQ X12, R12

@@ -7090,6 +7090,27 @@ TEXT bcaggcount(SB), NOSPLIT|NOFRAME, $0
   NEXT_ADVANCE(BC_SLOT_SIZE*1 + BC_AGGSLOT_SIZE)
 
 
+// _ = aggmergestate(a[0], s[1]).k[2]
+TEXT bcaggmergestate(SB), NOSPLIT|NOFRAME, $0
+    // bcAggSlot, bcReadS, bcPredicate
+    BC_UNPACK_RU32(0, OUT(BX))
+    BC_UNPACK_2xSLOT(BC_AGGSLOT_SIZE, OUT(DX), OUT(R8))
+
+    BC_LOAD_RU16_FROM_SLOT(OUT(R8), IN(R8)) // R8 = mask
+    CMPQ    R8, $1  // we expect exactly one row to be passed
+    JNE     wrong_mask
+
+    ADDQ    VIRT_AGG_BUFFER, BX         // slot address
+    MOVL    BC_VSTACK_PTR(DX, 0), CX    // copy offset
+    MOVL    CX, 0(BX)
+    MOVL    BC_VSTACK_PTR(DX, 64), CX   // copy size
+    MOVL    CX, 4(BX)
+
+    NEXT_ADVANCE(BC_SLOT_SIZE*2 + BC_AGGSLOT_SIZE)
+
+wrong_mask:
+    FAIL()
+
 // Slot Aggregation Instructions
 // -----------------------------
 

@@ -1,6 +1,7 @@
 SELECT
+    APPROX_COUNT_DISTINCT(y) AS y_count,    # `y` does not exist
     APPROX_COUNT_DISTINCT(x) AS x_count,
-    APPROX_COUNT_DISTINCT(y) AS y_count     # `y` does not exist
+    APPROX_COUNT_DISTINCT(z) AS z_count     # `z` does not exist
 FROM input
 ---
 {"x": 1}
@@ -11,4 +12,4 @@ FROM input
 {"x": 1}
 {"x": 1}
 ---
-{"x_count": 2, "y_count": 0}
+{"x_count": 2, "y_count": 0, "z_count": 0}
