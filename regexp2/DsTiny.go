@@ -19,7 +19,10 @@ import (
 	"fmt"
 	"io"
 	"math/bits"
+	"strings"
 	"unicode/utf8"
+
+	"golang.org/x/exp/slices"
 )
 
 type DsTiny struct {
@@ -28,11 +31,182 @@ type DsTiny struct {
 	charGroupMap mapT[symbolRangeT, groupIDT]
 }
 
+type symbolRangeIDT int
+
+type tupleT struct {
+	symbolRangeID symbolRangeIDT
+	groupID       groupIDT
+}
+
+func (t tupleT) String() string {
+	return fmt.Sprintf("(%v,%v)", t.symbolRangeID, t.groupID)
+}
+
+func compressGroups(groupData [][]symbolRangeIDT) (result []tupleT) {
+
+	commonGroup := func(idx1, idx2 int, groupData [][]symbolRangeIDT, done setT[symbolRangeIDT]) (result []symbolRangeIDT) {
+
+		contains := func(data []symbolRangeIDT, element symbolRangeIDT) bool {
+			_, found := slices.BinarySearch(data, element)
+			return found
+		}
+
+		// isSubset returns true if a is a subset of b
+		isSubset := func(a, b []symbolRangeIDT) bool {
+			for _, x := range a {
+				if !contains(b, x) {
+					return false
+				}
+			}
+			return true
+		}
+
+		// intersect returns the intersection of the sorted slice A and sorted slice B
+		intersect := func(a, b []symbolRangeIDT) (result []symbolRangeIDT) {
+			i := 0
+			j := 0
+			for i < len(a) && j < len(b) {
+				// If the elements are the same, add it to the intersection slice
+				if a[i] == b[j] {
+					result = append(result, a[i])
+					i++
+					j++
+				} else if a[i] < b[j] {
+					i++
+				} else {
+					j++
+				}
+			}
+			return result
+		}
+
+		// subtract removes all elements in toRemove from data
+		subtract := func(data []symbolRangeIDT, toRemove setT[symbolRangeIDT]) (result []symbolRangeIDT) {
+			for _, e := range data {
+				if !toRemove.contains(e) {
+					result = append(result, e)
+				}
+			}
+			return result
+		}
+
+		element := groupData[idx1][idx2]
+
+		first := true
+		for _, symbolRangeIDs2 := range groupData {
+			if contains(symbolRangeIDs2, element) {
+				if first {
+					result = symbolRangeIDs2
+					first = false
+				} else {
+					result = intersect(result, symbolRangeIDs2)
+				}
+			}
+		}
+
+		// remove all elements from result that are already done
+		result = subtract(result, done)
+		symbolRangeIDs := groupData[idx1]
+
+		toRemove := newSet[symbolRangeIDT]()
+		for i, e := range symbolRangeIDs {
+			if i == idx2 {
+				continue
+			}
+			for k, y := range groupData {
+				if k == idx1 {
+					continue
+				}
+				// all elements of y should be in result2, if not then element 2 should be removed from result2
+				if slices.Contains(y, e) && !isSubset(result, y) {
+					toRemove.insert(e)
+				}
+			}
+		}
+		return subtract(result, toRemove)
+	}
+
+	charGroupID := groupIDT(1) // NOTE charGroupID = 0 is reserved for non-matching characters
+	done := newSet[symbolRangeIDT]()
+
+	for idx1, symbolRangeIDs := range groupData {
+		for idx2, symbolRangeID1 := range symbolRangeIDs {
+			if !done.contains(symbolRangeID1) {
+				newGroup := commonGroup(idx1, idx2, groupData, done)
+				for _, symbolRangeID2 := range newGroup {
+					done.insert(symbolRangeID2)
+					result = append(result, tupleT{groupID: charGroupID, symbolRangeID: symbolRangeID2})
+				}
+				charGroupID++
+			}
+		}
+	}
+	return result
+}
+
+func createCharGroupMap(store *DFAStore) (charGroupMap mapT[symbolRangeT, groupIDT], err error) {
+	// create dataMap with all edges of the DFA
+	dataMap1 := newMap[string, *setT[symbolRangeT]]()
+
+	for _, node := range store.data {
+		for _, edge := range node.edges {
+			if edge.epsilon() {
+				return nil, fmt.Errorf("createCharGroupMap: illegal epsilon edge in DFA")
+			}
+			if !edge.rlza() {
+				key := fmt.Sprintf("%v->%v", node.id, edge.to)
+				if dataMap1.containsKey(key) {
+					data := dataMap1.at(key)
+					data.insert(edge.symbolRange)
+					dataMap1.insert(key, data)
+				} else {
+					data := newSet[symbolRangeT]()
+					data.insert(edge.symbolRange)
+					dataMap1.insert(key, &data)
+				}
+			}
+		}
+	}
+
+	// create translations from symbolRangeT to an int identifier
+	translationA := newMap[symbolRangeIDT, symbolRangeT]()
+	translationB := newMap[symbolRangeT, symbolRangeIDT]()
+	symbolRangeID := symbolRangeIDT(0)
+
+	for _, symbolRanges := range dataMap1 {
+		for symbolRange := range *symbolRanges {
+			if !translationB.containsKey(symbolRange) {
+				translationB.insert(symbolRange, symbolRangeID)
+				translationA.insert(symbolRangeID, symbolRange)
+				symbolRangeID++
+			}
+		}
+	}
+
+	// create another dataMap with all edges of the DFA based on the int identifier
+	dataMap2 := make([][]symbolRangeIDT, 0)
+	for _, symbolRanges := range dataMap1 {
+		data2 := make([]symbolRangeIDT, symbolRanges.len())
+		idx := 0
+		for symbolRange := range *symbolRanges {
+			data2[idx] = translationB.at(symbolRange)
+			idx++
+		}
+		slices.Sort(data2)
+		dataMap2 = append(dataMap2, data2)
+	}
+
+	charGroupMap = newMap[symbolRangeT, groupIDT]()
+	for _, tuple := range compressGroups(dataMap2) {
+		charGroupMap.insert(translationA.at(tuple.symbolRangeID), tuple.groupID)
+	}
+	return charGroupMap, nil
+}
+
 func NewDsTiny(store *DFAStore) (*DsTiny, error) {
 	result := new(DsTiny)
 	result.Store = store
 	result.stateMap = newMap[nodeIDT, stateIDT]()
-	result.charGroupMap = newMap[symbolRangeT, groupIDT]()
 
 	// create map that translates nodeIDs from the DFAStore to stateIDs from the DFA data-structure
 	// NOTE stateID = 0 is the fail-state; stateID = 1 is the start-state
@@ -42,25 +216,9 @@ func NewDsTiny(store *DFAStore) (*DsTiny, error) {
 		result.stateMap.insert(nodeID, stateID)
 		stateID++
 	}
-
-	// create character table data
-	symbolRanges := newSet[symbolRangeT]()
-	for _, node := range store.data {
-		for _, edge := range node.edges {
-			if edge.epsilon() {
-				return nil, fmt.Errorf("NewDsTiny: illegal epsilon edge in DFA")
-			}
-			if !edge.rlza() {
-				symbolRanges.insert(edge.symbolRange)
-			}
-		}
-	}
-	charGroupID := groupIDT(1) // NOTE charGroupID = 0 is reserved for non-matching characters
-	for symbolRange := range symbolRanges {
-		result.charGroupMap.insert(symbolRange, charGroupID)
-		charGroupID++
-	}
-	return result, nil
+	var err error
+	result.charGroupMap, err = createCharGroupMap(store)
+	return result, err
 }
 
 func addCharGroup2Ds(r rune, charGroupID groupIDT, nBitsStates int, data *[]byte) {
@@ -174,7 +332,11 @@ func DumpDebug(writer io.Writer, data []byte, nBits, nNodes, nGroups int, regex 
 }
 
 func (d *DsTiny) NumberOfGroups() int {
-	return d.charGroupMap.size()
+	groupIDs := newSet[groupIDT]()
+	for _, v := range d.charGroupMap {
+		groupIDs.insert(v)
+	}
+	return groupIDs.len()
 }
 
 func (d *DsTiny) DataWithGraphviz(writeDot bool, nBits int, hasWildcard bool, wildcardRange symbolRangeT) ([]byte, bool, *Graphviz) {
@@ -219,7 +381,13 @@ func (d *DsTiny) DataWithGraphviz(writeDot bool, nBits int, hasWildcard bool, wi
 			addCharGroup2Ds(r, charGroupID, nBitsNodes, &data)
 		}
 	}
+
 	// fill data structure with state transformations
+	var groupAlreadyDone setT[string]
+	if writeDot {
+		groupAlreadyDone = newSet[string]()
+	}
+
 	for nodeID, node := range d.Store.data {
 		stateID := d.stateMap.at(nodeID)
 
@@ -229,7 +397,6 @@ func (d *DsTiny) DataWithGraphviz(writeDot bool, nBits int, hasWildcard bool, wi
 				addTrans2Ds(stateID, charGroupID, stateID, nBitsNodes, nBits, &data)
 			}
 		} else {
-			charGroupsAlreadyDone := newVector[groupIDT]()
 			for _, edge := range node.edges {
 				if edge.rlza() {
 					// only draw the edge in the .dot; no need to add it to the transitions since it handled differently
@@ -244,10 +411,22 @@ func (d *DsTiny) DataWithGraphviz(writeDot bool, nBits int, hasWildcard bool, wi
 					toStateID := d.stateMap.at(edge.to)
 					charGroupID := d.charGroupMap.at(edge.symbolRange)
 					if writeDot {
-						dot.addEdgeInt(stateID, toStateID, fmt.Sprintf("%v:%v", charGroupID, edge.symbolRange))
+						// retrieve all edges from the same group, and make a nice label for graphviz
+						key := fmt.Sprintf("%v->%v(%v)", stateID, toStateID, charGroupID)
+						if !groupAlreadyDone.contains(key) {
+							groupAlreadyDone.insert(key)
+							symbolRanges := make([]string, 0)
+							for k, v := range d.charGroupMap {
+								if v == charGroupID {
+									symbolRanges = append(symbolRanges, k.String())
+								}
+							}
+							slices.Sort(symbolRanges)
+							label := strings.Join(symbolRanges, ",")
+							dot.addEdgeInt(stateID, toStateID, fmt.Sprintf("%v:%v", charGroupID, label))
+						}
 					}
 					addTrans2Ds(stateID, charGroupID, toStateID, nBitsNodes, nBits, &data)
-					charGroupsAlreadyDone.pushBack(charGroupID)
 				}
 			}
 		}

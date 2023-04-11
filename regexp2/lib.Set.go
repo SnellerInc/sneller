@@ -54,3 +54,7 @@ func (s *setT[T]) toVector() vectorT[T] {
 func (s *setT[T]) equal(other *setT[T]) bool {
 	return maps.Equal(*s, *other)
 }
+
+func (s *setT[T]) len() int {
+	return len(*s)
+}

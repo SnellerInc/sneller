@@ -22,11 +22,6 @@ func newMap[K comparable, V comparable]() mapT[K, V] {
 	return map[K]V{}
 }
 
-// size gets size of map
-func (m *mapT[K, V]) size() int {
-	return len(*m)
-}
-
 // at access value at key
 func (m *mapT[K, V]) at(k K) V {
 	if value, present := (*m)[k]; present {
@@ -41,7 +36,7 @@ func (m *mapT[K, V]) insert(k K, v V) {
 }
 
 func (m *mapT[K, V]) clear() {
-	(*m) = map[K]V{}
+	*m = map[K]V{}
 }
 
 // containsKey test whether key is present
