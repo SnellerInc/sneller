@@ -254,7 +254,7 @@ func reduceAggregate(a *Aggregate, mapping, reduce *Trace) error {
 	needsFinalProjection := false
 	for i := range a.Agg {
 		switch a.Agg[i].Expr.Op {
-		case expr.OpApproxCountDistinct, expr.OpSum:
+		case expr.OpApproxCountDistinct, expr.OpSum, expr.OpApproxPercentile, expr.OpApproxMedian:
 			// Opcode becomes its partial counterpart
 			a.Agg[i].Expr.Role = expr.AggregateRolePartial
 
@@ -354,11 +354,13 @@ func reduceAggregate(a *Aggregate, mapping, reduce *Trace) error {
 		case expr.OpApproxPercentile:
 			newagg = &expr.Aggregate{
 				Op:    expr.OpApproxPercentile,
+				Role:  expr.AggregateRoleMerge,
 				Misc:  age.Misc,
 				Inner: innerref}
 		case expr.OpApproxMedian:
 			newagg = &expr.Aggregate{
 				Op:    expr.OpApproxMedian,
+				Role:  expr.AggregateRoleMerge,
 				Misc:  age.Misc,
 				Inner: innerref}
 		case expr.OpApproxCountDistinct:

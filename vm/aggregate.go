@@ -101,6 +101,8 @@ func (o AggregateOpFn) String() string {
 		return "AggregateOpCount"
 	case AggregateOpApproxCountDistinct:
 		return "AggregateOpApproxCountDistinct"
+	case AggregateOpTDigest:
+		return "AggregateOpTDigest"
 	default:
 		return fmt.Sprintf("<AggregateOpFn=%d>", int(o))
 	}
@@ -255,6 +257,10 @@ func mergeAggregateBuffers(dst, src []byte, op AggregateOp) bool {
 
 	case AggregateOpSumF:
 		neumaierSummationMerge(dst, src)
+		return true
+
+	case AggregateOpTDigest:
+		tDigestMerge(dst, src)
 		return true
 	}
 
@@ -921,13 +927,23 @@ func (q *Aggregate) compileAggregate(aggregates Aggregation) error {
 				mem[i] = p.aggregateLatest(argv, filter, offset)
 				ops[i].fn = AggregateOpMaxTS
 			case expr.OpApproxMedian:
-				mem[i] = p.aggregateTDigest(argv, filter, offset)
 				ops[i].fn = AggregateOpTDigest
 				ops[i].misc = .5
+				ops[i].role = agg.Role
+				if agg.Role == expr.AggregateRoleMerge {
+					mem[i] = p.aggregateMergeState(argv, offset)
+				} else {
+					mem[i] = p.aggregateTDigest(argv, filter, offset)
+				}
 			case expr.OpApproxPercentile:
-				mem[i] = p.aggregateTDigest(argv, filter, offset)
 				ops[i].fn = AggregateOpTDigest
 				ops[i].misc = agg.Misc
+				ops[i].role = agg.Role
+				if agg.Role == expr.AggregateRoleMerge {
+					mem[i] = p.aggregateMergeState(argv, offset)
+				} else {
+					mem[i] = p.aggregateTDigest(argv, filter, offset)
+				}
 			default:
 				return fmt.Errorf("unsupported aggregate operation: %s", agg.Op)
 			}
