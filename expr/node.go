@@ -170,14 +170,6 @@ const (
 	// an integer output
 	OpApproxCountDistinct
 
-	// Describes APPROX_COUNT_DISTINCT aggregate run on a single node,
-	// that produces some intermediate data.
-	OpApproxCountDistinctPartial
-
-	// Describes APPROX_COUNT_DISTINCT aggregate that merges
-	// intermediate data and yields the final integer value
-	OpApproxCountDistinctMerge
-
 	// OpVariancePop is equivalent to the VARIANCE() and VARIANCE_POP()
 	// operation and calculates the population variance
 	OpVariancePop
@@ -292,10 +284,6 @@ func (a AggregateOp) String() string {
 		return "BOOL_OR"
 	case OpApproxCountDistinct:
 		return "APPROX_COUNT_DISTINCT"
-	case OpApproxCountDistinctPartial:
-		return "APPROX_COUNT_DISTINCT_PARTIAL"
-	case OpApproxCountDistinctMerge:
-		return "APPROX_COUNT_DISTINCT_MERGE"
 	case OpRowNumber:
 		return "ROW_NUMBER"
 	case OpRank:
@@ -360,6 +348,43 @@ func (a AggregateOp) AcceptExpression() bool {
 	return a != OpSystemDatashape
 }
 
+// AggregateRole describes how the aggregate's internal state has to be interpreted.
+//
+// In the case of single-node execution, the state lives locally and is transformed
+// into the final value (AggregateRoleFinal: that's the default behaviour).
+//
+// In the case of multi-node execution, the state can be build on a child node,
+// and then transferred to the main node (AggregateRolePartial). On the main node,
+// the internal state is used to update the local state and then to calculate the
+// final value (AggregateRoleMerge).
+type AggregateRole uint8
+
+const (
+	// Aggregate yields the final value, to be consumed by "end user" (the default)
+	AggregateRoleFinal AggregateRole = iota
+
+	// Aggregate collects some data in internal state, and the state is supposed
+	// to be pushed forward.
+	AggregateRolePartial
+
+	// Aggregate gathers data from its counterpart having role AggregateRolePartial
+	// and is supposed to produce a final value in the end.
+	AggregateRoleMerge
+)
+
+func (r AggregateRole) String() string {
+	switch r {
+	case AggregateRolePartial:
+		return "AggregateRolePartial"
+	case AggregateRoleFinal:
+		return "AggregateRoleFinal"
+	case AggregateRoleMerge:
+		return "AggregateRoleMerge"
+	}
+
+	return fmt.Sprintf("<AggregateRole=%d>", int(r))
+}
+
 // Aggregate is an aggregation expression
 type Aggregate struct {
 	// Op is the aggregation operation
@@ -369,6 +394,8 @@ type Aggregate struct {
 	Misc float32
 	// Precision is the parameter for OpApproxCountDistinct
 	Precision uint8
+	// Role describes how aggregate is supposed to be used in a multi-node architecture
+	Role AggregateRole
 	// Inner is the expression to be aggregated;
 	// this may be nil when the operation is a window function
 	Inner Node
@@ -388,10 +415,12 @@ func (a *Aggregate) Equals(e Node) bool {
 		(a.Inner != nil && !a.Inner.Equals(ea.Inner)) {
 		return false
 	}
+	if ea.Role != a.Role {
+		return false
+	}
 	if ea.Precision != a.Precision {
 		return false
 	}
-
 	if ea.Misc != a.Misc {
 		return false
 	}
@@ -421,10 +450,13 @@ func (a *Aggregate) Encode(dst *ion.Buffer, st *ion.Symtab) {
 	settype(dst, st, "aggregate")
 	dst.BeginField(st.Intern("op"))
 	dst.WriteUint(uint64(a.Op))
-	if a.Op == OpApproxCountDistinct || a.Op == OpApproxCountDistinctPartial || a.Op == OpApproxCountDistinctMerge {
+	dst.BeginField(st.Intern("role"))
+	dst.WriteUint(uint64(a.Role))
+	switch a.Op {
+	case OpApproxCountDistinct:
 		dst.BeginField(st.Intern("precision"))
 		dst.WriteUint(uint64(a.Precision))
-	} else if a.Op == OpApproxPercentile || a.Op == OpApproxMedian {
+	case OpApproxPercentile, OpApproxMedian:
 		dst.BeginField(st.Intern("misc"))
 		dst.WriteFloat64(float64(a.Misc))
 	}
@@ -432,7 +464,6 @@ func (a *Aggregate) Encode(dst *ion.Buffer, st *ion.Symtab) {
 		dst.BeginField(st.Intern("inner"))
 		a.Inner.Encode(dst, st)
 	}
-
 	if a.Over != nil {
 		dst.BeginField(st.Intern("over_partition"))
 		dst.BeginList(-1)
@@ -462,6 +493,12 @@ func (a *Aggregate) SetField(f ion.Field) error {
 			return err
 		}
 		a.Op = AggregateOp(u)
+	case "role":
+		r, err := f.Uint()
+		if err != nil {
+			return err
+		}
+		a.Role = AggregateRole(r)
 	case "inner":
 		var err error
 		a.Inner, err = Decode(f.Datum)
@@ -508,36 +545,35 @@ func (a *Aggregate) SetField(f ion.Field) error {
 }
 
 func (a *Aggregate) text(dst *strings.Builder, redact bool) {
-	switch a.Op {
-	case OpCountDistinct:
+	if a.Op == OpCountDistinct {
 		dst.WriteString("COUNT(DISTINCT ")
-		a.Inner.text(dst, redact)
-		dst.WriteByte(')')
-
-	case OpApproxCountDistinct, OpApproxCountDistinctPartial, OpApproxCountDistinctMerge:
+	} else {
 		dst.WriteString(a.Op.String())
+		// Role is assigned to an aggregate during the planning phase,
+		// so this wan't break SQL of original expressions.
+		switch a.Role {
+		case AggregateRolePartial:
+			dst.WriteString(".PARTIAL")
+		case AggregateRoleMerge:
+			dst.WriteString(".MERGE")
+		}
 		dst.WriteByte('(')
+	}
+
+	if a.Inner != nil {
 		a.Inner.text(dst, redact)
+	}
+
+	switch a.Op {
+	case OpApproxCountDistinct:
 		if a.Precision > 0 && a.Precision != ApproxCountDistinctDefaultPrecision {
 			fmt.Fprintf(dst, ", %d", a.Precision)
 		}
-		dst.WriteByte(')')
 
 	case OpApproxPercentile:
-		dst.WriteString(a.Op.String())
-		dst.WriteByte('(')
-		a.Inner.text(dst, redact)
 		fmt.Fprintf(dst, ", %v", a.Misc)
-		dst.WriteByte(')')
-
-	default:
-		dst.WriteString(a.Op.String())
-		dst.WriteByte('(')
-		if a.Inner != nil {
-			a.Inner.text(dst, redact)
-		}
-		dst.WriteByte(')')
 	}
+	dst.WriteByte(')')
 
 	if a.Filter != nil {
 		dst.WriteString(" FILTER (WHERE ")

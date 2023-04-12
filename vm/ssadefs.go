@@ -403,7 +403,6 @@ const (
 	stypebits                  // get encoded tag bits
 	schecktag                  // check encoded tag bits
 	saggapproxcount            // APPROX_COUNT_DISTINCT
-	saggapproxcountpartial     // the partial step of APPROX_COUNT_DISTINCT (for split queries)
 	saggslotapproxcount        // APPROX_COUNT_DISTINCT aggregate in GROUP BY
 	saggslotapproxcountpartial // the partial step of APPROX_COUNT_DISTINCT (for split queries with GROUP BY)
 	saggslotapproxcountmerge   // the merge step of APPROX_COUNT_DISTINCT (for split queries with GROUP BY)
@@ -1069,14 +1068,6 @@ var _ssainfo = [_ssamax]ssaopinfo{
 	},
 	saggapproxcount: {
 		text:     "aggapproxcount",
-		argtypes: []ssatype{stHash, stBool},
-		rettype:  stMem,
-		bc:       opaggapproxcount,
-		emit:     emitaggapproxcount,
-		immfmt:   fmtother,
-	},
-	saggapproxcountpartial: {
-		text:     "aggapproxcount.partial",
 		argtypes: []ssatype{stHash, stBool},
 		rettype:  stMem,
 		bc:       opaggapproxcount,

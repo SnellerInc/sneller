@@ -205,12 +205,27 @@ func numberOrMissing(e expr.Node) expr.Node {
 	return expr.Add(e, expr.Integer(0))
 }
 
+// aggEquals returns if two aggregates are equal, without
+// taking into account their .Role field.
+func aggEquals(n expr.Node, agg *expr.Aggregate) bool {
+	agg2, ok := n.(*expr.Aggregate)
+	if !ok {
+		return false
+	}
+
+	role := agg.Role
+	agg.Role = agg2.Role
+	eq := agg2.Equals(agg)
+	agg.Role = role
+	return eq
+}
+
 func windowMatch(e expr.Node, srcagg, dstagg vm.Aggregation, groups []expr.Binding) (string, bool) {
 	for i := range srcagg {
 		if srcagg[i].Expr == nil || srcagg[i].Expr.Over != nil {
 			continue
 		}
-		if e.Equals(srcagg[i].Expr) {
+		if aggEquals(e, srcagg[i].Expr) {
 			return dstagg[i].Result, true
 		}
 	}
@@ -240,13 +255,8 @@ func reduceAggregate(a *Aggregate, mapping, reduce *Trace) error {
 	for i := range a.Agg {
 		switch a.Agg[i].Expr.Op {
 		case expr.OpApproxCountDistinct:
-			// All APPROX_COUNT_DISTINCT becomes its partial version.
-			//
-			// Note: Technically, the partial version does exactly what
-			//       the sole version does. However, the sole version returns
-			//       an int, while partial one, the auxiliary buffer
-			//       which is meant to be merged in the final step.
-			a.Agg[i].Expr.Op = expr.OpApproxCountDistinctPartial
+			// Opcode becomes its partial counterpart
+			a.Agg[i].Expr.Role = expr.AggregateRolePartial
 
 		case expr.OpAvg:
 			// If there is AVG aggregate, we need to introduce
@@ -348,9 +358,10 @@ func reduceAggregate(a *Aggregate, mapping, reduce *Trace) error {
 				Op:    expr.OpApproxMedian,
 				Misc:  age.Misc,
 				Inner: innerref}
-		case expr.OpApproxCountDistinctPartial:
+		case expr.OpApproxCountDistinct:
 			newagg = &expr.Aggregate{
-				Op:        expr.OpApproxCountDistinctMerge,
+				Op:        expr.OpApproxCountDistinct,
+				Role:      expr.AggregateRoleMerge,
 				Precision: age.Precision,
 				Inner:     innerref}
 		case expr.OpSystemDatashape:
@@ -382,11 +393,12 @@ func reduceAggregate(a *Aggregate, mapping, reduce *Trace) error {
 		into := out[i].Expr
 		// match PARTITION BY to corresponding columns
 		for j := range into.Over.PartitionBy {
-			if id, ok := windowMatch(into.Over.PartitionBy[j], a.Agg, out, a.GroupBy); ok {
+			agg := into.Over.PartitionBy[j]
+			if id, ok := windowMatch(agg, a.Agg, out, a.GroupBy); ok {
 				into.Over.PartitionBy[j] = expr.Ident(id)
 				continue
 			}
-			return fmt.Errorf("window PARTITION BY references aggregate %s not in outer aggregation", expr.ToString(age.Over.PartitionBy[j]))
+			return fmt.Errorf("window PARTITION BY references aggregate %s not in outer aggregation", expr.ToString(agg))
 		}
 		// match ORDER BY to corresponding columns
 		for j := range into.Over.OrderBy {
@@ -395,7 +407,7 @@ func reduceAggregate(a *Aggregate, mapping, reduce *Trace) error {
 				into.Over.OrderBy[j].Column = expr.Ident(id)
 				continue
 			}
-			return fmt.Errorf("window ORDER BY references aggregate %s not in outer aggregation", expr.ToString(age.Over.OrderBy[j].Column))
+			return fmt.Errorf("window ORDER BY references aggregate %s not in outer aggregation", expr.ToString(col))
 		}
 	}
 	a.Agg = newaggs

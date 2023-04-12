@@ -15,6 +15,7 @@
 package vm
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"math"
@@ -196,6 +197,14 @@ func (v *value) setimm(imm any) {
 	}
 
 	v.imm = imm
+}
+
+func (v *value) geterror() error {
+	if v.op != sinvalid {
+		return nil
+	}
+
+	return errors.New(v.imm.(string))
 }
 
 func (p *prog) errorf(f string, args ...any) *value {
@@ -2747,22 +2756,14 @@ func (p *prog) aggregateCount(child, filter *value, slot aggregateslot) *value {
 	return p.ssa2imm(saggcount, p.initMem(), mask, slot)
 }
 
-func (p *prog) aacd(op ssaop, child, filter *value, slot aggregateslot, precision uint8) *value {
+func (p *prog) aggregateApproxCountDistinct(child, filter *value, slot aggregateslot, precision uint8) *value {
 	mask := p.mask(child)
 	if filter != nil {
 		mask = p.and(mask, filter)
 	}
 
 	h := p.hash(child)
-	return p.ssa2imm(op, h, mask, (uint64(slot)<<8)|uint64(precision))
-}
-
-func (p *prog) aggregateApproxCountDistinct(child, filter *value, slot aggregateslot, precision uint8) *value {
-	return p.aacd(saggapproxcount, child, filter, slot, precision)
-}
-
-func (p *prog) aggregateApproxCountDistinctPartial(child, filter *value, slot aggregateslot, precision uint8) *value {
-	return p.aacd(saggapproxcountpartial, child, filter, slot, precision)
+	return p.ssa2imm(saggapproxcount, h, mask, (uint64(slot)<<8)|uint64(precision))
 }
 
 func (p *prog) aggregateMergeState(child *value, slot aggregateslot) *value {

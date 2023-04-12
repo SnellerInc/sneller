@@ -109,18 +109,18 @@ func TestSplit(t *testing.T) {
 			query: `SELECT APPROX_COUNT_DISTINCT(field) FROM table`,
 			lines: []string{
 				`table`,
-				`AGGREGATE APPROX_COUNT_DISTINCT_PARTIAL(field) AS $_2_0`,
+				`AGGREGATE APPROX_COUNT_DISTINCT.PARTIAL(field) AS $_2_0`,
 				`UNION MAP`,
-				`AGGREGATE APPROX_COUNT_DISTINCT_MERGE($_2_0) AS "count"`,
+				`AGGREGATE APPROX_COUNT_DISTINCT.MERGE($_2_0) AS "count"`,
 			},
 		},
 		{
 			query: `SELECT AVG(x), MAX(y), APPROX_COUNT_DISTINCT(z) FROM table`,
 			lines: []string{
 				`table`,
-				`AGGREGATE SUM(x) AS $_2_0, MAX(y) AS $_2_1, APPROX_COUNT_DISTINCT_PARTIAL(z) AS $_2_2, COUNT(x + 0) AS $_2_3`,
+				`AGGREGATE SUM(x) AS $_2_0, MAX(y) AS $_2_1, APPROX_COUNT_DISTINCT.PARTIAL(z) AS $_2_2, COUNT(x + 0) AS $_2_3`,
 				`UNION MAP`,
-				`AGGREGATE SUM($_2_0) AS "avg", MAX($_2_1) AS "max", APPROX_COUNT_DISTINCT_MERGE($_2_2) AS "count", SUM_COUNT($_2_3) AS $_1_0`,
+				`AGGREGATE SUM($_2_0) AS "avg", MAX($_2_1) AS "max", APPROX_COUNT_DISTINCT.MERGE($_2_2) AS "count", SUM_COUNT($_2_3) AS $_1_0`,
 				`PROJECT CASE WHEN $_1_0 = 0 THEN NULL ELSE "avg" / $_1_0 END AS "avg", "max" AS "max", "count" AS "count"`,
 			},
 		},

@@ -250,7 +250,8 @@ func NewHashAggregate(agg, windows Aggregation, by Selection, dst QuerySink) (*H
 			mask = prog.and(mask, filter)
 		}
 
-		switch op := h.agg[i].Expr.Op; op {
+		a := h.agg[i].Expr
+		switch op := a.Op; op {
 		case expr.OpCount:
 			// COUNT(...) is the only aggregate op that doesn't accept numbers;
 			// additionally, it accepts '*', which has a special meaning in this context.
@@ -267,28 +268,23 @@ func NewHashAggregate(agg, windows Aggregation, by Selection, dst QuerySink) (*H
 			out[i] = prog.aggregateSlotCount(mem, bucket, mask, offset)
 			ops[i].fn = AggregateOpCount
 
-		case expr.OpApproxCountDistinct,
-			expr.OpApproxCountDistinctPartial,
-			expr.OpApproxCountDistinctMerge:
-
-			argv, err := compile(prog, h.agg[i].Expr.Inner)
+		case expr.OpApproxCountDistinct:
+			argv, err := compile(prog, a.Inner)
 			if err != nil {
-				return nil, fmt.Errorf("cannot compile %q: %w", h.agg[i].Expr.Inner, err)
+				return nil, fmt.Errorf("cannot compile %q: %w", a.Inner, err)
 			}
-			precision := h.agg[i].Expr.Precision
+			precision := a.Precision
 
 			ops[i].precision = precision
-			switch op {
-			case expr.OpApproxCountDistinct:
+			ops[i].fn = AggregateOpApproxCountDistinct
+			ops[i].role = a.Role
+			switch a.Role {
+			case expr.AggregateRoleFinal:
 				out[i] = prog.aggregateSlotApproxCountDistinct(mem, bucket, argv, mask, offset, precision)
-				ops[i].fn = AggregateOpApproxCountDistinct
-
-			case expr.OpApproxCountDistinctPartial:
+			case expr.AggregateRolePartial:
 				out[i] = prog.aggregateSlotApproxCountDistinctPartial(mem, bucket, argv, mask, offset, precision)
-				ops[i].fn = AggregateOpApproxCountDistinctPartial
-			case expr.OpApproxCountDistinctMerge:
+			case expr.AggregateRoleMerge:
 				out[i] = prog.aggregateSlotApproxCountDistinctMerge(mem, bucket, argv, mask, offset, precision)
-				ops[i].fn = AggregateOpApproxCountDistinctMerge
 			}
 
 		case expr.OpBoolAnd, expr.OpBoolOr:
@@ -368,11 +364,18 @@ func NewHashAggregate(agg, windows Aggregation, by Selection, dst QuerySink) (*H
 			}
 		}
 
+		if err := out[i].geterror(); err != nil {
+			return nil, err
+		}
+
 		// We compile all of the aggregate ops as order-independent so that
 		// they can potentially be computed in the order in which the fields
 		// are present in the input row rather than the order in which the
 		// query presents them.
 		offset += aggregateslot(ops[i].dataSize())
+		if ops[i].mergestate() {
+			offset += aggregateOpMergeBufferSize
+		}
 	}
 
 	initialData := make([]byte, offset)
@@ -455,7 +458,10 @@ func (h *HashAggregate) Close() error {
 		offset := 0
 		for j := range h.aggregateOps {
 			op := h.aggregateOps[j]
-			if finalize := aggregateOpInfoTable[op.fn].finalizeFunc; finalize != nil {
+			if op.mergestate() {
+				offset += aggregateOpMergeBufferSize
+			}
+			if finalize := aggregateOpInfoTable[op.fn].finalizeFunc; finalize != nil && !op.savestate() {
 				buf := valmem[offset:]
 				finalize(buf)
 				hasfinalize = true
@@ -490,8 +496,11 @@ func (h *HashAggregate) Close() error {
 	// into an offset
 	offset := func(i int) int {
 		off := 0
-		for _, kind := range h.aggregateOps[:i] {
-			off += kind.dataSize()
+		for _, op := range h.aggregateOps[:i] {
+			if op.mergestate() {
+				off += aggregateOpMergeBufferSize
+			}
+			off += op.dataSize()
 		}
 		return off
 	}

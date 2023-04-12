@@ -59,8 +59,6 @@ const (
 	AggregateOpMaxTS
 	AggregateOpCount
 	AggregateOpApproxCountDistinct
-	AggregateOpApproxCountDistinctPartial
-	AggregateOpApproxCountDistinctMerge
 )
 
 func (o AggregateOpFn) String() string {
@@ -103,10 +101,6 @@ func (o AggregateOpFn) String() string {
 		return "AggregateOpCount"
 	case AggregateOpApproxCountDistinct:
 		return "AggregateOpApproxCountDistinct"
-	case AggregateOpApproxCountDistinctPartial:
-		return "AggregateOpApproxCountDistinctPartial"
-	case AggregateOpApproxCountDistinctMerge:
-		return "AggregateOpApproxCountDistinctMerge"
 	default:
 		return fmt.Sprintf("<AggregateOpFn=%d>", int(o))
 	}
@@ -117,29 +111,11 @@ func (o AggregateOpFn) String() string {
 // values.
 const aggregateOpMergeBufferSize = 8
 
-// The operation needs to pass its whole internal state to the master
-// machine (the buffer is used to perform actual aggregation).
-func (o AggregateOpFn) mergestate() bool {
-	switch o {
-	case AggregateOpApproxCountDistinctMerge:
-		return true
-	}
-
-	return false
-}
-
-func (o AggregateOpFn) savestate() bool {
-	switch o {
-	case AggregateOpApproxCountDistinctPartial:
-		return true
-	}
-
-	return false
-}
-
 // AggregateOp describes aggregate operation
 type AggregateOp struct {
 	fn AggregateOpFn
+
+	role expr.AggregateRole
 
 	// precision for AggregateOpApproxCountDistinct, AggregateOpApproxCountDistinctPartial
 	// and AggregateOpApproxCountDistinctMerge
@@ -147,6 +123,16 @@ type AggregateOp struct {
 
 	// misc used by AggregateOpTDigest to contain the percentile values p
 	misc float32
+}
+
+// The operation needs to pass its whole internal state to the master
+// machine (the buffer is used to perform actual aggregation).
+func (a AggregateOp) mergestate() bool {
+	return a.role == expr.AggregateRoleMerge
+}
+
+func (a AggregateOp) savestate() bool {
+	return a.role == expr.AggregateRolePartial
 }
 
 type aggregateOpInfo struct {
@@ -184,11 +170,8 @@ var aggregateOpInfoTable = [...]aggregateOpInfo{
 	AggregateOpMaxTS: {isAtomic: true, isFloat: false, initUInt64: 0x8000000000000000},
 	AggregateOpCount: {isAtomic: true, isFloat: false, initUInt64: 0},
 
-	AggregateOpTDigest: {isAtomic: false, initFunc: tDigestInit},
-
-	AggregateOpApproxCountDistinct:        {isAtomic: false, initFunc: aggApproxCountDistinctInit},
-	AggregateOpApproxCountDistinctPartial: {isAtomic: false, initFunc: aggApproxCountDistinctInit},
-	AggregateOpApproxCountDistinctMerge:   {isAtomic: false, initFunc: aggApproxCountDistinctInit},
+	AggregateOpTDigest:             {isAtomic: false, initFunc: tDigestInit},
+	AggregateOpApproxCountDistinct: {isAtomic: false, initFunc: aggApproxCountDistinctInit},
 }
 
 func (a *AggregateOp) dataSize() int {
@@ -235,7 +218,7 @@ func (a *AggregateOp) dataSize() int {
 	case AggregateOpCount:
 		return 8
 
-	case AggregateOpApproxCountDistinct, AggregateOpApproxCountDistinctPartial, AggregateOpApproxCountDistinctMerge:
+	case AggregateOpApproxCountDistinct:
 		return 1 << a.precision
 	}
 
@@ -248,7 +231,7 @@ func initAggregateValues(data []byte, aggregateOps []AggregateOp) {
 		op := &aggregateOps[i]
 		info := &aggregateOpInfoTable[op.fn]
 		dataSize := op.dataSize()
-		if op.fn.mergestate() {
+		if op.mergestate() {
 			data = data[aggregateOpMergeBufferSize:]
 		}
 
@@ -265,7 +248,7 @@ func initAggregateValues(data []byte, aggregateOps []AggregateOp) {
 
 func mergeAggregateBuffers(dst, src []byte, op AggregateOp) bool {
 	switch op.fn {
-	case AggregateOpApproxCountDistinctMerge:
+	case AggregateOpApproxCountDistinct:
 		n := op.dataSize()
 		aggApproxCountDistinctUpdateBuckets(n, dst, src)
 		return true
@@ -275,13 +258,12 @@ func mergeAggregateBuffers(dst, src []byte, op AggregateOp) bool {
 }
 
 func mergeAggregatedValues(dst, src []byte, aggregateOps []AggregateOp) {
-	for i := range aggregateOps {
-		fn := aggregateOps[i].fn
-		if fn.mergestate() {
+	for i, op := range aggregateOps {
+		if op.mergestate() {
 			dst = dst[aggregateOpMergeBufferSize:]
 			src = src[aggregateOpMergeBufferSize:]
 		}
-		switch fn {
+		switch op.fn {
 		case AggregateOpSumF, AggregateOpAvgF:
 			neumaierSummationMerge(dst, src)
 			dst = dst[aggregateOpSumFDataSize:]
@@ -377,7 +359,7 @@ func mergeAggregatedValues(dst, src []byte, aggregateOps []AggregateOp) {
 			dst = dst[8:]
 			src = src[8:]
 
-		case AggregateOpApproxCountDistinct, AggregateOpApproxCountDistinctPartial, AggregateOpApproxCountDistinctMerge:
+		case AggregateOpApproxCountDistinct:
 			n := aggregateOps[i].dataSize()
 			aggApproxCountDistinctUpdateBuckets(n, dst, src)
 			dst = dst[n:]
@@ -470,7 +452,7 @@ func mergeAggregatedValuesAtomically(dst, src []byte, aggregateOps []AggregateOp
 
 // writeAggregatedValue writes the final result of the Aggregation to the ion.Buffer
 func writeAggregatedValue(b *ion.Buffer, data []byte, op AggregateOp) int {
-	if op.fn.savestate() {
+	if op.savestate() {
 		d := op.dataSize()
 		b.WriteBlob(data[:d])
 		return d
@@ -544,7 +526,7 @@ func writeAggregatedValue(b *ion.Buffer, data []byte, op AggregateOp) int {
 		b.WriteUint(count)
 		return 8
 
-	case AggregateOpApproxCountDistinct, AggregateOpApproxCountDistinctMerge:
+	case AggregateOpApproxCountDistinct:
 		n := op.dataSize()
 		count := aggApproxCountDistinctHLL(data[:n])
 		b.WriteUint(count)
@@ -654,7 +636,7 @@ func (a Aggregation) Equals(x Aggregation) bool {
 
 func (q *Aggregate) mergestate() bool {
 	for i := range q.aggregateOps {
-		if q.aggregateOps[i].fn.mergestate() {
+		if q.aggregateOps[i].mergestate() {
 			return true
 		}
 	}
@@ -686,17 +668,16 @@ func (q *Aggregate) Close() error {
 
 	st.Marshal(&b, true)
 	b.BeginStruct(-1)
-	for i := range q.aggregateOps {
+	for i, op := range q.aggregateOps {
 		sym := st.Intern(q.bind[i].Result)
 		b.BeginField(sym)
-		fn := q.aggregateOps[i].fn
-		if fn.mergestate() {
+		if op.mergestate() {
 			data = data[aggregateOpMergeBufferSize:]
 		}
-		if finalize := aggregateOpInfoTable[fn].finalizeFunc; finalize != nil {
+		if finalize := aggregateOpInfoTable[op.fn].finalizeFunc; finalize != nil && !op.savestate() {
 			finalize(data)
 		}
-		consumed := writeAggregatedValue(&b, data, q.aggregateOps[i])
+		consumed := writeAggregatedValue(&b, data, op)
 		data = data[consumed:]
 	}
 	b.EndStruct()
@@ -745,12 +726,14 @@ func (p *aggregateLocal) writeRows(delims []vmref, rp *rowParams) error {
 			for i := range p.parent.aggregateOps {
 				op := p.parent.aggregateOps[i]
 				n := op.dataSize()
-				if op.fn.mergestate() {
+				if op.mergestate() {
 					offset := binary.LittleEndian.Uint32(dst[0:])
 					size := binary.LittleEndian.Uint32(dst[4:])
 					v := vmref{offset, size}
 					dst = dst[aggregateOpMergeBufferSize:]
-					mergeAggregateBuffers(dst, v.mem(), op)
+					if !mergeAggregateBuffers(dst, v.mem(), op) {
+						panic(fmt.Sprintf("aggregate %s expected to merge its buffer", op.fn))
+					}
 				}
 
 				dst = dst[n:]
@@ -806,18 +789,19 @@ func NewAggregate(bind Aggregation, rest QuerySink) (*Aggregate, error) {
 	return q, nil
 }
 
-func (q *Aggregate) compileAggregate(agg Aggregation) error {
+func (q *Aggregate) compileAggregate(aggregates Aggregation) error {
 	q.prog = new(prog)
 	p := q.prog
 	p.begin()
 
-	mem := make([]*value, len(agg))
-	ops := make([]AggregateOp, len(agg))
+	mem := make([]*value, len(aggregates))
+	ops := make([]AggregateOp, len(aggregates))
 	offset := aggregateslot(0)
 
-	for i := range agg {
+	for i := range aggregates {
+		agg := aggregates[i].Expr
 		var filter *value
-		if filterExpr := agg[i].Expr.Filter; filterExpr != nil {
+		if filterExpr := agg.Filter; filterExpr != nil {
 			var err error
 			// Note: duplicated filter expression will be removed during CSE
 			filter, err = p.compileAsBool(filterExpr)
@@ -826,14 +810,14 @@ func (q *Aggregate) compileAggregate(agg Aggregation) error {
 			}
 		}
 
-		switch op := agg[i].Expr.Op; op {
+		switch op := agg.Op; op {
 		case expr.OpCount:
 			// COUNT(...) is the only aggregate op that doesn't accept numbers;
 			// additionally, it accepts '*', which has a special meaning in this context.
-			if _, ok := agg[i].Expr.Inner.(expr.Star); ok {
+			if _, ok := agg.Inner.(expr.Star); ok {
 				mem[i] = p.aggregateCount(p.validLanes(), filter, offset)
 			} else {
-				v, err := compile(p, agg[i].Expr.Inner)
+				v, err := compile(p, agg.Inner)
 				if err != nil {
 					return err
 				}
@@ -841,34 +825,27 @@ func (q *Aggregate) compileAggregate(agg Aggregation) error {
 			}
 			ops[i].fn = AggregateOpCount
 
-		case expr.OpApproxCountDistinct,
-			expr.OpApproxCountDistinctPartial,
-			expr.OpApproxCountDistinctMerge:
-
-			v, err := compile(p, agg[i].Expr.Inner)
+		case expr.OpApproxCountDistinct:
+			v, err := compile(p, agg.Inner)
 			if err != nil {
-				return fmt.Errorf("don't know how to aggregate %q: %w", agg[i].Expr.Inner, err)
+				return fmt.Errorf("don't know how to aggregate %q: %w", agg.Inner, err)
 			}
 
-			ops[i].precision = agg[i].Expr.Precision
-			switch op {
-			case expr.OpApproxCountDistinct:
-				mem[i] = p.aggregateApproxCountDistinct(v, filter, offset, agg[i].Expr.Precision)
-				ops[i].fn = AggregateOpApproxCountDistinct
+			ops[i].fn = AggregateOpApproxCountDistinct
+			ops[i].precision = agg.Precision
+			ops[i].role = agg.Role
+			switch agg.Role {
+			case expr.AggregateRoleFinal, expr.AggregateRolePartial:
+				mem[i] = p.aggregateApproxCountDistinct(v, filter, offset, agg.Precision)
 
-			case expr.OpApproxCountDistinctPartial:
-				mem[i] = p.aggregateApproxCountDistinctPartial(v, filter, offset, agg[i].Expr.Precision)
-				ops[i].fn = AggregateOpApproxCountDistinctPartial
-
-			case expr.OpApproxCountDistinctMerge:
+			case expr.AggregateRoleMerge:
 				mem[i] = p.aggregateMergeState(v, offset)
-				ops[i].fn = AggregateOpApproxCountDistinctMerge
 			}
 
 		case expr.OpBoolAnd, expr.OpBoolOr:
-			argv, err := p.compileAsBool(agg[i].Expr.Inner)
+			argv, err := p.compileAsBool(agg.Inner)
 			if err != nil {
-				return fmt.Errorf("don't know how to aggregate %q: %w", agg[i].Expr.Inner, err)
+				return fmt.Errorf("don't know how to aggregate %q: %w", agg.Inner, err)
 			}
 			switch op {
 			case expr.OpBoolAnd:
@@ -880,9 +857,9 @@ func (q *Aggregate) compileAggregate(agg Aggregation) error {
 			}
 
 		default:
-			argv, err := p.compileAsNumber(agg[i].Expr.Inner)
+			argv, err := p.compileAsNumber(agg.Inner)
 			if err != nil {
-				return fmt.Errorf("don't know how to aggregate %q: %w", agg[i].Expr.Inner, err)
+				return fmt.Errorf("don't know how to aggregate %q: %w", agg.Inner, err)
 			}
 			var fp bool
 			switch op {
@@ -942,10 +919,14 @@ func (q *Aggregate) compileAggregate(agg Aggregation) error {
 			case expr.OpApproxPercentile:
 				mem[i] = p.aggregateTDigest(argv, filter, offset)
 				ops[i].fn = AggregateOpTDigest
-				ops[i].misc = agg[i].Expr.Misc
+				ops[i].misc = agg.Misc
 			default:
-				return fmt.Errorf("unsupported aggregate operation: %s", &agg[i])
+				return fmt.Errorf("unsupported aggregate operation: %s", agg.Op)
 			}
+		}
+
+		if err := mem[i].geterror(); err != nil {
+			return err
 		}
 
 		// We compile all of the aggregate ops as order-independent so that
@@ -953,7 +934,7 @@ func (q *Aggregate) compileAggregate(agg Aggregation) error {
 		// are present in the input row rather than the order in which the
 		// query presents them.
 		offset += aggregateslot(ops[i].dataSize())
-		if ops[i].fn.mergestate() {
+		if ops[i].mergestate() {
 			offset += aggregateOpMergeBufferSize
 		}
 	}
