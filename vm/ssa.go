@@ -229,12 +229,6 @@ func (p *prog) val() *value {
 	return v
 }
 
-func (p *prog) errf(s string, args ...any) *value {
-	v := p.val()
-	v.errf(s, args...)
-	return v
-}
-
 func (s ssaop) String() string {
 	return ssainfo[s].text
 }
@@ -1175,7 +1169,7 @@ func (p *prog) coerceI64(v *value) (*value, *value) {
 		ret := p.ssa2(sunboxcoercei64, v, p.mask(v))
 		return ret, ret
 	default:
-		err := p.errf("cannot convert %s to an integer", v)
+		err := p.errorf("cannot convert %s to an integer", v)
 		return err, err
 	}
 }
