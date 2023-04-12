@@ -252,6 +252,10 @@ func mergeAggregateBuffers(dst, src []byte, op AggregateOp) bool {
 		n := op.dataSize()
 		aggApproxCountDistinctUpdateBuckets(n, dst, src)
 		return true
+
+	case AggregateOpSumF:
+		neumaierSummationMerge(dst, src)
+		return true
 	}
 
 	return false
@@ -867,6 +871,10 @@ func (q *Aggregate) compileAggregate(aggregates Aggregation) error {
 				mem[i], fp = p.aggregateSum(argv, filter, offset)
 				if fp {
 					ops[i].fn = AggregateOpSumF
+					ops[i].role = agg.Role
+					if agg.Role == expr.AggregateRoleMerge {
+						mem[i] = p.aggregateMergeState(argv, offset)
+					}
 				} else {
 					ops[i].fn = AggregateOpSumI
 				}

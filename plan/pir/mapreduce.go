@@ -254,7 +254,7 @@ func reduceAggregate(a *Aggregate, mapping, reduce *Trace) error {
 	needsFinalProjection := false
 	for i := range a.Agg {
 		switch a.Agg[i].Expr.Op {
-		case expr.OpApproxCountDistinct:
+		case expr.OpApproxCountDistinct, expr.OpSum:
 			// Opcode becomes its partial counterpart
 			a.Agg[i].Expr.Role = expr.AggregateRolePartial
 
@@ -286,6 +286,7 @@ func reduceAggregate(a *Aggregate, mapping, reduce *Trace) error {
 			case expr.OpAvg:
 				// transform AVG into two aggregations
 				a.Agg[i].Expr.Op = expr.OpSum
+				a.Agg[i].Expr.Role = expr.AggregateRolePartial
 
 				inner := a.Agg[i].Expr.Inner
 				cast := func(e expr.Node) expr.Node { return e }
@@ -343,11 +344,13 @@ func reduceAggregate(a *Aggregate, mapping, reduce *Trace) error {
 			if isIntCast(age.Inner) {
 				newagg.Inner = &expr.Cast{From: newagg.Inner, To: expr.IntegerType}
 			}
-		case expr.OpSum, expr.OpSumInt, expr.OpSumCount,
+		case expr.OpSumInt, expr.OpSumCount,
 			expr.OpBitAnd, expr.OpBitOr, expr.OpBitXor, expr.OpBoolAnd, expr.OpBoolOr,
 			expr.OpEarliest, expr.OpLatest, expr.OpStdDevPop:
 			// these are all distributive
 			newagg = &expr.Aggregate{Op: age.Op, Inner: innerref}
+		case expr.OpSum:
+			newagg = &expr.Aggregate{Op: age.Op, Role: expr.AggregateRoleMerge, Inner: innerref}
 		case expr.OpApproxPercentile:
 			newagg = &expr.Aggregate{
 				Op:    expr.OpApproxPercentile,
