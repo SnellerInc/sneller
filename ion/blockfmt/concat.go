@@ -85,7 +85,7 @@ func (c *concat) result() Descriptor {
 	return c.output
 }
 
-// Run concatenates all the descriptors added via Add
+// run concatenates all the descriptors added via add
 // into the file given by name in the provided filesystem.
 func (c *concat) run(fs UploadFS, name string) error {
 	if len(c.inputs) == 0 {

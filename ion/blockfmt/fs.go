@@ -24,11 +24,14 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/SnellerInc/sneller/aws/s3"
 	"github.com/SnellerInc/sneller/fsutil"
 
 	"golang.org/x/crypto/blake2b"
+	"golang.org/x/exp/maps"
+	"golang.org/x/exp/slices"
 )
 
 // InputFS describes the FS implementation
@@ -215,18 +218,113 @@ func (d *DirFS) WriteFile(fullpath string, buf []byte) (string, error) {
 // output to memory and then performing
 // a WriteFile)
 type fileUploader struct {
-	BufferUploader
-	fp  string
-	dir *DirFS
+	lock  sync.Mutex
+	fp    string
+	dir   *DirFS
+	parts map[int64]string
+	size  int64
+	etag  string
+}
+
+func (f *fileUploader) MinPartSize() int {
+	if f.dir.MinPartSize <= 0 {
+		return 1024 * 1024
+	}
+	return f.dir.MinPartSize
+}
+
+func (f *fileUploader) Size() int64 { return f.size }
+
+// Abort cleans up any state produced by calls to Upload.
+// Abort will have no effect if Close has already been called
+// and it returned successfully.
+func (f *fileUploader) Abort() error {
+	for _, name := range f.parts {
+		os.Remove(name)
+	}
+	maps.Clear(f.parts)
+	f.size = 0
+	return nil
+}
+
+func (f *fileUploader) ETag() string {
+	return f.etag
 }
 
 func (f *fileUploader) Close(final []byte) error {
-	err := f.BufferUploader.Close(final)
+	f.lock.Lock()
+	defer f.lock.Unlock()
+	fullpath := filepath.Join(f.dir.Root, f.fp)
+	err := os.MkdirAll(filepath.Dir(fullpath), 0750)
 	if err != nil {
 		return err
 	}
-	_, err = f.dir.WriteFile(f.fp, f.Bytes())
-	return err
+	file, err := os.Create(fullpath)
+	if err != nil {
+		return err
+	}
+	abort := func() {
+		file.Close()
+		os.Remove(file.Name())
+	}
+	// emit parts in sorted order
+	parts := maps.Keys(f.parts)
+	slices.Sort(parts)
+	h, err := blake2b.New256(nil)
+	if err != nil {
+		panic(err)
+	}
+	dst := io.MultiWriter(file, h)
+	for _, part := range parts {
+		name := f.parts[part]
+		part, err := os.Open(name)
+		if err != nil {
+			abort()
+			return fmt.Errorf("DirFS uploader: opening part: %w", err)
+		}
+		nn, err := io.Copy(dst, part)
+		part.Close()
+		os.Remove(name)
+		if err != nil {
+			abort()
+			return fmt.Errorf("DirFS uploader: appending data: %w", err)
+		}
+		f.size += nn
+	}
+	f.size += int64(len(final))
+	_, err = dst.Write(final)
+	if err != nil {
+		abort()
+		return err
+	}
+	f.etag = "b2sum:" + base32.StdEncoding.EncodeToString(h.Sum(nil))
+	return file.Close()
+}
+
+func (f *fileUploader) Upload(part int64, contents []byte) error {
+	if len(contents) < f.MinPartSize() {
+		return fmt.Errorf("upload part %d: len(contents)=%d; MinPartSize = %d", part, len(contents), f.MinPartSize())
+	}
+	fullpath := filepath.Join(f.dir.Root, f.fp)
+	dir, name := filepath.Split(fullpath)
+	err := os.MkdirAll(dir, 0750)
+	if err != nil {
+		return err
+	}
+	file, err := os.CreateTemp(dir, name+".part.*")
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	_, err = file.Write(contents)
+	if err != nil {
+		os.Remove(file.Name())
+		return err
+	}
+	f.lock.Lock()
+	f.parts[part] = file.Name()
+	f.lock.Unlock()
+	return nil
 }
 
 // Create implements UploadFS.Create
@@ -239,11 +337,9 @@ func (d *DirFS) Create(fullpath string) (Uploader, error) {
 		return nil, fs.ErrInvalid
 	}
 	return &fileUploader{
-		fp:  fullpath,
-		dir: d,
-		BufferUploader: BufferUploader{
-			PartSize: d.MinPartSize,
-		},
+		parts: make(map[int64]string),
+		fp:    fullpath,
+		dir:   d,
 	}, nil
 }
 

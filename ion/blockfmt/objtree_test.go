@@ -32,6 +32,7 @@ func TestIndirectTree(t *testing.T) {
 	var all []Descriptor
 
 	dir := NewDirFS(t.TempDir())
+	dir.MinPartSize = 1
 
 	now := func() date.Time {
 		return date.Now().Truncate(time.Microsecond)
