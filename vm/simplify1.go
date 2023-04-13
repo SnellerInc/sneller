@@ -840,38 +840,29 @@ func rewrite1(p *prog, v *value) (*value, bool) {
 				}
 			}
 		}
-	case 330: /* aggapproxcount.partial */
-		if len(v.args) == 2 {
-			// (aggapproxcount.partial mem (false) _) -> mem
+	case 330: /* aggslotapproxcount */
+		if len(v.args) == 4 {
+			// (aggslotapproxcount mem _ _ (false) _) -> mem
 			if mem := v.args[0]; true {
-				if _tmp59 := v.args[1]; _tmp59.op == 7 {
+				if _tmp59 := v.args[3]; _tmp59.op == 7 {
 					return mem, true
 				}
 			}
 		}
-	case 331: /* aggslotapproxcount */
+	case 331: /* aggslotapproxcount.partial */
 		if len(v.args) == 4 {
-			// (aggslotapproxcount mem _ _ (false) _) -> mem
+			// (aggslotapproxcount.partial mem _ _ (false) _) -> mem
 			if mem := v.args[0]; true {
 				if _tmp60 := v.args[3]; _tmp60.op == 7 {
 					return mem, true
 				}
 			}
 		}
-	case 332: /* aggslotapproxcount.partial */
-		if len(v.args) == 4 {
-			// (aggslotapproxcount.partial mem _ _ (false) _) -> mem
-			if mem := v.args[0]; true {
-				if _tmp61 := v.args[3]; _tmp61.op == 7 {
-					return mem, true
-				}
-			}
-		}
-	case 333: /* aggslotapproxcount.merge */
+	case 332: /* aggslotapproxcount.merge */
 		if len(v.args) == 4 {
 			// (aggslotapproxcount.merge mem _ _ (false) _) -> mem
 			if mem := v.args[0]; true {
-				if _tmp62 := v.args[3]; _tmp62.op == 7 {
+				if _tmp61 := v.args[3]; _tmp61.op == 7 {
 					return mem, true
 				}
 			}

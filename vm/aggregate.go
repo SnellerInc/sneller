@@ -108,10 +108,19 @@ func (o AggregateOpFn) String() string {
 	}
 }
 
+// aggregateOpMergeBufferRowsCount is the maximum number of rows that
+// are passed to an aggregation, when the aggregation has functions
+// that use non-trivial internal state (see expr.AggregateRole)
+const aggregateOpMergeBufferRowsCount = 16
+
 // aggregateOpMergeBufferSize is an extra buffer added for aggregates
-// that does aggregation basedon on internal states, not actual
-// values.
-const aggregateOpMergeBufferSize = 8
+// that does aggregation based on the internal state, not actual values.
+const aggregateOpMergeBufferSize = aggregateOpMergeBufferRowsCount * aggregateOpMergeBufferItemSize
+
+// aggregateOpMergeBufferItemSize is the size of a single item in the
+// extra buffer. Refer to the aggregateLocal.writeRows implementation
+// for the item's interpretation.
+const aggregateOpMergeBufferItemSize = 8
 
 // AggregateOp describes aggregate operation
 type AggregateOp struct {
@@ -724,31 +733,42 @@ func (p *aggregateLocal) writeRows(delims []vmref, rp *rowParams) error {
 	p.bc.prepare(rp)
 
 	if p.mergestate {
-		delim := make([]vmref, 1)
-		for i := range delims {
-			delim[0] = delims[i]
-			rowsCount := evalaggregatebc(&p.bc, delim, p.partialData)
+		n := len(delims)
+		var chunk []vmref
+		for n > 0 {
+			if n > aggregateOpMergeBufferRowsCount {
+				chunk = delims[:aggregateOpMergeBufferRowsCount]
+				delims = delims[aggregateOpMergeBufferRowsCount:]
+			} else {
+				chunk = delims
+				delims = delims[:0]
+			}
+			n = len(delims)
+
+			rowsCount := evalaggregatebc(&p.bc, chunk, p.partialData)
 			if p.bc.err != 0 {
 				return bytecodeerror("aggregate", &p.bc)
 			}
+			p.rowCount += uint64(rowsCount)
 
 			dst := p.partialData
 			for i := range p.parent.aggregateOps {
 				op := p.parent.aggregateOps[i]
 				n := op.dataSize()
 				if op.mergestate() {
-					offset := binary.LittleEndian.Uint32(dst[0:])
-					size := binary.LittleEndian.Uint32(dst[4:])
-					v := vmref{offset, size}
+					positions := dst[:aggregateOpMergeBufferSize]
 					dst = dst[aggregateOpMergeBufferSize:]
-					if !mergeAggregateBuffers(dst, v.mem(), op) {
-						panic(fmt.Sprintf("aggregate %s expected to merge its buffer", op.fn))
+					for i := range chunk {
+						offset := binary.LittleEndian.Uint32(positions[8*i:])
+						size := binary.LittleEndian.Uint32(positions[8*i+64:])
+						v := vmref{offset, size}
+						if !mergeAggregateBuffers(dst, v.mem(), op) {
+							panic(fmt.Sprintf("aggregate %s expected to merge its buffer", op.fn))
+						}
 					}
 				}
-
 				dst = dst[n:]
 			}
-			p.rowCount += uint64(rowsCount)
 		}
 	} else {
 		rowsCount := evalaggregatebc(&p.bc, delims, p.partialData)

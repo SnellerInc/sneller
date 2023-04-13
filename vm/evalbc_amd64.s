@@ -63,14 +63,6 @@
   MOVL $const_bcerrCorrupt, bytecode_err(VIRT_BCPTR) \
   RET_ABORT()
 
-#define _POP(pc, dst) \
-  MOVQ 0(pc), dst     \
-  ADDQ $8, pc
-
-// POP(dst) pops the next item
-// of the scalar operand stack
-#define POP(dst) _POP(VIRT_PCREG, dst)
-
 // this is the 'unimplemented!' op
 //
 // The opcode has to be the first one, as its default
@@ -80,7 +72,6 @@
 TEXT bctrap(SB), NOSPLIT|NOFRAME, $0
   BYTE $0xCC
   RET
-
 
 // Left = Left - Trunc(Left / Right) * Right
 #define BC_MODF64_IMPL(DstA, DstB, Src1A, Src1B, Src2A, Src2B, MaskA, MaskB, Tmp1, Tmp2) \
@@ -7095,21 +7086,16 @@ TEXT bcaggmergestate(SB), NOSPLIT|NOFRAME, $0
     // bcAggSlot, bcReadS, bcPredicate
     BC_UNPACK_RU32(0, OUT(BX))
     BC_UNPACK_2xSLOT(BC_AGGSLOT_SIZE, OUT(DX), OUT(R8))
+    BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
 
-    BC_LOAD_RU16_FROM_SLOT(OUT(R8), IN(R8)) // R8 = mask
-    CMPQ    R8, $1  // we expect exactly one row to be passed
-    JNE     wrong_mask
+    VMOVDQU32   BC_VSTACK_PTR(DX, 0),  Z1
+    VMOVDQU32   BC_VSTACK_PTR(DX, 64), Z2
 
-    ADDQ    VIRT_AGG_BUFFER, BX         // slot address
-    MOVL    BC_VSTACK_PTR(DX, 0), CX    // copy offset
-    MOVL    CX, 0(BX)
-    MOVL    BC_VSTACK_PTR(DX, 64), CX   // copy size
-    MOVL    CX, 4(BX)
+    ADDQ        VIRT_AGG_BUFFER, BX         // slot address
+    VMOVDQU32   Z1, K1,  0(BX)
+    VMOVDQU32   Z2, K1, 64(BX)
 
     NEXT_ADVANCE(BC_SLOT_SIZE*2 + BC_AGGSLOT_SIZE)
-
-wrong_mask:
-    FAIL()
 
 // Slot Aggregation Instructions
 // -----------------------------
