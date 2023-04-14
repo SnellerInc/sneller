@@ -1,11 +1,13 @@
 # go test -v -run=TestQueries/0031
 # https://www.socscistatistics.com/descriptive/percentile/default.aspx
 SELECT
-	APPROX_PERCENTILE(grade, 0.10) AS q10,
-	APPROX_PERCENTILE(grade, 0.25) AS q25,
-	APPROX_PERCENTILE(grade, 0.50) AS q50,
-	APPROX_PERCENTILE(grade, 0.75) AS q75,
-	APPROX_PERCENTILE(grade, 0.90) AS q90
+	APPROX_PERCENTILE(grade, 0.0) AS p0,
+	APPROX_PERCENTILE(grade, 0.10) AS p10,
+	APPROX_PERCENTILE(grade, 0.25) AS p25,
+	APPROX_PERCENTILE(grade, 0.50) AS p50,
+	APPROX_PERCENTILE(grade, 0.75) AS p75,
+	APPROX_PERCENTILE(grade, 0.90) AS p90,
+	APPROX_PERCENTILE(grade, 1.0) AS p100
 	FROM input
 ---
 {"grade": 4}
@@ -17,4 +19,5 @@ SELECT
 {"grade": 4}
 {"grade": 8}
 ---
-{"q10": 1.2999999523162842, "q25": 2, "q50": 4, "q75": 4.5, "q90": 7.09999942779541}
+{"p0": 1, "p10": 1.2999999523162842, "p25": 2, "p50": 4, "p75": 4.5, "p90": 7.09999942779541, "p100": 8}
+

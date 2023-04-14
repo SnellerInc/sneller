@@ -199,12 +199,43 @@ TEXT bcAggTDigest(SB), NOSPLIT|NOFRAME, $0
   BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
   BC_LOAD_F64_FROM_SLOT_MASKED(OUT(Z6), OUT(Z7), IN(BX), IN(K1), IN(K2))
   BC_UNPACK_RU32(0, OUT(R13))
+  KTESTW        K1,  K1                   //;39DACE73 ZF := (K1==0); CF := 1          ;K1=lane_active;
+  JZ            next                      //;302CA6F9 jump if zero (ZF = 1)           ;
+
   ADDQ          R10, R13                  //;D53166C7 agg_local_ptr += agg_data_ptr   ;R13=agg_local_ptr; R10=agg_data_ptr;
 
 //; convert the 16 float64 input values to float32
   VCVTPD2PS     Z6,  Y6                   //;9B75E776 8x float64 -> 8x float32        ;Z6=scratch1;
   VCVTPD2PS     Z7,  Y7                   //;13365A29 8x float64 -> 8x float32        ;Z7=scratch2;
   VINSERTF32X8  $1,  Y7,  Z6,  Z15        //;AE2329B5 assemble 16x float32            ;Z15=mean2; Z6=scratch1; Z7=scratch2;
+
+//; calculate mean maximum
+//; reduce_max_ps: IN Z15, K1
+  VPBROADCASTD  CONSTF32_NEGATIVE_INF(),Z1  //;DDC16052 bcst constant -inf            ;Z1=inter_result;
+  VMOVDQA32     Z15, K1,  Z1              //;DDBA46F2 set dead lanes to -inf          ;Z1=inter_result; K1=lane_active; Z15=mean2;
+  VEXTRACTF32X8 $1,  Z1,  Y6              //;C77F6E74 extract top 256 bits            ;Z6=scratch; Z1=inter_result;
+  VMAXPS        Y1,  Y6,  Y1              //;B03AEB40 inter_result := max(scratch, inter_result);Z1=inter_result; Z6=scratch;
+  VEXTRACTF128  $1,  Y1,  X6              //;6D58D964 extract top 128 bits            ;Z6=scratch; Z1=inter_result;
+  VMAXPS        X1,  X6,  X1              //;F39D265F inter_result := max(scratch, inter_result);Z1=inter_result; Z6=scratch;
+  VPSRLDQ       $8,  X1,  X6              //;FCBB2777 scratch := inter_result>>8      ;Z6=scratch; Z1=inter_result;
+  VMAXPS        X1,  X6,  X1              //;AA319DE0 inter_result := max(scratch, inter_result);Z1=inter_result; Z6=scratch;
+  VPSRLDQ       $4,  X1,  X6              //;7B4CEA19 scratch := inter_result>>4      ;Z6=scratch; Z1=inter_result;
+  VMAXSS        X1,  X6,  X1              //;F3CF7517 mean_max := max(scratch, inter_result);Z1=mean_max; Z6=scratch; Z1=inter_result;
+//; reduce_max_ps: OUT Z1
+
+//; calculate mean minimum
+//; reduce_min_ps: IN Z15, K1
+  VPBROADCASTD  CONSTF32_POSITIVE_INF(),Z2  //;69727A96 bcst constant +inf            ;Z2=inter_result;
+  VMOVDQA32     Z15, K1,  Z2              //;9F647579 set dead lanes to +inf          ;Z2=inter_result; K1=lane_active; Z15=mean2;
+  VEXTRACTF32X8 $1,  Z2,  Y6              //;EA38B7F6 extract top 256 bits            ;Z6=scratch; Z2=inter_result;
+  VMINPS        Y2,  Y6,  Y2              //;7DC194FB inter_result := min(scratch, inter_result);Z2=inter_result; Z6=scratch;
+  VEXTRACTF128  $1,  Y2,  X6              //;E58D41C2 extract top 128 bits            ;Z6=scratch; Z2=inter_result;
+  VMINPS        X2,  X6,  X2              //;8060AC48 inter_result := min(scratch, inter_result);Z2=inter_result; Z6=scratch;
+  VPSRLDQ       $8,  X2,  X6              //;76E59F7C scratch := inter_result>>8      ;Z6=scratch; Z2=inter_result;
+  VMINPS        X2,  X6,  X2              //;1918F621 inter_result := min(scratch, inter_result);Z2=inter_result; Z6=scratch;
+  VPSRLDQ       $4,  X2,  X6              //;99C18E05 scratch := inter_result>>4      ;Z6=scratch; Z2=inter_result;
+  VMINSS        X2,  X6,  X2              //;6B279DC9 mean_min := min(scratch, inter_result);Z2=mean_min; Z6=scratch; Z2=inter_result;
+//; reduce_min_ps: OUT Z2
 
 //; set dead lanes to +inf
   KNOTW         K1,  K3                   //;B8D96637                                 ;K3=tmp_mask; K1=lane_active;
@@ -299,34 +330,6 @@ TEXT bcAggTDigest(SB), NOSPLIT|NOFRAME, $0
   KMOVW         K1,  DX                   //;4035BC0A copy mask to gpr                ;DX=len_out; K1=lane_active;
   POPCNTL       DX,  DX                   //;C9096838 count active lanes              ;DX=len_out;
   CVTSL2SS      DX,  X0                   //;730C6124 convert int32 to float32; INTEL CVTSI2SSL;Z0=weigth_sum; DX=len_out;
-
-//; calculate mean maximum
-//; reduce_max_ps: IN Z15, K1
-  VPBROADCASTD  CONSTF32_NEGATIVE_INF(),Z1  //;DDC16052 bcst constant -inf            ;Z1=inter_result;
-  VMOVDQA32     Z15, K1,  Z1              //;DDBA46F2 set dead lanes to -inf          ;Z1=inter_result; K1=lane_active; Z15=mean2;
-  VEXTRACTF32X8 $1,  Z1,  Y6              //;C77F6E74 extract top 256 bits            ;Z6=scratch; Z1=inter_result;
-  VMAXPS        Y1,  Y6,  Y1              //;B03AEB40 inter_result := max(scratch, inter_result);Z1=inter_result; Z6=scratch;
-  VEXTRACTF128  $1,  Y1,  X6              //;6D58D964 extract top 128 bits            ;Z6=scratch; Z1=inter_result;
-  VMAXPS        X1,  X6,  X1              //;F39D265F inter_result := max(scratch, inter_result);Z1=inter_result; Z6=scratch;
-  VPSRLDQ       $8,  X1,  X6              //;FCBB2777 scratch := inter_result>>8      ;Z6=scratch; Z1=inter_result;
-  VMAXPS        X1,  X6,  X1              //;AA319DE0 inter_result := max(scratch, inter_result);Z1=inter_result; Z6=scratch;
-  VPSRLDQ       $4,  X1,  X6              //;7B4CEA19 scratch := inter_result>>4      ;Z6=scratch; Z1=inter_result;
-  VMAXSS        X1,  X6,  X1              //;F3CF7517 mean_max := max(scratch, inter_result);Z1=mean_max; Z6=scratch; Z1=inter_result;
-//; reduce_max_ps: OUT Z1
-
-//; calculate mean minimum
-//; reduce_min_ps: IN Z15, K1
-  VPBROADCASTD  CONSTF32_POSITIVE_INF(),Z2  //;69727A96 bcst constant +inf            ;Z2=inter_result;
-  VMOVDQA32     Z15, K1,  Z2              //;9F647579 set dead lanes to +inf          ;Z2=inter_result; K1=lane_active; Z15=mean2;
-  VEXTRACTF32X8 $1,  Z2,  Y6              //;EA38B7F6 extract top 256 bits            ;Z6=scratch; Z2=inter_result;
-  VMINPS        Y2,  Y6,  Y2              //;7DC194FB inter_result := min(scratch, inter_result);Z2=inter_result; Z6=scratch;
-  VEXTRACTF128  $1,  Y2,  X6              //;E58D41C2 extract top 128 bits            ;Z6=scratch; Z2=inter_result;
-  VMINPS        X2,  X6,  X2              //;8060AC48 inter_result := min(scratch, inter_result);Z2=inter_result; Z6=scratch;
-  VPSRLDQ       $8,  X2,  X6              //;76E59F7C scratch := inter_result>>8      ;Z6=scratch; Z2=inter_result;
-  VMINPS        X2,  X6,  X2              //;1918F621 inter_result := min(scratch, inter_result);Z2=inter_result; Z6=scratch;
-  VPSRLDQ       $4,  X2,  X6              //;99C18E05 scratch := inter_result>>4      ;Z6=scratch; Z2=inter_result;
-  VMINSS        X2,  X6,  X2              //;6B279DC9 mean_min := min(scratch, inter_result);Z2=mean_min; Z6=scratch; Z2=inter_result;
-//; reduce_min_ps: OUT Z2
 
 //; test if data-structure is initialized
   MOVL          12(R13),CX                //;DBDA8EDD load len_in                     ;CX=len_in; R13=agg_local_ptr;
@@ -777,7 +780,9 @@ loop:
   MOVSS         X1,  0*64(R11)            //;7515A465 wOut[0] = wIn[0]                ;R11=ptr_out; Z1=weight_sum;
   MOVSS         X3,  2*64(R11)            //;91212D40 mOut[0] = mIn[0]                ;R11=ptr_out; Z3=mean_i;
   ADDQ          $4,  R11                  //;7C1BC149 ptr_out += 4                    ;R11=ptr_out;
+  INCL          DX                        //;DD68CB22 len_out++                       ;DX=len_out;
   DECL          CX                        //;3865377E len_in--                        ;CX=len_in;
+  JZ            choice_done_tail          //;165FEDBD jump if zero (ZF = 1)           ;
 
 loop_compress:
 
@@ -813,6 +818,7 @@ choice_done:
   ADDQ          $4,  R14                  //;C22614F0 ptr_in += 4                     ;R14=ptr_in;
   DECL          CX                        //;107A221F len_in--                        ;CX=len_in;
   JNZ           loop_compress             //;76537A6C jump if not zero (ZF = 0)       ;
+choice_done_tail:
 
 //; ------------------------------
 //; 5] retrieve the results from the tmp data-structure
@@ -821,7 +827,7 @@ choice_done:
   VMOVDQU32     (11*64)+16(R13),Z13       //;9F8F3D73 mean0 := [agg_local_ptr+(11*64)+16];Z13=mean0; R13=agg_local_ptr;
   VMOVDQU32     (12*64)+16(R13),Z14       //;14EBF763 mean1 := [agg_local_ptr+(12*64)+16];Z14=mean1; R13=agg_local_ptr;
 
-  JMP           next                      //;00000000                                 ;
+  JMP           sync_data                 //;00000000                                 ;
 
 init:
 //; store mean and weights data; layout: 2x16 weights; 2x16 means (means are sorted)
@@ -834,70 +840,13 @@ init:
   MOVL          X1,  4(R13)               //;A8ECB213 store mean maximum              ;R13=agg_local_ptr; Z1=mean_max;
   MOVL          X2,  8(R13)               //;886588A7 store mean minimum              ;R13=agg_local_ptr; Z2=mean_min;
 
-next:
+sync_data:
   MOVL          DX,  12(R13)              //;DAD9877D store len_out                   ;R13=agg_local_ptr; DX=len_out;
   VMOVDQU32     Z10, (0*64)+16(R13)       //;D4F8C992 write weights0                  ;R13=agg_local_ptr; Z10=weight0;
   VMOVDQU32     Z11, (1*64)+16(R13)       //;8AB10EA4 write weights1                  ;R13=agg_local_ptr; Z11=weight1;
   VMOVDQU32     Z13, (2*64)+16(R13)       //;BEC3C605 write sorted mean0              ;R13=agg_local_ptr; Z13=mean0;
   VMOVDQU32     Z14, (3*64)+16(R13)       //;6FE46FEC write sorted mean1              ;R13=agg_local_ptr; Z14=mean1;
+
+next:
   NEXT_ADVANCE(BC_SLOT_SIZE*2 + BC_AGGSLOT_SIZE)
 //; #endregion bcAggTDigest
-
-//; #region clobber report
-//; reg    last written by                  last read by                     Sneller ABI
-//; r8
-//; r13    00000000 (agg_local_ptr)         D53166C7 (agg_local_ptr)
-//; r14    A2FF8F99 (ptr_in)                6F1A8661 (ptr_in)
-//; r15
-//; rax                                                                      VIRT_PCREG
-//; rbx
-//; rcx    DBDA8EDD (len_in)                E4065BE0 (len_in)
-//; rdx    4035BC0A (len_out)               C9096838 (len_out)
-//; rdi                                                                      VIRT_BCPTR
-//; rsi                                                                      VIRT_BASE
-//; r9                                                                       do not clobber
-//; r10    00000000 (agg_data_ptr)          D53166C7 (agg_data_ptr)          VIRT_AGG_BUFFER: do not clobber
-//; r11    556B87C0 (scratch)               1AEB66EA (scratch)
-//; r12                                                                      VIRT_VALUES: do not clobber
-//; rsp
-//; rbp
-//; zmm0   730C6124 (weigth_sum)            C60D1361 (weigth_sum)            struct base
-//; zmm1   DDC16052 (inter_result)          C77F6E74 (inter_result)          struct len
-//; zmm2   69727A96 (inter_result)          EA38B7F6 (inter_result)          current scalar
-//; zmm3   2CB57FC6 (inter_result)          5E6EFC1D (inter_result)          current value
-//; zmm4   2CB57FC6 (inter_result)          5E6EFC1D (inter_result)
-//; zmm5   5E6EFC1D (scratch)               FE7F9E2F (scratch)
-//; zmm6   00000000 (scratch1)              9B75E776 (scratch1)
-//; zmm7   00000000 (scratch2)              13365A29 (scratch2)
-//; zmm8   924C9B92 (dataB0)                784213AC (dataB0)
-//; zmm9   347E6795 (dataB1)                731E40B9 (dataB1)
-//; zmm10  22F54620 (weight0)               924C9B92 (weight0)
-//; zmm11  6F0A0D1D (weight1)               347E6795 (weight1)
-//; zmm12  A8CF560D (weight2)               F5F1C962 (weight2)
-//; zmm13  8B7D355A (mean0)                 6E073F61 (mean0)
-//; zmm14  5EB0A20B (mean1)                 5669375D (mean1)
-//; zmm15  AE2329B5 (mean2)                 BAEF0C4D (mean2)
-//; zmm16  74704523 (min0)                  F53A5D90 (min0)
-//; zmm17  9FE4AA28 (shuffled_data0)        74704523 (shuffled_data0)
-//; zmm18  E7F5C275 (swap_data)             9FE4AA28 (swap_data)
-//; zmm19  601C3028 (min1)                  24C6F126 (min1)
-//; zmm20
-//; zmm21  7BD6443C (shuffled_data1)        601C3028 (shuffled_data1)
-//; zmm22
-//; zmm23
-//; zmm24
-//; zmm25  58897869 (tmpA1)                 21D6DD81 (tmpA1)
-//; zmm26  64FDEC5A (tmpA2)                 4E0FC4A6 (hsum_weight1)
-//; zmm27  6E5FC32F (tmpA3)                 4E0FC4A6 (hsum_weight2)
-//; zmm28  1F013204 (weight_total)          D3256B7C (weight_total)          unknown
-//; zmm29                                                                    unknown
-//; zmm30                                                                    field base (from findsym)
-//; zmm31                                                                    field len  (from findsym)
-//; k1     00000000 (lane_active)           B8D96637 (lane_active)           current mask bits
-//; k2     00000000 (TODO)
-//; k3     B8D96637 (tmp_mask)              4D75868C (tmp_mask)
-//; k4     45C64347 (change0_mask)          784213AC (change0_mask)
-//; k5
-//; k6
-//; k7
-//; #endregion clobber report

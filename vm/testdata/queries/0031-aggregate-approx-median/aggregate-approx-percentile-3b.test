@@ -1,5 +1,8 @@
 # go test -v -run=TestQueries/0031
 #
+# first call to aggregate has 16 centroids;
+# second call to aggregate has one (1) centroid
+#
 SELECT
 	APPROX_PERCENTILE(grade, 0.0) AS p0,
 	APPROX_PERCENTILE(grade, 0.25) AS p25,
@@ -25,8 +28,5 @@ SELECT
 {"grade": 15}
 {"grade": 16}
 {"grade": 17}
-{"grade": 18}
-{"grade": 19}
 ---
-{"p0": 1, "p25": 5.25, "p50": 10, "p75": 14.75, "p100": 19} # true quartiles Q1=5; Q2=10, Q3=15
-
+{"p0": 1, "p25": 4.75, "p50": 9, "p75": 13.25, "p100": 17}

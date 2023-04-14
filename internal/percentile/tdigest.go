@@ -217,13 +217,27 @@ func (t *TDigest) addCentroids(newCentroids CentroidsT, compression int) {
 	}
 
 	// update the new Min/Max
-	t.Min = weightT(math.Min(float64(t.Min), float64(t.Data[0].Mean)))              // Min is Min of first mean
-	t.Max = weightT(math.Max(float64(t.Max), float64(t.Data[t.Data.Len()-1].Mean))) // Max is Max of last mean
+	tmp := t.Data[0].Mean
+	if t.Min > tmp {
+		t.Min = tmp
+	}
+	tmp = t.Data[t.Data.Len()-1].Mean
+
+	if t.Max < tmp {
+		t.Max = tmp
+	}
 }
 
 // Merge of two TDigest structures is nothing more than add the centroids
 // of one tDigest to the centroids of the other tDigest
 func (t *TDigest) Merge(t2 *TDigest, compression int) {
+	if t.Min > t2.Min {
+		t.Min = t2.Min
+	}
+	if t.Max < t2.Max {
+		t.Max = t2.Max
+	}
+
 	if t2.Data.Len() <= 16 {
 		t.addCentroids(t2.Data, compression)
 		return
