@@ -278,8 +278,12 @@ func (es *encodingStation) encodeIguana(src []byte, threshold float32) error {
 
 	hdr := byte(0)
 	es.ustreams = [streamCount][]byte{ec.tokens, ec.offsets16, ec.offsets24, ec.varLitLen, ec.varMatchLen, ec.literals}
+	totalsize := 0
 	for i := range es.cstreams {
 		es.cstreams[i] = es.cstreams[i][:0]
+	}
+	for i := range es.ustreams {
+		totalsize += len(es.ustreams[i])
 	}
 
 	if threshold > 0.0 {
@@ -292,9 +296,17 @@ func (es *encodingStation) encodeIguana(src []byte, threshold float32) error {
 			csLen := len(cs)
 			if ratio := float64(csLen) / float64(len(es.ustreams[i])); ratio < float64(threshold) {
 				hdr |= (1 << i)
+				totalsize -= len(es.ustreams[i])
+				totalsize += len(cs)
 				es.cstreams[i] = append(es.cstreams[i][:0], cs...)
 			}
 		}
+	}
+	// if we didn't compress anything, emit a copy command
+	// (assume each stream consumes at least 1 varint byte
+	// and the header includes 1 extra control byte)
+	if totalsize+int(streamCount)+1 >= len(src) {
+		return es.encodeRaw(src)
 	}
 
 	es.appendControlCommand(cmdDecodeIguana)

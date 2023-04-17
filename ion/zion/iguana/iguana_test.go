@@ -24,7 +24,14 @@ import (
 	"testing"
 
 	"github.com/SnellerInc/sneller/tests"
+	"github.com/klauspost/compress/zstd"
 )
+
+var enc, _ = zstd.NewWriter(nil, zstd.WithEncoderLevel(zstd.SpeedBetterCompression))
+
+func zstdCompress(buf []byte) []byte {
+	return enc.EncodeAll(buf, nil)
+}
 
 func fetchTestData(path string) ([]byte, error) {
 	f, err := os.Open(path)
@@ -115,6 +122,9 @@ func testRoundtrip(t *testing.T, src []byte) {
 	t.Logf("comprLen = %d\n", dstLen)
 	compressionRatio := 100.0 * (1.0 - float64(dstLen)/float64(srcLen))
 	t.Logf("compressed by = %f%%\n", compressionRatio)
+
+	zst := zstdCompress(src)
+	t.Logf("zstd: %d -> %d", len(src), len(zst))
 
 	// provide a buffer that is perfectly-sized
 	// so we can see if there are any oob writes
