@@ -125,6 +125,9 @@ func put24(i int, dst []byte) {
 func (a BucketAlgo) Compress(src, dst []byte) ([]byte, error) {
 	off := len(dst)
 	dst = append(dst, 0, 0, 0)
+	if len(src) == 0 {
+		return dst, nil
+	}
 
 	var err error
 	switch a {
@@ -173,6 +176,10 @@ func (a BucketAlgo) Decompress(src, dst []byte) ([]byte, int, error) {
 	size := le24(src) + 3
 	if size > len(src) {
 		return nil, 0, fmt.Errorf("zion.decompress: segment size %d exceeds slice len %d", size, len(src))
+	}
+	if size == 3 {
+		// empty bucket
+		return dst, size, nil
 	}
 	var err error
 	var out []byte
