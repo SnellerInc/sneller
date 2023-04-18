@@ -25,7 +25,7 @@ func (c *Config) SetFeatures(lst []string) {
 		case "legacy-zstd":
 			c.Algo = "zstd"
 		case "iguana-v0":
-			c.Algo = "zion+iguana"
+			c.Algo = "zion+iguana_v0"
 		}
 	}
 }
