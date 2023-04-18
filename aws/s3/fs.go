@@ -687,7 +687,12 @@ func (p *Prefix) readDirAt(n int, token, seek, pattern string) (d []fs.DirEntry,
 		ret.Contents[i].Key = p.Key
 		ret.Contents[i].Client = p.client()
 		ret.Contents[i].Bucket = p.Bucket
-		ret.Contents[i].ctx = p.Ctx
+		// FIXME: we're using the "wrong" context here
+		// because we really just wanted to use the
+		// embedded context for limiting the time spent
+		// scanning and not the time spent reading the
+		// input file...
+		ret.Contents[i].ctx = context.Background()
 		out = append(out, &ret.Contents[i])
 	}
 	for i := range ret.CommonPrefixes {
