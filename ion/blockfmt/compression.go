@@ -75,7 +75,14 @@ func (z *zionCompressor) Close() error {
 	return nil
 }
 
-func (z *zionCompressor) Name() string { return "zion" }
+func (z *zionCompressor) Name() string {
+	if z.enc == nil {
+		// closed?
+		return "zion"
+	}
+	// zion+zstd, zion+iguana_v0, etc.
+	return "zion+" + z.enc.Algo.String()
+}
 
 type encoderNopCloser struct {
 	compr.Compressor

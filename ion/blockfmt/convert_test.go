@@ -69,6 +69,9 @@ func testConvertMulti(t *testing.T, algo string, meta int) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if algo != "zion" && c.Trailer().Algo != algo {
+		t.Errorf("trailer algo is %q ???", c.Trailer().Algo)
+	}
 	check(t, &out)
 }
 
@@ -166,6 +169,9 @@ func TestConvertSingle(t *testing.T) {
 				err = c.Run()
 				if err != nil {
 					t.Fatal(err)
+				}
+				if algo != "zion" && c.Trailer().Algo != algo {
+					t.Errorf("trailer algo is %q ???", c.Trailer().Algo)
 				}
 				check(t, &out)
 			})
