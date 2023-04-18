@@ -66,6 +66,9 @@ type Tree struct {
 	Inputs []Input
 	// Root is the root node of the plan tree.
 	Root Node
+
+	Results     []expr.Binding
+	ResultTypes []expr.TypeSet
 }
 
 func tabify(n int, dst *strings.Builder) {

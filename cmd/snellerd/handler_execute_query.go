@@ -328,7 +328,7 @@ func (s *server) executeQueryHandler(w http.ResponseWriter, r *http.Request) {
 		setTiming(w, elapsed, &stats)
 	}
 	if encodingFormat == tnproto.OutputChunkedIon {
-		writeStatus(w, &stats)
+		writeStatus(w, &stats, tree.Results, tree.ResultTypes)
 	}
 	s.logger.Printf("tenant %s query ID %s duration %s bytes %d hits %d misses %d",
 		tenantID, queryID, elapsed, stats.BytesScanned, stats.CacheHits, stats.CacheMisses)
@@ -425,14 +425,35 @@ func writeError(w http.ResponseWriter, errtext string) {
 	w.Write(tmp.Bytes())
 }
 
-func writeStatus(w http.ResponseWriter, stats *plan.ExecStats) {
+func writeStatus(w http.ResponseWriter, stats *plan.ExecStats, results []expr.Binding, types []expr.TypeSet) {
 	var tmp ion.Buffer
 	var st ion.Symtab
 	resultsym := st.Intern("final_status")
 	tmp.BeginAnnotation(1)
 	tmp.BeginField(resultsym)
-	stats.Encode(&tmp, &st)
+
+	tmp.BeginStruct(-1)
+
+	// stats fields
+	tmp.BeginField(st.Intern("hits"))
+	tmp.WriteInt(stats.CacheHits)
+	tmp.BeginField(st.Intern("misses"))
+	tmp.WriteInt(stats.CacheMisses)
+	tmp.BeginField(st.Intern("scanned"))
+	tmp.WriteInt(stats.BytesScanned)
+
+	// result set fields
+	tmp.BeginField(st.Intern("result_set"))
+	tmp.BeginStruct(-1)
+	for i, bound := range results {
+		tmp.BeginField(st.Intern(bound.Result()))
+		tmp.WriteUint(uint64(types[i]))
+	}
+	tmp.EndStruct()
+
+	tmp.EndStruct()
 	tmp.EndAnnotation()
+
 	split := tmp.Size()
 	st.Marshal(&tmp, true)
 	w.Write(tmp.Bytes()[split:])

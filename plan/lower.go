@@ -710,6 +710,8 @@ func newTree(q *expr.Query, env Env, split bool) (*Tree, error) {
 	if err != nil {
 		return nil, err
 	}
+	results := b.FinalBindings()
+	types := b.FinalTypes()
 	if split {
 		reduce, err := pir.Split(b)
 		if err != nil {
@@ -724,6 +726,8 @@ func newTree(q *expr.Query, env Env, split bool) (*Tree, error) {
 	if err != nil {
 		return nil, err
 	}
+	tree.Results = results
+	tree.ResultTypes = types
 
 	if q.Explain == expr.ExplainNone {
 		return tree, nil
