@@ -390,15 +390,25 @@ func (f *File) Open() (fs.File, error) { return f, nil }
 // If you need to read a sub-range of the
 // object, consider using f.Reader.RangeReader
 func (f *File) Read(p []byte) (int, error) {
-	if f.body == nil {
-		err := f.ctx.Err()
-		if err != nil {
-			return 0, err
+	if f.body != nil {
+		n, err := f.body.Read(p)
+		f.pos += int64(n)
+		if n > 0 || errors.Is(err, io.EOF) {
+			return n, err
 		}
-		f.body, err = f.Reader.RangeReader(f.pos, f.Size()-f.pos)
-		if err != nil {
-			return 0, err
-		}
+		// fall through here and re-try the request;
+		// occasionally S3 will send us an RST for not
+		// reading the response fast enough
+		f.body.Close()
+		f.body = nil
+	}
+	err := f.ctx.Err()
+	if err != nil {
+		return 0, err
+	}
+	f.body, err = f.Reader.RangeReader(f.pos, f.Size()-f.pos)
+	if err != nil {
+		return 0, err
 	}
 	n, err := f.body.Read(p)
 	f.pos += int64(n)
