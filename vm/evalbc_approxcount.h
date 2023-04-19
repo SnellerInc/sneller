@@ -74,7 +74,7 @@ TEXT bcaggslotapproxcount(SB), NOSPLIT|NOFRAME, $0
     VMOVQ R9, X9
     VMOVQ R12, X12
 
-    BC_UNPACK_SLOT(BC_AGGSLOT_SIZE + 2*BC_SLOT_SIZE + 2, OUT(BX))
+    BC_UNPACK_SLOT(BC_AGGSLOT_SIZE + 2*BC_SLOT_SIZE + BC_IMM16_SIZE, OUT(BX))
     BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(BX))
 
     BC_UNPACK_SLOT(BC_AGGSLOT_SIZE, OUT(DX)) // regL slot
@@ -154,94 +154,4 @@ skip:
 next:
     VMOVQ X12, R12
     VMOVQ X9, R9
-    NEXT_ADVANCE(BC_SLOT_SIZE*3 + BC_AGGSLOT_SIZE + BC_IMM16_SIZE)
-
-// bcaggslotapproxcountmerge implements update of HLL state for
-// aggregates executed in GROUP BY
-//
-// The main algorithm is exactly the same as in bcaggapproxcountmerge.
-//
-// _ = aggslotapproxcountmerge(a[0], l[1], s[2], u16@imm[3]).k[4]
-TEXT bcaggslotapproxcountmerge(SB), NOSPLIT|NOFRAME, $0
-#define CURRENT_MASK        R8
-#define BUFFER_SIZE         R13
-#define BYTEBUCKET_PTR      R14
-#define AGG_BUFFER_PTR      R15
-#define AGG_BUFFER_PTR_ORIG bytecode_spillArea+64(VIRT_BCPTR)
-#define COUNTER             CX
-#define VAL_OFFSETS         BX
-#define VAL_BUFFER_PTR      DX
-
-    // bcL
-    BC_UNPACK_SLOT(BC_AGGSLOT_SIZE, OUT(DX))
-    // bcReadS, bcImmU16, bcPredicate
-    BC_UNPACK_SLOT_RU16_SLOT(BC_AGGSLOT_SIZE + BC_SLOT_SIZE, OUT(BX), OUT(CX), OUT(R8))
-
-    BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
-    BC_LOAD_SLICE_FROM_SLOT_MASKED(OUT(Z2), OUT(Z3), IN(BX), IN(K1))
-
-    KTESTW  K1, K1
-    JZ      next
-
-    // Get the current mask
-    KMOVW   K1, CURRENT_MASK
-
-    BC_UNPACK_RU32(0, OUT(BX))
-    ADDQ $const_aggregateTagSize, BX
-    ADDQ radixTree64_values(VIRT_AGG_BUFFER), BX
-    MOVQ BX, AGG_BUFFER_PTR_ORIG
-
-    // Get parameters for the HLL algorithm
-    XORQ    BUFFER_SIZE, BUFFER_SIZE
-    BTSQ    CX, BUFFER_SIZE         // SIZE = 1 << precision
-    SHRQ    $4, BUFFER_SIZE         // SIZE in 16-byte chunks (precision is never less than 4)
-
-    // Get bucket base pointer
-    LEAQ        0(VIRT_VALUES)(DX*1), BYTEBUCKET_PTR
-
-    /* Input buffers offsets (we already validated all have the correct size) */
-    LEAQ        bytecode_spillArea(VIRT_BCPTR), VAL_OFFSETS
-    VMOVDQU32   Z2, (VAL_OFFSETS)
-
-iter_rows:
-    TESTQ   $1, CURRENT_MASK
-    JZ      skip
-
-    // update i-th radix tree bucket
-    MOVQ    BUFFER_SIZE, COUNTER
-
-    // AGG_BUFFER_PTR_ORIG = radixtree[k].values[8 + bucket[i]]
-    MOVL    (BYTEBUCKET_PTR), AGG_BUFFER_PTR
-    MOVL    (VAL_OFFSETS), VAL_BUFFER_PTR
-    ADDQ    AGG_BUFFER_PTR_ORIG, AGG_BUFFER_PTR
-    ADDQ    VIRT_BASE, VAL_BUFFER_PTR
-
-    update:
-        // agg_buffer[j] := max(agg_buffer[j], val_buffer[k])
-        VMOVDQU (AGG_BUFFER_PTR), X5
-        VPMAXUB (VAL_BUFFER_PTR), X5, X5
-        VMOVDQU X5, (AGG_BUFFER_PTR)
-
-        // j++; k++
-        ADDQ    $16, AGG_BUFFER_PTR
-        ADDQ    $16, VAL_BUFFER_PTR
-        SUBQ    $1, COUNTER
-        JNZ     update
-
-skip:
-    ADDQ    $4, BYTEBUCKET_PTR  // next bucket
-    ADDQ    $4, VAL_OFFSETS     // next value
-    SHRQ    $1, CURRENT_MASK
-    JNZ     iter_rows
-
-#undef CURRENT_MASK
-#undef BUFFER_SIZE
-#undef BYTEBUCKET_PTR
-#undef AGG_BUFFER_PTR_ORIG
-#undef AGG_BUFFER_PTR
-#undef COUNTER
-#undef VAL_OFFSETS
-#undef VAL_BUFFER_PTR
-
-next:
     NEXT_ADVANCE(BC_SLOT_SIZE*3 + BC_AGGSLOT_SIZE + BC_IMM16_SIZE)

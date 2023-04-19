@@ -400,15 +400,15 @@ const (
 	smakestructkey
 	sboxlist
 
-	stypebits                  // get encoded tag bits
-	schecktag                  // check encoded tag bits
-	saggapproxcount            // APPROX_COUNT_DISTINCT
-	saggslotapproxcount        // APPROX_COUNT_DISTINCT aggregate in GROUP BY
-	saggslotapproxcountpartial // the partial step of APPROX_COUNT_DISTINCT (for split queries with GROUP BY)
-	saggslotapproxcountmerge   // the merge step of APPROX_COUNT_DISTINCT (for split queries with GROUP BY)
+	stypebits           // get encoded tag bits
+	schecktag           // check encoded tag bits
+	saggapproxcount     // APPROX_COUNT_DISTINCT
+	saggslotapproxcount // APPROX_COUNT_DISTINCT aggregate in GROUP BY
 
 	sAggTDigest // tDigest aggregator used for percentile, median approximation
 	sAggSlotTDigest
+
+	saggslotmergestate
 
 	_ssamax
 )
@@ -1060,12 +1060,21 @@ var _ssainfo = [_ssamax]ssaopinfo{
 	sarrayposition: {text: "arrayposition", argtypes: []ssatype{stList, stValue, stBool}, rettype: stIntMasked, bc: oparrayposition},
 
 	saggmergestate: {
-		text:     "aggmegestate",
+		text:     "aggmergestate",
 		argtypes: []ssatype{stBlob, stBool},
 		rettype:  stMem,
 		bc:       opaggmergestate,
 		immfmt:   fmtaggslot,
 	},
+	saggslotmergestate: {
+		text:     "aggslotmergestate",
+		argtypes: []ssatype{stBucket, stBlob, stBool},
+		rettype:  stMem,
+		bc:       opaggslotmergestate,
+		immfmt:   fmtaggslot,
+		priority: prioMem,
+	},
+
 	saggapproxcount: {
 		text:     "aggapproxcount",
 		argtypes: []ssatype{stHash, stBool},
@@ -1081,24 +1090,6 @@ var _ssainfo = [_ssamax]ssaopinfo{
 		bc:       opaggslotapproxcount,
 		emit:     emitaggslotapproxcount,
 		immfmt:   fmti64,
-		priority: prioMem,
-	},
-	saggslotapproxcountpartial: {
-		text:     "aggslotapproxcount.partial",
-		argtypes: []ssatype{stMem, stBucket, stHash, stBool},
-		rettype:  stMem,
-		bc:       opaggslotapproxcount,
-		emit:     emitaggslotapproxcount,
-		immfmt:   fmtother,
-		priority: prioMem,
-	},
-	saggslotapproxcountmerge: {
-		text:     "aggslotapproxcount.merge",
-		argtypes: []ssatype{stMem, stBucket, stBlob, stBool},
-		rettype:  stMem,
-		bc:       opaggslotapproxcountmerge,
-		emit:     emitaggslotapproxcountmerge,
-		immfmt:   fmtaggslot,
 		priority: prioMem,
 	},
 }

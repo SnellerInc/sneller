@@ -118,9 +118,9 @@ const aggregateOpMergeBufferRowsCount = 16
 const aggregateOpMergeBufferSize = aggregateOpMergeBufferRowsCount * aggregateOpMergeBufferItemSize
 
 // aggregateOpMergeBufferItemSize is the size of a single item in the
-// extra buffer. Refer to the aggregateLocal.writeRows implementation
-// for the item's interpretation.
-const aggregateOpMergeBufferItemSize = 8
+// extra buffer. Refer to the aggregateLocal.writeRows and
+// aggtable.writeRows implementations for the item's interpretation.
+const aggregateOpMergeBufferItemSize = 3 * 4
 
 // AggregateOp describes aggregate operation
 type AggregateOp struct {
@@ -653,22 +653,12 @@ func (a Aggregation) Equals(x Aggregation) bool {
 	return slices.EqualFunc(a, x, AggBinding.Equals)
 }
 
-func (q *Aggregate) mergestate() bool {
-	for i := range q.aggregateOps {
-		if q.aggregateOps[i].mergestate() {
-			return true
-		}
-	}
-
-	return false
-}
-
 func (q *Aggregate) Open() (io.WriteCloser, error) {
 	return splitter(&aggregateLocal{
 		parent:      q,
 		rowCount:    0,
 		partialData: slices.Clone(q.initialData),
-		mergestate:  q.mergestate(),
+		mergestate:  mergestate(q.aggregateOps),
 	}), nil
 }
 
@@ -992,4 +982,15 @@ func (q *Aggregate) compileAggregate(aggregates Aggregation) error {
 
 	p.returnValue(p.mergeMem(mem...))
 	return nil
+}
+
+// mergestate returns true if any aggregate needs state merge
+func mergestate(ops []AggregateOp) bool {
+	for i := range ops {
+		if ops[i].mergestate() {
+			return true
+		}
+	}
+
+	return false
 }

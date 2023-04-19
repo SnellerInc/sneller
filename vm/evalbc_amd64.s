@@ -7644,6 +7644,30 @@ TEXT bcaggslotcount_v2(SB), NOSPLIT|NOFRAME, $0
 
   NEXT_ADVANCE(BC_SLOT_SIZE*2 + BC_AGGSLOT_SIZE)
 
+
+// _ = aggslotmergestate(a[0], l[1], s[2]).k[3]
+TEXT bcaggslotmergestate(SB), NOSPLIT|NOFRAME, $0
+    BC_UNPACK_3xSLOT(BC_AGGSLOT_SIZE, OUT(DX), OUT(CX), OUT(R8))
+    BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
+
+    BC_UNPACK_RU32(0, OUT(BX))
+    ADDQ $const_aggregateTagSize, BX
+    ADDQ radixTree64_values(VIRT_AGG_BUFFER), BX
+
+    // copy 16 x 32-bit bucket offsets
+    BC_FILL_ONES(Z1)                        // unused slot = -1
+    VMOVDQU32   BC_VSTACK_PTR(DX, 0), K1, Z1
+    VMOVDQU32   Z1, (0*64)(BX)
+
+    // copy 16 x vmref to value
+    VMOVDQU32   BC_VSTACK_PTR(CX, 0),  Z1
+    VMOVDQU32   BC_VSTACK_PTR(CX, 64), Z2
+    VMOVDQU32   Z1, (1*64)(BX)
+    VMOVDQU32   Z2, (2*64)(BX)
+
+    NEXT_ADVANCE(BC_AGGSLOT_SIZE + BC_SLOT_SIZE*3)
+
+
 // Uncategorized Instructions
 // --------------------------
 

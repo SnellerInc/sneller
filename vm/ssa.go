@@ -2863,26 +2863,18 @@ func (p *prog) aggregateSlotCount(mem, bucket, mask *value, offset aggregateslot
 	return p.ssa3imm(saggslotcount, mem, bucket, mask, offset)
 }
 
-func (p *prog) asacd(op ssaop, mem, bucket, argv, mask *value, offset aggregateslot, precision uint8) *value {
+func (p *prog) aggregateSlotApproxCountDistinct(mem, bucket, argv, mask *value, offset aggregateslot, precision uint8) *value {
 	k := p.mask(argv)
 	if mask != nil {
 		k = p.and(k, mask)
 	}
 	h := p.hash(argv)
-	return p.ssa4imm(op, mem, bucket, h, k, (uint64(offset)<<8)|uint64(precision))
+	return p.ssa4imm(saggslotapproxcount, mem, bucket, h, k, (uint64(offset)<<8)|uint64(precision))
 }
 
-func (p *prog) aggregateSlotApproxCountDistinct(mem, bucket, argv, mask *value, offset aggregateslot, precision uint8) *value {
-	return p.asacd(saggslotapproxcount, mem, bucket, argv, mask, offset, precision)
-}
-
-func (p *prog) aggregateSlotApproxCountDistinctPartial(mem, bucket, argv, mask *value, offset aggregateslot, precision uint8) *value {
-	return p.asacd(saggslotapproxcountpartial, mem, bucket, argv, mask, offset, precision)
-}
-
-func (p *prog) aggregateSlotApproxCountDistinctMerge(mem, bucket, argv, mask *value, offset aggregateslot, precision uint8) *value {
+func (p *prog) aggregateSlotMergeState(bucket, argv, mask *value, offset aggregateslot) *value {
 	blob := p.ssa2(stoblob, argv, mask)
-	return p.ssa4imm(saggslotapproxcountmerge, mem, bucket, blob, p.mask(blob), (uint64(offset)<<8)|uint64(precision))
+	return p.ssa3imm(saggslotmergestate, bucket, blob, p.mask(blob), offset)
 }
 
 // note: the 'mem' argument to aggbucket
@@ -4006,24 +3998,6 @@ func emitaggslotapproxcount(v *value, c *compilestate) {
 		aggSlot,
 		c.slotOf(bucket, regL),
 		c.slotOf(hash, regH),
-		precision,
-		c.slotOf(mask, regK),
-	)
-}
-
-func emitaggslotapproxcountmerge(v *value, c *compilestate) {
-	bucket := v.args[1]
-	blob := v.args[2]
-	mask := v.args[3]
-
-	imm := v.imm.(uint64)
-	aggSlot := aggregateslot(imm >> 8)
-	precision := imm & 0xFF
-
-	c.emit(v, ssainfo[v.op].bc,
-		aggSlot,
-		c.slotOf(bucket, regL),
-		c.slotOf(blob, regS),
 		precision,
 		c.slotOf(mask, regK),
 	)

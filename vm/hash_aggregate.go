@@ -132,10 +132,10 @@ func (h *HashAggregate) groupFn(n int, ordering SortOrdering) aggOrderFn {
 
 func (h *HashAggregate) aggFn(n int, ordering SortOrdering) aggOrderFn {
 	return func(agt *aggtable, i, j int) int {
-		aggregateFn := h.aggregateOps[n].fn
+		op := h.aggregateOps[n]
 		lmem := agt.valueof(&agt.pairs[i])
 		rmem := agt.valueof(&agt.pairs[j])
-		dir := aggcmp(aggregateFn, lmem, rmem)
+		dir := aggcmp(op.fn, lmem, rmem)
 		if ordering.Direction == SortDescending {
 			return -dir
 		}
@@ -279,12 +279,10 @@ func NewHashAggregate(agg, windows Aggregation, by Selection, dst QuerySink) (*H
 			ops[i].fn = AggregateOpApproxCountDistinct
 			ops[i].role = a.Role
 			switch a.Role {
-			case expr.AggregateRoleFinal:
+			case expr.AggregateRoleFinal, expr.AggregateRolePartial:
 				out[i] = prog.aggregateSlotApproxCountDistinct(mem, bucket, argv, mask, offset, precision)
-			case expr.AggregateRolePartial:
-				out[i] = prog.aggregateSlotApproxCountDistinctPartial(mem, bucket, argv, mask, offset, precision)
 			case expr.AggregateRoleMerge:
-				out[i] = prog.aggregateSlotApproxCountDistinctMerge(mem, bucket, argv, mask, offset, precision)
+				out[i] = prog.aggregateSlotMergeState(bucket, argv, mask, offset+aggregateslot(ops[i].dataSize()))
 			}
 
 		case expr.OpBoolAnd, expr.OpBoolOr:
@@ -321,6 +319,10 @@ func NewHashAggregate(agg, windows Aggregation, by Selection, dst QuerySink) (*H
 				out[i], fp = prog.aggregateSlotSum(mem, bucket, argv, mask, offset)
 				if fp {
 					ops[i].fn = AggregateOpSumF
+					ops[i].role = a.Role
+					if a.Role == expr.AggregateRoleMerge {
+						out[i] = prog.aggregateSlotMergeState(bucket, argv, mask, offset+aggregateslot(ops[i].dataSize()))
+					}
 				} else {
 					ops[i].fn = AggregateOpSumI
 				}
@@ -393,6 +395,7 @@ func (h *HashAggregate) Open() (io.WriteCloser, error) {
 		parent:       h,
 		tree:         newRadixTree(len(h.initialData)),
 		aggregateOps: h.aggregateOps,
+		mergestate:   mergestate(h.aggregateOps),
 	}
 
 	atomic.AddInt64(&h.children, 1)
@@ -458,15 +461,15 @@ func (h *HashAggregate) Close() error {
 		offset := 0
 		for j := range h.aggregateOps {
 			op := h.aggregateOps[j]
-			if op.mergestate() {
-				offset += aggregateOpMergeBufferSize
-			}
 			if finalize := aggregateOpInfoTable[op.fn].finalizeFunc; finalize != nil && !op.savestate() {
 				buf := valmem[offset:]
 				finalize(buf)
 				hasfinalize = true
 			}
 			offset += op.dataSize()
+			if op.mergestate() {
+				offset += aggregateOpMergeBufferSize
+			}
 		}
 
 		if !hasfinalize {

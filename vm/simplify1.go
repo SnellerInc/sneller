@@ -62,12 +62,6 @@ func rewrite1(p *prog, v *value) (*value, bool) {
 		}
 	case 9: /* andn.k */
 		if len(v.args) == 2 {
-			// (andn.k x x) -> (false)
-			if x := v.args[0]; true {
-				if x == v.args[1] {
-					return /* clobber v */ p.setssa(v, 7, nil), true
-				}
-			}
 			// (andn.k (false) x) -> x
 			if _tmp14 := v.args[0]; _tmp14.op == 7 {
 				if x := v.args[1]; true {
@@ -82,18 +76,24 @@ func rewrite1(p *prog, v *value) (*value, bool) {
 			if f := v.args[1]; f.op == 7 {
 				return f, true
 			}
+			// (andn.k x x) -> (false)
+			if x := v.args[0]; true {
+				if x == v.args[1] {
+					return /* clobber v */ p.setssa(v, 7, nil), true
+				}
+			}
 		}
 	case 10: /* or.k */
 		if len(v.args) == 2 {
-			// (or.k (false) x) -> x
-			if _tmp15 := v.args[0]; _tmp15.op == 7 {
-				if x := v.args[1]; true {
-					return x, true
-				}
-			}
 			// (or.k x x) -> x
 			if x := v.args[0]; true {
 				if x == v.args[1] {
+					return x, true
+				}
+			}
+			// (or.k (false) x) -> x
+			if _tmp15 := v.args[0]; _tmp15.op == 7 {
+				if x := v.args[1]; true {
 					return x, true
 				}
 			}
@@ -103,12 +103,12 @@ func rewrite1(p *prog, v *value) (*value, bool) {
 					return x, true
 				}
 			}
-			// (or.k t:(init) _) -> t
-			if t := v.args[0]; t.op == 1 {
-				return t, true
-			}
 			// (or.k _ t:(init)) -> t
 			if t := v.args[1]; t.op == 1 {
+				return t, true
+			}
+			// (or.k t:(init) _) -> t
+			if t := v.args[0]; t.op == 1 {
 				return t, true
 			}
 		}
@@ -147,27 +147,27 @@ func rewrite1(p *prog, v *value) (*value, bool) {
 		}
 	case 12: /* xnor.k */
 		if len(v.args) == 2 {
-			// (xnor.k (false) f) -> (andn.k f (init))
-			if _tmp19 := v.args[0]; _tmp19.op == 7 {
-				if f := v.args[1]; true {
-					return /* clobber v */ p.setssa(v, 9, nil, f, p.values[0]), true
-				}
-			}
-			// (xnor.k (init) f) -> f
-			if _tmp20 := v.args[0]; _tmp20.op == 1 {
-				if f := v.args[1]; true {
+			// (xnor.k f (init)) -> f
+			if f := v.args[0]; true {
+				if _tmp19 := v.args[1]; _tmp19.op == 1 {
 					return f, true
 				}
 			}
 			// (xnor.k f (false)) -> (andn.k f (init))
 			if f := v.args[0]; true {
-				if _tmp21 := v.args[1]; _tmp21.op == 7 {
+				if _tmp20 := v.args[1]; _tmp20.op == 7 {
 					return /* clobber v */ p.setssa(v, 9, nil, f, p.values[0]), true
 				}
 			}
-			// (xnor.k f (init)) -> f
-			if f := v.args[0]; true {
-				if _tmp22 := v.args[1]; _tmp22.op == 1 {
+			// (xnor.k (false) f) -> (andn.k f (init))
+			if _tmp21 := v.args[0]; _tmp21.op == 7 {
+				if f := v.args[1]; true {
+					return /* clobber v */ p.setssa(v, 9, nil, f, p.values[0]), true
+				}
+			}
+			// (xnor.k (init) f) -> f
+			if _tmp22 := v.args[0]; _tmp22.op == 1 {
+				if f := v.args[1]; true {
 					return f, true
 				}
 			}
@@ -331,26 +331,26 @@ func rewrite1(p *prog, v *value) (*value, bool) {
 					}
 				}
 			}
+			// (blend.v _ _ y (init)) -> (make.vk y (init))
+			if y := v.args[2]; true {
+				if _tmp28 := v.args[3]; _tmp28.op == 1 {
+					return /* clobber v */ p.setssa(v, 142, nil, y, p.values[0]), true
+				}
+			}
 			// (blend.v _ (false) y k) -> (make.vk y k)
-			if _tmp28 := v.args[1]; _tmp28.op == 7 {
+			if _tmp29 := v.args[1]; _tmp29.op == 7 {
 				if y := v.args[2]; true {
 					if k := v.args[3]; true {
 						return /* clobber v */ p.setssa(v, 142, nil, y, k), true
 					}
 				}
 			}
-			// (blend.v _ _ y (init)) -> (make.vk y (init))
-			if y := v.args[2]; true {
-				if _tmp29 := v.args[3]; _tmp29.op == 1 {
-					return /* clobber v */ p.setssa(v, 142, nil, y, p.values[0]), true
-				}
-			}
 		}
 	case 181: /* add.f */
 		if len(v.args) == 3 {
-			// (add.f _tmp1:(broadcast.f imm) f k) -> (add.imm.f f k imm)
-			if _tmp1 := v.args[0]; _tmp1.op == 147 {
-				if f := v.args[1]; true {
+			// (add.f f _tmp1:(broadcast.f imm) k) -> (add.imm.f f k imm)
+			if f := v.args[0]; true {
+				if _tmp1 := v.args[1]; _tmp1.op == 147 {
 					if k := v.args[2]; true {
 						if imm := tof64(_tmp1.imm); true {
 							return /* clobber v */ p.setssa(v, 183, imm, f, k), true
@@ -358,9 +358,9 @@ func rewrite1(p *prog, v *value) (*value, bool) {
 					}
 				}
 			}
-			// (add.f f _tmp2:(broadcast.f imm) k) -> (add.imm.f f k imm)
-			if f := v.args[0]; true {
-				if _tmp2 := v.args[1]; _tmp2.op == 147 {
+			// (add.f _tmp2:(broadcast.f imm) f k) -> (add.imm.f f k imm)
+			if _tmp2 := v.args[0]; _tmp2.op == 147 {
+				if f := v.args[1]; true {
 					if k := v.args[2]; true {
 						if imm := tof64(_tmp2.imm); true {
 							return /* clobber v */ p.setssa(v, 183, imm, f, k), true
@@ -389,22 +389,22 @@ func rewrite1(p *prog, v *value) (*value, bool) {
 		}
 	case 185: /* sub.f */
 		if len(v.args) == 3 {
-			// (sub.f _tmp3:(broadcast.f imm) f k) -> (rsub.imm.f f k imm)
-			if _tmp3 := v.args[0]; _tmp3.op == 147 {
-				if f := v.args[1]; true {
+			// (sub.f f _tmp3:(broadcast.f imm) k) -> (sub.imm.f f k imm)
+			if f := v.args[0]; true {
+				if _tmp3 := v.args[1]; _tmp3.op == 147 {
 					if k := v.args[2]; true {
 						if imm := tof64(_tmp3.imm); true {
-							return /* clobber v */ p.setssa(v, 191, imm, f, k), true
+							return /* clobber v */ p.setssa(v, 187, imm, f, k), true
 						}
 					}
 				}
 			}
-			// (sub.f f _tmp4:(broadcast.f imm) k) -> (sub.imm.f f k imm)
-			if f := v.args[0]; true {
-				if _tmp4 := v.args[1]; _tmp4.op == 147 {
+			// (sub.f _tmp4:(broadcast.f imm) f k) -> (rsub.imm.f f k imm)
+			if _tmp4 := v.args[0]; _tmp4.op == 147 {
+				if f := v.args[1]; true {
 					if k := v.args[2]; true {
 						if imm := tof64(_tmp4.imm); true {
-							return /* clobber v */ p.setssa(v, 187, imm, f, k), true
+							return /* clobber v */ p.setssa(v, 191, imm, f, k), true
 						}
 					}
 				}
@@ -493,22 +493,22 @@ func rewrite1(p *prog, v *value) (*value, bool) {
 		}
 	case 197: /* div.f */
 		if len(v.args) == 3 {
-			// (div.f f _tmp7:(broadcast.f imm) k) -> (div.imm.f f k imm)
-			if f := v.args[0]; true {
-				if _tmp7 := v.args[1]; _tmp7.op == 147 {
+			// (div.f _tmp7:(broadcast.f imm) f k) -> (rdiv.imm.f f k imm)
+			if _tmp7 := v.args[0]; _tmp7.op == 147 {
+				if f := v.args[1]; true {
 					if k := v.args[2]; true {
 						if imm := tof64(_tmp7.imm); true {
-							return /* clobber v */ p.setssa(v, 199, imm, f, k), true
+							return /* clobber v */ p.setssa(v, 201, imm, f, k), true
 						}
 					}
 				}
 			}
-			// (div.f _tmp8:(broadcast.f imm) f k) -> (rdiv.imm.f f k imm)
-			if _tmp8 := v.args[0]; _tmp8.op == 147 {
-				if f := v.args[1]; true {
+			// (div.f f _tmp8:(broadcast.f imm) k) -> (div.imm.f f k imm)
+			if f := v.args[0]; true {
+				if _tmp8 := v.args[1]; _tmp8.op == 147 {
 					if k := v.args[2]; true {
 						if imm := tof64(_tmp8.imm); true {
-							return /* clobber v */ p.setssa(v, 201, imm, f, k), true
+							return /* clobber v */ p.setssa(v, 199, imm, f, k), true
 						}
 					}
 				}
@@ -845,24 +845,6 @@ func rewrite1(p *prog, v *value) (*value, bool) {
 			// (aggslotapproxcount mem _ _ (false) _) -> mem
 			if mem := v.args[0]; true {
 				if _tmp59 := v.args[3]; _tmp59.op == 7 {
-					return mem, true
-				}
-			}
-		}
-	case 331: /* aggslotapproxcount.partial */
-		if len(v.args) == 4 {
-			// (aggslotapproxcount.partial mem _ _ (false) _) -> mem
-			if mem := v.args[0]; true {
-				if _tmp60 := v.args[3]; _tmp60.op == 7 {
-					return mem, true
-				}
-			}
-		}
-	case 332: /* aggslotapproxcount.merge */
-		if len(v.args) == 4 {
-			// (aggslotapproxcount.merge mem _ _ (false) _) -> mem
-			if mem := v.args[0]; true {
-				if _tmp61 := v.args[3]; _tmp61.op == 7 {
 					return mem, true
 				}
 			}

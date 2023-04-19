@@ -325,6 +325,7 @@ type aggtable struct {
 	// the correct number of bytes for each kind, and to be able to
 	// aggergate partially aggregated results.
 	aggregateOps []AggregateOp
+	mergestate   bool
 
 	// distinct ion values, concatenated;
 	// pointed to by pairs[].reprloc
@@ -549,22 +550,14 @@ func (a *aggtable) writeRows(delims []vmref, rp *rowParams) error {
 	vRegSizeInUInt64Units := int(vRegSize >> 3)
 	var abort uint16
 	a.bc.prepare(rp)
-	for len(delims) > 0 {
-		n := a.fasteval(delims, &abort)
-		if a.bc.err != 0 && a.bc.err != bcerrNeedRadix {
-			return bytecodeerror("hash aggregate", &a.bc)
-		}
-		delims = delims[n:]
-		if len(delims) != 0 && abort == 0 {
-			panic("did not expect early return with abort==0")
-		}
 
-		// for each value that did not have a location,
-		// create a newly-initialized slot and then
-		// restart the loop with the larger table
-		//
-		// TODO: when the number of restarts is high,
-		// consider allocating table space more aggressively?
+	// for each value that did not have a location,
+	// create a newly-initialized slot and then
+	// restart the loop with the larger table
+	//
+	// TODO: when the number of restarts is high,
+	// consider allocating table space more aggressively?
+	createNodes := func(abort uint16) error {
 		step := 16 - bits.LeadingZeros16(abort)
 		hashslot := a.bc.errinfo >> 3 // `bcaggbucket` sets the current byte-offset to hashslot
 		hashmem := a.bc.vstack[hashslot:]
@@ -621,7 +614,64 @@ func (a *aggtable) writeRows(delims []vmref, rp *rowParams) error {
 			})
 			a.initentry(a.tree.values[off+8:])
 		}
+
+		return nil
 	}
+
+	// the main loop
+	for len(delims) > 0 {
+		chunk := delims
+		if a.mergestate && len(chunk) > aggregateOpMergeBufferRowsCount {
+			chunk = chunk[:aggregateOpMergeBufferRowsCount]
+		}
+
+		n := a.fasteval(chunk, &abort)
+		if a.bc.err != 0 && a.bc.err != bcerrNeedRadix {
+			return bytecodeerror("hash aggregate", &a.bc)
+		}
+		delims = delims[n:]
+		if abort != 0 {
+			if err := createNodes(abort); err != nil {
+				return err
+			}
+			continue
+		}
+
+		// abort == 0
+		if n != len(chunk) {
+			panic("did not expect early return with abort==0")
+		}
+
+		if !a.mergestate {
+			continue
+		}
+
+		dst := a.tree.values[aggregateTagSize:]
+		for i := range a.aggregateOps {
+			op := a.aggregateOps[i]
+			n := op.dataSize()
+			if !op.mergestate() {
+				dst = dst[n:]
+				continue
+			}
+
+			positions := dst[n : n+aggregateOpMergeBufferSize]
+			for i := range chunk {
+				bucket := binary.LittleEndian.Uint32(positions[4*i+0*64:])
+				if int32(bucket) == -1 {
+					continue
+				}
+				offset := binary.LittleEndian.Uint32(positions[4*i+1*64:])
+				size := binary.LittleEndian.Uint32(positions[4*i+2*64:])
+				v := vmref{offset, size}
+				if !mergeAggregateBuffers(dst[bucket:], v.mem(), op) {
+					panic(fmt.Sprintf("aggregate %s expected to merge its buffer", op.fn))
+				}
+			}
+			dst = dst[n+aggregateOpMergeBufferSize:]
+		}
+	}
+
 	return nil
 }
 

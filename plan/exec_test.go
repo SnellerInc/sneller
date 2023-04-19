@@ -338,6 +338,14 @@ func TestExec(t *testing.T) {
 		expectBytes int
 	}{
 		{
+			query: `SELECT COUNT(*), VendorID FROM 'nyc-taxi.block' GROUP BY VendorID ORDER BY SUM(trip_distance) DESC`,
+			expectedRows: []string{
+				`{"count": 7353, "VendorID": "VTS"}`,
+				`{"count": 1055, "VendorID": "CMT"}`,
+				`{"count":  152, "VendorID": "DDS"}`,
+			},
+		},
+		{
 			query:       `select * from 'nyc-taxi.block'`,
 			rows:        8560,
 			expectBytes: nycTaxiBytes,
