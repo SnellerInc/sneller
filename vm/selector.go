@@ -267,6 +267,7 @@ func (p *projector) writeRows(delims []vmref, rp *rowParams) error {
 
 	p.bc.prepare(rp)
 	for len(delims) > 0 {
+		auxpos := p.bc.auxpos
 		off, rewrote := p.bcproject(delims, p.aw.buf[p.aw.off:], p.outsel)
 		if p.bc.err != 0 {
 			// we don't expect to encounter
@@ -281,6 +282,10 @@ func (p *projector) writeRows(delims []vmref, rp *rowParams) error {
 		if off > p.aw.space() {
 			panic("memory corruption")
 		}
+		// adjust the aux position backwards to account
+		// for *only* the lanes that were actually projected,
+		// and not necessarily those that were passed to the bytecode
+		p.bc.auxpos = auxpos + rewrote
 		if p.dstrc != nil && rewrote > 0 {
 			err := p.dstrc.writeRows(delims[:rewrote], &p.params)
 			if err != nil {
