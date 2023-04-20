@@ -16,27 +16,22 @@
 
 // _ = aggapproxcount(a[0], h[1], u16@imm[2]).k[3]
 TEXT bcaggapproxcount(SB), NOSPLIT|NOFRAME, $0
-    MOVQ R12, bytecode_spillArea(VIRT_BCPTR)
-
     BC_UNPACK_RU32(0, OUT(R15))
-    BC_UNPACK_SLOT(BC_AGGSLOT_SIZE, OUT(R8))
-    // unpacked out-of-order due to the R12 clobber:
-    BC_UNPACK_SLOT(BC_AGGSLOT_SIZE + BC_SLOT_SIZE + 2, OUT(BX))
-    BC_LOAD_RU16_FROM_SLOT(OUT(R14), IN(BX)) // BX = valid lanes
+    BC_UNPACK_SLOT_RU16_SLOT(BC_AGGSLOT_SIZE, OUT(R8), OUT(R11), OUT(BX))
+    BC_LOAD_RU16_FROM_SLOT(OUT(R14), IN(BX))
 
     ADDQ VIRT_VALUES, R8
-    BC_UNPACK_RU16(BC_AGGSLOT_SIZE + BC_SLOT_SIZE, OUT(R12))
 
     // Note: The virtual hash registers are 128-bit ones, we use the higher 64 bits of each.
     ADDQ    VIRT_AGG_BUFFER, R15        // R15 -> aggregate buffer of size 1 << precision bytes
     MOVQ    $64, R13
-    SUBQ    R12, R13                    // R13 = 64 - R12 - hash bits
+    SUBQ    R11, R13                    // R13 = 64 - R11 - hash bits
 
 scalar_loop:
     TESTL   $1, R14
     JZ      loop_tail
     MOVQ    (R8), DX    // DX = higher 64-bit of the 128-bit hash
-    SHLXQ   R12, DX, CX // CX - hash
+    SHLXQ   R11, DX, CX // CX - hash
     LZCNTQ  CX, CX
     INCQ    CX          // CX = lzcnt(hash) + 1
     SHRXQ   R13, DX, DX // DX - bucket id
@@ -53,14 +48,12 @@ loop_tail:
     JNZ     scalar_loop
 
 next:
-    MOVQ bytecode_spillArea(VIRT_BCPTR), R12
-
     NEXT_ADVANCE(BC_SLOT_SIZE*2 + BC_AGGSLOT_SIZE + BC_IMM16_SIZE)
 
 
 #define CURRENT_MASK        R9
 #define HASHMEM_PTR         R8
-#define BYTEBUCKET_PTR      R12
+#define BYTEBUCKET_PTR      R11
 #define BITS_PER_HLL_BUCKET R14
 #define BITS_PER_HLL_HASH   R13
 
@@ -72,20 +65,16 @@ next:
 // _ = aggslotapproxcount(a[0], l[1], h[2], u16@imm[3]).k[4]
 TEXT bcaggslotapproxcount(SB), NOSPLIT|NOFRAME, $0
     VMOVQ R9, X9
-    VMOVQ R12, X12
 
     BC_UNPACK_SLOT(BC_AGGSLOT_SIZE + 2*BC_SLOT_SIZE + BC_IMM16_SIZE, OUT(BX))
-    BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(BX))
+    BC_LOAD_RU16_FROM_SLOT(OUT(R9), IN(BX))
 
     BC_UNPACK_SLOT(BC_AGGSLOT_SIZE, OUT(DX)) // regL slot
     BC_UNPACK_SLOT(BC_AGGSLOT_SIZE + BC_SLOT_SIZE, OUT(HASHMEM_PTR)) // regH slot
     BC_UNPACK_RU16(BC_AGGSLOT_SIZE + 2*BC_SLOT_SIZE, OUT(BITS_PER_HLL_BUCKET))
 
-    KTESTW  K1, K1
+    TESTQ   CURRENT_MASK, CURRENT_MASK
     JZ      next
-
-    // Get the current mask
-    KMOVW   K1, CURRENT_MASK
 
     // Get the offset in hashmem
     ADDQ    VIRT_VALUES, HASHMEM_PTR
@@ -95,7 +84,7 @@ TEXT bcaggslotapproxcount(SB), NOSPLIT|NOFRAME, $0
     SUBQ    BITS_PER_HLL_BUCKET, BITS_PER_HLL_HASH    // BITS_PER_HLL_HASH = 64 - BITS_PER_HLL_BUCKET
 
     // Get bucket base pointer
-    LEAQ    0(VIRT_VALUES)(DX*1), BYTEBUCKET_PTR
+    LEAQ    BC_VSTACK_PTR(DX, 0), BYTEBUCKET_PTR
 
 iter_rows:
     TESTQ   $1, CURRENT_MASK
@@ -112,7 +101,7 @@ iter_rows:
     ADDQ    radixTree64_values(VIRT_AGG_BUFFER), AGG_BUFFER_PTR
 
     // Calculate HLL hash and its bucket ID
-    // HLL_HASH is lower BITS_PER_HLL_HASH of 64 higher bits of the 128-bit hash
+    // HLL_HASH is lower BITS_PER_HLL_HASH of the 64 higher bits of the 128-bit hash
 
 #define HASH_HI64   DX
 #define HLL_HASH    CX
@@ -152,6 +141,5 @@ skip:
 #undef BITS_PER_HLL_HASH
 
 next:
-    VMOVQ X12, R12
     VMOVQ X9, R9
     NEXT_ADVANCE(BC_SLOT_SIZE*3 + BC_AGGSLOT_SIZE + BC_IMM16_SIZE)

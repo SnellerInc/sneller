@@ -6531,7 +6531,7 @@ TEXT bchashmember(SB), NOSPLIT|NOFRAME, $0
   VMOVDQA64   Z16, Z18
 
   // load some immediates
-  BC_FILL_ONES(Z10)                       // Z10 = all ones
+  BC_FILL_ONES(Z10)                // Z10 = all ones
   VPSRLD        $28, Z10, Z6       // Z6 = 0xf
   VPXORQ        Z14, Z14, Z14      // Z14 = constant 0
   VPXORQ        Z7, Z7, Z7         // Z7 = shift count
