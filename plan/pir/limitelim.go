@@ -25,8 +25,9 @@ search:
 		case *Bind: // Bind is the only op that preserves the number of rows
 			skip = n
 		case *Aggregate:
-			if self.Count == 1 && len(n.GroupBy) == 0 {
-				// AGGREGATE ... LIMIT 1 is redundant
+			if self.Count >= 1 && len(n.GroupBy) == 0 {
+				// In AGGREGATE ... LIMIT N for N >= 1 the limit is redundant,
+				// as the aggregate yields exactly one row.
 				if b.top == self {
 					b.top = n
 				} else {

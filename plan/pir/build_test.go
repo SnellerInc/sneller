@@ -1348,6 +1348,14 @@ z = (SELECT a FROM bar LIMIT 1)`,
 			},
 		},
 		{
+			// eliminate redundant LIMIT 100 (aggregates always yield one row)
+			input: `SELECT SUM(y) FROM table WHERE x LIKE '%foo%' LIMIT 100`,
+			expect: []string{
+				"ITERATE table FIELDS [x, y] WHERE x LIKE '%foo%'",
+				"AGGREGATE SUM(y) AS \"sum\"",
+			},
+		},
+		{
 			input: `SELECT col FROM (SELECT col, COUNT(*) FROM tbl GROUP BY col)`,
 			expect: []string{
 				"ITERATE tbl FIELDS [col]",
