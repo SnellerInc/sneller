@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"io"
 	"path"
+	"strings"
 	"sync"
 	"time"
 
@@ -156,16 +157,15 @@ func (c *concat) run(fs UploadFS, name string) error {
 	return err
 }
 
-// FIXME: repeated verbatim from db/
 func suffixForComp(c string) string {
-	switch c {
-	case "zstd":
+	if c == "zstd" {
 		return ".ion.zst"
-	case "zion":
-		return ".zion"
-	default:
-		panic("bad suffixForComp value")
 	}
+	if strings.HasPrefix(c, "zion") {
+		return ".zion"
+	}
+	panic("bad suffixForComp value")
+	return ""
 }
 
 // Compact compacts a list of descriptors and returns a new
