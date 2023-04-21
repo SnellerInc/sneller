@@ -15,6 +15,8 @@
 package iguana
 
 import (
+	"unsafe"
+
 	"github.com/SnellerInc/sneller/ints"
 	"golang.org/x/exp/slices"
 )
@@ -80,6 +82,33 @@ func (d *Decoder) DecompressTo(dst []byte, src []byte) ([]byte, error) {
 		return dst, errs[ec]
 	}
 	return dst, nil
+}
+
+// we'd like to allow 64-byte loads at the final byte offset
+// for each of the streams, so we need (64 - 1) bytes of valid memory
+// past the end of the buffer
+const padSize = (64 - 1)
+
+// are addr and (addr+addend) in the same page?
+func samePage(addr, addend uintptr) bool {
+	return (addr &^ 4095) == ((addr + addend) &^ 4095)
+}
+
+func (d *Decoder) padStream(id stridType, buf []byte) []byte {
+	if cap(buf)-len(buf) >= padSize {
+		return buf
+	}
+	// if we don't cross a page boundary,
+	// then the load is safe (but may read garbage):
+	ptr := unsafe.Pointer(unsafe.SliceData(buf))
+	end := uintptr(ptr) + uintptr(len(buf))
+	if samePage(end, padSize) {
+		return buf
+	}
+	// last resort: allocate new memory
+	ret := make([]byte, len(buf), len(buf)+padSize)
+	copy(ret, buf)
+	return ret
 }
 
 func (d *Decoder) decode(uncompressedLen uint64, ctrlCursor int, dst []byte, src []byte) ([]byte, errorCode) {
@@ -161,18 +190,19 @@ func (d *Decoder) decode(uncompressedLen uint64, ctrlCursor int, dst []byte, src
 					}
 					ulens[i] = uLen
 					if hdr&(1<<i) != 0 {
-						ansBufferSize = ints.AlignUp64(ansBufferSize+uLen, 64)
+						ansBufferSize += uLen
 					}
 				}
-				if uint64(cap(d.ansbuf)) < ansBufferSize {
-					d.ansbuf = make([]byte, ansBufferSize)
+				if uint64(cap(d.ansbuf)) < ansBufferSize+padSize {
+					// ensure the output is appropriately padded:
+					d.ansbuf = make([]byte, ansBufferSize, ansBufferSize+padSize)
 				}
 				ansOffs := uint64(0)
 
 				for i := stridType(0); i < streamCount; i++ {
 					uLen := ulens[i]
 					if hdr&(1<<i) == 0 {
-						d.pack[i].data = src[dataCursor : dataCursor+uLen]
+						d.pack[i].data = d.padStream(i, src[dataCursor:dataCursor+uLen])
 						dataCursor += uLen
 					} else {
 						var cLen uint64
@@ -193,7 +223,7 @@ func (d *Decoder) decode(uncompressedLen uint64, ctrlCursor int, dst []byte, src
 						if ec != ecOK {
 							return dst, ec
 						}
-						ansOffs = ints.AlignUp64(ansOffs+uLen, 64)
+						ansOffs += uLen
 					}
 				}
 			}
