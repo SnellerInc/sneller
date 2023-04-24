@@ -80,9 +80,9 @@ func (r *requester) get(uri string) *http.Request {
 func (r *requester) getQuery(db, query string) *http.Request {
 	var uri string
 	if db == "" {
-		uri = fmt.Sprintf("/executeQuery?query=%s", url.QueryEscape(query))
+		uri = fmt.Sprintf("/query?query=%s", url.QueryEscape(query))
 	} else {
-		uri = fmt.Sprintf("/executeQuery?database=%s&query=%s",
+		uri = fmt.Sprintf("/query?database=%s&query=%s",
 			url.QueryEscape(db), url.QueryEscape(query))
 	}
 	req := r.get(uri)

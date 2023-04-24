@@ -86,9 +86,9 @@ func setTiming(w http.ResponseWriter, elapsed time.Duration, stats *plan.ExecSta
 const queryKillTimeout = 15 * time.Minute
 
 // example invocation:
-// curl -v -H 'Authorization: sneller' -H 'Accept: application/ion' 'http://localhost:8080/executeQuery?database=sf1-new&query=SELECT%20%2A%20FROM%20nation%20LIMIT%2010'
-// curl -v -X POST -H 'Authorization: sneller' -H 'Accept: application/ion' --data-raw 'SELECT * FROM nation LIMIT 10' 'http://localhost:8080/executeQuery?database=sf1-new'
-func (s *server) executeQueryHandler(w http.ResponseWriter, r *http.Request) {
+// curl -v -H 'Authorization: sneller' -H 'Accept: application/ion' 'http://localhost:8080/query?database=sf1-new&query=SELECT%20%2A%20FROM%20nation%20LIMIT%2010'
+// curl -v -X POST -H 'Authorization: sneller' -H 'Accept: application/ion' --data-raw 'SELECT * FROM nation LIMIT 10' 'http://localhost:8080/query?database=sf1-new'
+func (s *server) queryHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	start := time.Now()
 	creds, err := s.getTenant(ctx, w, r)

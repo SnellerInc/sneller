@@ -120,7 +120,7 @@ $ curl -G -H "Authorization: Bearer $SNELLER_TOKEN" \
     --data-urlencode "database=gha" \
     --data-urlencode 'json' \
     --data-urlencode 'query=SELECT COUNT(*) FROM gharchive' \
-    'http://localhost:9180/executeQuery'
+    'http://localhost:9180/query'
 {"count": 2141038}
 ```
 Or to obtain the number of items per type:
@@ -129,7 +129,7 @@ $ curl -G -H "Authorization: Bearer $SNELLER_TOKEN" \
     --data-urlencode "database=gha" \
     --data-urlencode 'json' \
     --data-urlencode 'query=SELECT type, COUNT(*) FROM gharchive GROUP BY type ORDER BY COUNT(*) DESC' \
-    'http://localhost:9180/executeQuery'
+    'http://localhost:9180/query'
 {"type": "PushEvent", "count": 1303922}
 {"type": "CreateEvent", "count": 261401}
 {"type": "PullRequestEvent", "count": 159442}

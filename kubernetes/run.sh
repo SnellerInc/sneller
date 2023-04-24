@@ -78,4 +78,4 @@ curl -G -H "Authorization: Bearer $SNELLER_TOKEN" \
     --data-urlencode "database=sf1" \
     --data-urlencode 'json' \
     --data-urlencode 'query=SELECT COUNT(*) FROM customer' \
-    http://localhost:$SNELLER_PORT/executeQuery
+    http://localhost:$SNELLER_PORT/query
