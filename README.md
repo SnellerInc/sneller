@@ -26,6 +26,10 @@ You can run queries **for free** against Sneller Cloud from your browser through
 We've created [a public table containing about 1 billion rows](https://sneller.io/playground) from the [GitHub archive](https://www.gharchive.org) data set.
 Additionally, you can create new ephemeral tables by uploading your own JSON data (but please don't upload anything sensitive!)
 
+The Sneller playground is also usable directly with a local http client like `curl`:
+
+[![asciicast](https://asciinema.org/a/580308.svg)](https://asciinema.org/a/580308)
+
 ## Local Demo
 
 [![asciicast](https://asciinema.org/a/eOjVUwlA7ZYXTGtC6PpsupR2O.svg)](https://asciinema.org/a/eOjVUwlA7ZYXTGtC6PpsupR2O)
