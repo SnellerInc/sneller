@@ -25,9 +25,10 @@ var _ EndSegmentWriter = (*TeeWriter)(nil)
 // taking care to handle the errors from
 // each stream separately.
 type TeeWriter struct {
-	pos      int64
-	splitter int // either -1, or writters[splitter] is a rowSplitter
-	state    []teeState
+	pos        int64
+	splitter   int // either -1, or writters[splitter] is a rowSplitter
+	state      []teeState
+	zblocksize int64 // zion block size
 }
 
 type teeState struct {
@@ -35,11 +36,15 @@ type teeState struct {
 	final func(int64, error)
 }
 
-func (t *TeeWriter) ConfigureZion(fields []string) bool {
+func (t *TeeWriter) ConfigureZion(blocksize int64, fields []string) bool {
 	if len(t.state) > 1 || t.splitter == -1 {
 		return false
 	}
-	return t.state[t.splitter].w.(*rowSplitter).ConfigureZion(fields)
+	if !t.state[t.splitter].w.(*rowSplitter).ConfigureZion(blocksize, fields) {
+		return false
+	}
+	t.zblocksize = blocksize
+	return true
 }
 
 // NewTeeWriter constructs a new TeeWriter with
@@ -169,6 +174,10 @@ func (t *TeeWriter) Write(p []byte) (int, error) {
 		}
 		n, err := t.state[i].w.Write(p)
 		if err != nil {
+			// accounting for zion blocks...
+			if n > 0 && t.zblocksize != 0 {
+				n = int(t.zblocksize)
+			}
 			t.state[i].final(int64(n)+t.pos, err)
 			t.state = deleteOne(t.state, i)
 			switch t.splitter {
@@ -185,7 +194,11 @@ func (t *TeeWriter) Write(p []byte) (int, error) {
 	if !any {
 		return 0, io.EOF
 	}
-	t.pos += int64(len(p))
+	if t.zblocksize > 0 {
+		t.pos += t.zblocksize
+	} else {
+		t.pos += int64(len(p))
+	}
 	return len(p), nil
 }
 
@@ -193,10 +206,11 @@ func (t *TeeWriter) Write(p []byte) (int, error) {
 // live under a rowSplitter to pass rows to
 // multiple query operators at once
 type teeSplitter struct {
-	pos   int64 // updated by rowSplitter.Write
-	state []splitState
-	cache []vmref
-	zion  int // +1 = yes, -1 = no, 0 = not yet known
+	pos    int64 // updated by rowSplitter.Write
+	state  []splitState
+	cache  []vmref
+	params rowParams
+	zion   int // +1 = yes, -1 = no, 0 = not yet known
 }
 
 type splitState struct {
@@ -206,13 +220,23 @@ type splitState struct {
 	zout  zionConsumer
 }
 
-func (t *teeSplitter) clone(refs []vmref) []vmref {
-	if cap(t.cache) < len(refs) {
-		t.cache = make([]vmref, len(refs))
+func (t *teeSplitter) clone(refs []vmref, params *rowParams) ([]vmref, *rowParams) {
+	size := len(refs)
+	for i := range params.auxbound {
+		size += len(params.auxbound[i])
 	}
-	t.cache = t.cache[:len(refs)]
-	copy(t.cache, refs)
-	return t.cache
+	if cap(t.cache) < size {
+		t.cache = make([]vmref, size)
+	}
+	t.params.auxbound = shrink(t.params.auxbound, len(params.auxbound))
+	outp := &t.params
+	outrefs := t.cache[:len(refs)]
+	n := copy(outrefs, refs)
+	for i := range params.auxbound {
+		outp.auxbound[i] = t.cache[n : n+len(params.auxbound[i])]
+		n += copy(outp.auxbound[i], params.auxbound[i])
+	}
+	return outrefs, outp
 }
 
 func deleteOne[T any](src []T, i int) []T {
@@ -232,8 +256,13 @@ func (t *teeSplitter) zionOk(fields []string) bool {
 	for i := range t.state {
 		t.state[i].zout, ok = t.state[i].dst.(zionConsumer)
 		if !ok || !t.state[i].zout.zionOk(fields) {
-			t.zion = -1
-			return false
+			zf := &zionFlattener{rowConsumer: t.state[i].dst, infields: fields}
+			if !zf.zionOk(fields) {
+				t.zion = -1
+				return false
+			}
+			t.state[i].dst = zf
+			t.state[i].zout = zf
 		}
 	}
 	t.zion = 1
@@ -288,10 +317,14 @@ func (t *teeSplitter) writeZion(state *zionState) error {
 func (t *teeSplitter) writeRows(delims []vmref, params *rowParams) error {
 	any := false
 	for i := 0; i < len(t.state); i++ {
-		// we have to clone the delimiter slice,
-		// since callees are allowed to use it
-		// as scratch space during execution
-		err := t.state[i].dst.writeRows(t.clone(delims), params)
+		// callees are allowed to clobber these,
+		// so we need to clone them if there
+		// is more than one callee
+		rows, p := delims, params
+		if len(t.state) > 1 {
+			rows, p = t.clone(rows, p)
+		}
+		err := t.state[i].dst.writeRows(rows, p)
 		if err != nil {
 			t.state[i].final(t.pos, err)
 			t.state = deleteOne(t.state, i)

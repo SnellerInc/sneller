@@ -28,6 +28,7 @@ type zionState struct {
 	shape      zll.Shape
 	buckets    zll.Buckets
 	components []string
+	blocksize  int64
 }
 
 type zionConsumer interface {

@@ -832,12 +832,12 @@ type ZionWriter interface {
 	// should return true if the callee can handle
 	// extracting the provided field list directly
 	// from encoded zion data, or false if it cannot.
-	ConfigureZion(fields []string) bool
+	ConfigureZion(blocksize int64, fields []string) bool
 }
 
 func (d *Decoder) acceptsZion(w io.Writer) bool {
 	zw, ok := w.(ZionWriter)
-	return ok && zw.ConfigureZion(d.Fields)
+	return ok && zw.ConfigureZion(int64(1)<<d.BlockShift, d.Fields)
 }
 
 // CopyBytes incrementally decompresses data from src
