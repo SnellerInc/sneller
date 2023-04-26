@@ -596,7 +596,11 @@ func getAlgo(algo string) decompressor {
 		d.Reset()
 		return &zionDecompressor{d}
 	default:
-		return decompressNopCloser{compr.Decompression(algo)}
+		d := compr.Decompression(algo)
+		if d == nil {
+			return nil
+		}
+		return decompressNopCloser{d}
 	}
 }
 
