@@ -268,7 +268,7 @@ func encodeBindings(lst []expr.Binding, dst *ion.Buffer, st *ion.Symtab, rw expr
 func encodeAggregation(lst vm.Aggregation, dst *ion.Buffer, st *ion.Symtab, rw expr.Rewriter) {
 	dst.BeginList(-1)
 	for i := range lst {
-		expr.Rewrite(rw, lst[i].Expr).Encode(dst, st)
+		expr.Rewrite(rw, expr.Copy(lst[i].Expr)).Encode(dst, st)
 		dst.WriteString(lst[i].Result)
 	}
 	dst.EndList()

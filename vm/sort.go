@@ -481,7 +481,7 @@ func (s *sortstateKtop) maybePrefilter() error {
 		prevequal = p.and(prevequal, equal)           // prevequal &= (col[i] == imm[i])
 	} // for
 
-	p.returnBool(p.initMem(), result)
+	p.returnBK(p.validLanes(), result)
 
 	p.symbolize(s.st, s.aux)
 	err := p.compile(&s.filtbc, s.st, "sortstateKtop")

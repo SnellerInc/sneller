@@ -28,6 +28,7 @@ type zionState struct {
 	shape      zll.Shape
 	buckets    zll.Buckets
 	components []string
+	blocksize  int64
 }
 
 type zionConsumer interface {
@@ -101,6 +102,16 @@ const (
 	zionStride = 256
 )
 
+func empty(src []vmref, n int) []vmref {
+	if cap(src) < n {
+		return make([]vmref, n)
+	}
+	for i := range src {
+		src[i] = vmref{}
+	}
+	return src[:n]
+}
+
 // convert a writeZion into a writeRows
 // by projecting into auxparams
 func (z *zionFlattener) writeZion(state *zionState) error {
@@ -113,7 +124,7 @@ func (z *zionFlattener) writeZion(state *zionState) error {
 			return err
 		}
 		z.params.auxbound = z.params.auxbound[:0]
-		z.empty = sanitizeAux(z.empty, n)
+		z.empty = empty(z.empty, n)
 		return z.writeRows(z.empty, &z.params)
 	}
 
@@ -140,14 +151,16 @@ func (z *zionFlattener) writeZion(state *zionState) error {
 		if out > zionStride {
 			panic("write out-of-bounds")
 		}
-		if out <= 0 {
+		if out <= 0 || in <= 0 {
 			err = fmt.Errorf("couldn't copy out zion data (data corruption?)")
 			break
 		}
 		for i := range z.params.auxbound {
 			z.params.auxbound[i] = sanitizeAux(z.strided[i*zionStride:], out)
 		}
-		z.empty = sanitizeAux(z.empty, out)
+		// the callee is allowed to clobber this,
+		// so it has to be re-zeroed on each iteration
+		z.empty = empty(z.empty, out)
 		err = z.writeRows(z.empty, &z.params)
 		if err != nil {
 			break

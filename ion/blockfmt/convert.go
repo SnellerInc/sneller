@@ -642,7 +642,7 @@ type fastWriter struct {
 
 var _ ZionWriter = &fastWriter{}
 
-func (f *fastWriter) ConfigureZion(_ []string) bool {
+func (f *fastWriter) ConfigureZion(_ int64, _ []string) bool {
 	f.zd.SetWildcard() // decompress everything
 	f.configured = true
 	// fall back to slow path if blocks aren't 90% full

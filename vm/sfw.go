@@ -317,7 +317,10 @@ func (q *rowSplitter) Close() error {
 	return err
 }
 
-func (q *rowSplitter) ConfigureZion(fields []string) bool {
+func (q *rowSplitter) ConfigureZion(blocksize int64, fields []string) bool {
+	if blocksize > PageSize {
+		return false
+	}
 	// populate q.zdec and q.zout
 	// conditional on configuring zion input
 	if q.zstate == nil {
@@ -335,6 +338,7 @@ func (q *rowSplitter) ConfigureZion(fields []string) bool {
 		}
 		q.zout = out
 		q.zstate = new(zionState)
+		q.zstate.blocksize = blocksize
 		q.zstate.shape.Symtab = &zionSymtab{parent: q}
 	}
 	q.zstate.components = fields
@@ -385,6 +389,9 @@ func (q *rowSplitter) writeZion(src []byte) (int, error) {
 	// we already make sure page+1 can be read safely;
 	// don't risk trying to append to the page from Malloc
 	q.zstate.buckets.SkipPadding = true
+	if q.pos != nil {
+		*q.pos += q.zstate.blocksize
+	}
 	err = q.zout.writeZion(q.zstate)
 	if err != nil {
 		return 0, err

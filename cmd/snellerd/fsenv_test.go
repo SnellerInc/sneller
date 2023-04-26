@@ -516,6 +516,7 @@ func TestSimpleFS(t *testing.T) {
 		{input: "SELECT EARLIEST(tpep_pickup_datetime) FROM default.taxi", output: `{"min": "2009-01-01T00:35:23Z"}`, partial: true},
 		{input: "SELECT LATEST(tpep_pickup_datetime) FROM default.taxi", output: `{"max": "2009-01-31T23:55:00Z"}`, partial: true},
 
+		{input: "SELECT fare_amount FROM default.taxi ORDER BY tpep_pickup_datetime DESC LIMIT 2", output: "{\"fare_amount\": 4.9}\n{\"fare_amount\": 4.5}"},
 		{input: "SELECT COUNT(*) FROM default.taxi WHERE tpep_pickup_datetime < `2009-01-01T00:35:23Z`", output: `{"count": 0}`, partial: true},
 		// about half of the entries satisfy this:
 		{input: "SELECT COUNT(*) FROM default.taxi WHERE tpep_pickup_datetime >= `2009-01-15T00:00:00Z`", output: `{"count": 4853}`, partial: true},

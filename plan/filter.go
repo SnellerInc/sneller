@@ -55,7 +55,7 @@ func (f *Filter) encode(dst *ion.Buffer, st *ion.Symtab, rw expr.Rewriter) error
 	dst.BeginStruct(-1)
 	settype("filter", dst, st)
 	dst.BeginField(st.Intern("expr"))
-	expr.Rewrite(rw, f.Expr).Encode(dst, st)
+	expr.Rewrite(rw, expr.Copy(f.Expr)).Encode(dst, st)
 	dst.EndStruct()
 	return nil
 }

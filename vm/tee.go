@@ -25,9 +25,10 @@ var _ EndSegmentWriter = (*TeeWriter)(nil)
 // taking care to handle the errors from
 // each stream separately.
 type TeeWriter struct {
-	pos      int64
-	splitter int // either -1, or writters[splitter] is a rowSplitter
-	state    []teeState
+	pos        int64
+	splitter   int // either -1, or writters[splitter] is a rowSplitter
+	state      []teeState
+	zblocksize int64 // zion block size
 }
 
 type teeState struct {
@@ -35,11 +36,15 @@ type teeState struct {
 	final func(int64, error)
 }
 
-func (t *TeeWriter) ConfigureZion(fields []string) bool {
+func (t *TeeWriter) ConfigureZion(blocksize int64, fields []string) bool {
 	if len(t.state) > 1 || t.splitter == -1 {
 		return false
 	}
-	return t.state[t.splitter].w.(*rowSplitter).ConfigureZion(fields)
+	if !t.state[t.splitter].w.(*rowSplitter).ConfigureZion(blocksize, fields) {
+		return false
+	}
+	t.zblocksize = blocksize
+	return true
 }
 
 // NewTeeWriter constructs a new TeeWriter with
@@ -101,6 +106,7 @@ func (t *TeeWriter) EndSegment() {
 func (t *TeeWriter) Add(w io.Writer, final func(int64, error)) {
 	if rs, ok := w.(*rowSplitter); ok {
 		if t.splitter < 0 {
+			rs.drop()
 			t.splitter = len(t.state)
 			// create a new teeSplitter that shares
 			// a symbol table with one top-level rowSplitter
@@ -110,10 +116,6 @@ func (t *TeeWriter) Add(w io.Writer, final func(int64, error)) {
 					final: final,
 				}},
 			}
-			// produce a new splitter so that a caller
-			// calling rs.Close() does not close the
-			// splitter we are actually using for (potentially)
-			// multiple outputs
 			sp := splitter(ts)
 			// have the rowSplitter update ts.pos
 			// on each call to Write:
@@ -123,7 +125,10 @@ func (t *TeeWriter) Add(w io.Writer, final func(int64, error)) {
 				w: sp,
 				final: func(i int64, e error) {
 					ts.close(i, e)
-					sp.Close()
+					// it's the caller's responsibility
+					// to call rs.Close(), so we don't
+					// call sp.Close() here (otherwise we'd race)
+					sp.drop()
 				},
 			})
 			return
@@ -169,6 +174,10 @@ func (t *TeeWriter) Write(p []byte) (int, error) {
 		}
 		n, err := t.state[i].w.Write(p)
 		if err != nil {
+			// accounting for zion blocks...
+			if n > 0 && t.zblocksize != 0 {
+				n = int(t.zblocksize)
+			}
 			t.state[i].final(int64(n)+t.pos, err)
 			t.state = deleteOne(t.state, i)
 			switch t.splitter {
@@ -185,7 +194,11 @@ func (t *TeeWriter) Write(p []byte) (int, error) {
 	if !any {
 		return 0, io.EOF
 	}
-	t.pos += int64(len(p))
+	if t.zblocksize > 0 {
+		t.pos += t.zblocksize
+	} else {
+		t.pos += int64(len(p))
+	}
 	return len(p), nil
 }
 
@@ -193,51 +206,33 @@ func (t *TeeWriter) Write(p []byte) (int, error) {
 // live under a rowSplitter to pass rows to
 // multiple query operators at once
 type teeSplitter struct {
-	pos   int64 // updated by rowSplitter.Write
-	state []splitState
-	cache []vmref
-	zion  int // +1 = yes, -1 = no, 0 = not yet known
+	pos    int64 // updated by rowSplitter.Write
+	state  []splitState
+	cache  []vmref
+	params rowParams
 }
 
 type splitState struct {
 	aux   auxbindings
 	dst   rowConsumer
 	final func(int64, error)
-	zout  zionConsumer
 }
 
-func (t *teeSplitter) clone(refs []vmref) []vmref {
-	if cap(t.cache) < len(refs) {
-		t.cache = make([]vmref, len(refs))
+func (t *teeSplitter) clone(refs []vmref, params *rowParams) ([]vmref, *rowParams) {
+	t.params.auxbound = shrink(t.params.auxbound, len(params.auxbound))
+	t.cache = append(t.cache[:0], refs...)
+	for i := range params.auxbound {
+		t.params.auxbound[i] = append(t.params.auxbound[i][:0], params.auxbound[i]...)
+		// ensure padding:
+		t.params.auxbound[i] = sanitizeAux(t.params.auxbound[i], len(t.params.auxbound[i]))
 	}
-	t.cache = t.cache[:len(refs)]
-	copy(t.cache, refs)
-	return t.cache
+	return t.cache, &t.params
 }
 
 func deleteOne[T any](src []T, i int) []T {
 	src[i] = src[len(src)-1]
 	src = src[:len(src)-1]
 	return src
-}
-
-func (t *teeSplitter) zionOk(fields []string) bool {
-	switch t.zion {
-	case 1:
-		return true
-	case -1:
-		return false
-	}
-	var ok bool
-	for i := range t.state {
-		t.state[i].zout, ok = t.state[i].dst.(zionConsumer)
-		if !ok || !t.state[i].zout.zionOk(fields) {
-			t.zion = -1
-			return false
-		}
-	}
-	t.zion = 1
-	return true
 }
 
 func (t *teeSplitter) symbolize(st *symtab, aux *auxbindings) error {
@@ -264,34 +259,18 @@ func (t *teeSplitter) symbolize(st *symtab, aux *auxbindings) error {
 	return nil
 }
 
-func (t *teeSplitter) writeZion(state *zionState) error {
-	if t.zion != 1 {
-		panic("teeSplitter.writeZion: unexpected call (nozion flag is set)")
-	}
-	any := false
-	for i := 0; i < len(t.state); i++ {
-		err := t.state[i].zout.writeZion(state)
-		if err != nil {
-			t.state[i].final(t.pos, err)
-			t.state = deleteOne(t.state, i)
-			i--
-			continue
-		}
-		any = true
-	}
-	if !any {
-		return io.EOF
-	}
-	return nil
-}
-
 func (t *teeSplitter) writeRows(delims []vmref, params *rowParams) error {
 	any := false
+	multi := len(t.state) > 1
 	for i := 0; i < len(t.state); i++ {
-		// we have to clone the delimiter slice,
-		// since callees are allowed to use it
-		// as scratch space during execution
-		err := t.state[i].dst.writeRows(t.clone(delims), params)
+		// callees are allowed to clobber these,
+		// so we need to clone them if there
+		// is more than one callee
+		rows, p := delims, params
+		if multi {
+			rows, p = t.clone(rows, p)
+		}
+		err := t.state[i].dst.writeRows(rows, p)
 		if err != nil {
 			t.state[i].final(t.pos, err)
 			t.state = deleteOne(t.state, i)
