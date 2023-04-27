@@ -17,6 +17,7 @@ package partiql
 import (
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -183,6 +184,65 @@ func timePartFor(id, fn string) (expr.Timepart, bool) {
 	}
 
 	return part, ok
+}
+
+func parseIntervalQuantity(s string) (int64, error) {
+	return strconv.ParseInt(s, 10, 64)
+}
+
+func parseIntervalPart(s string) (expr.Timepart, bool) {
+	switch strings.ToUpper(s) {
+	case "DAY", "DAYS":
+		return expr.Day, true
+	case "HOUR", "HOURS":
+		return expr.Hour, true
+	case "MINUTE", "MINUTES":
+		return expr.Minute, true
+	case "SECOND", "SECONDS":
+		return expr.Second, true
+	case "MILLISECOND", "MILLISECONDS":
+		return expr.Millisecond, true
+	case "MICROSECOND", "MICROSECONDS":
+		return expr.Microsecond, true
+	}
+	return 0, false
+}
+
+func parseInterval(s string) (int64, error) {
+	fields := strings.Fields(s)
+	i := 0
+
+	if len(fields) == 0 {
+		return 0, fmt.Errorf("invalid interval %q: interval cannot be empty", s)
+	}
+
+	interval := int64(0)
+
+	// Parse <int> <string> pairs
+	for {
+		if i == len(fields) {
+			break
+		}
+
+		if i+2 > len(fields) {
+			return 0, fmt.Errorf("invalid interval %q", s)
+		}
+
+		quantity, quantityErr := parseIntervalQuantity(fields[i])
+		if quantityErr != nil {
+			return 0, fmt.Errorf("invalid interval %q: %q is not a valid quantity", s, fields[i])
+		}
+
+		part, partOk := parseIntervalPart(fields[i+1])
+		if !partOk {
+			return 0, fmt.Errorf("invalid interval %q: %q is not a valid interval part", s, fields[i+1])
+		}
+
+		interval += quantity * int64(expr.TimePartMultiplier[part])
+		i += 2
+	}
+
+	return interval, nil
 }
 
 func exists(s *expr.Select) expr.Node {

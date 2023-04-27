@@ -349,6 +349,7 @@ const (
 	sdateaddmonthimm
 	sdateaddquarter
 	sdateaddyear
+	sdatebin
 	sdatediffmicro
 	sdatediffparam
 	sdatediffmonth
@@ -1008,6 +1009,7 @@ var _ssainfo = [_ssamax]ssaopinfo{
 	sdateaddmonthimm:        {text: "dateaddmonth.imm", rettype: stTimeMasked, argtypes: []ssatype{stTime, stBool}, immfmt: fmti64, bc: opdateaddmonthimm},
 	sdateaddquarter:         {text: "dateaddquarter", rettype: stTimeMasked, argtypes: []ssatype{stTime, stInt, stBool}, bc: opdateaddquarter},
 	sdateaddyear:            {text: "dateaddyear", rettype: stTimeMasked, argtypes: []ssatype{stTime, stInt, stBool}, bc: opdateaddyear},
+	sdatebin:                {text: "datebin", rettype: stTimeMasked, argtypes: []ssatype{stTime, stTime, stBool}, immfmt: fmti64, bc: opdatebin},
 	sdatediffmicro:          {text: "datediffmicro", rettype: stIntMasked, argtypes: []ssatype{stTime, stTime, stBool}, bc: opdatediffmicrosecond},
 	sdatediffparam:          {text: "datediffparam", rettype: stIntMasked, argtypes: []ssatype{stTime, stTime, stBool}, bc: opdatediffparam, immfmt: fmti64},
 	sdatediffmonth:          {text: "datediffmonth", rettype: stIntMasked, argtypes: []ssatype{stTime, stTime, stBool}, bc: opdatediffmqy, emit: emitDateDiffMQY},

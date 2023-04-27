@@ -2,7 +2,7 @@ package expr
 
 // Code generated automatically; DO NOT EDIT
 
-var builtin2Name = [119]string{
+var builtin2Name = [120]string{
 	"CONCAT",                   // Concat
 	"TRIM",                     // Trim
 	"LTRIM",                    // Ltrim
@@ -66,6 +66,7 @@ var builtin2Name = [119]string{
 	"DATE_ADD_MONTH",           // DateAddMonth
 	"DATE_ADD_QUARTER",         // DateAddQuarter
 	"DATE_ADD_YEAR",            // DateAddYear
+	"DATE_BIN",                 // DateBin
 	"DATE_DIFF_MICROSECOND",    // DateDiffMicrosecond
 	"DATE_DIFF_MILLISECOND",    // DateDiffMillisecond
 	"DATE_DIFF_SECOND",         // DateDiffSecond
@@ -258,6 +259,8 @@ func name2Builtin(s string) BuiltinOp {
 		return DateAddQuarter
 	case "DATE_ADD_YEAR":
 		return DateAddYear
+	case "DATE_BIN":
+		return DateBin
 	case "DATE_DIFF_MICROSECOND":
 		return DateDiffMicrosecond
 	case "DATE_DIFF_MILLISECOND":
@@ -374,4 +377,4 @@ func name2Builtin(s string) BuiltinOp {
 	return Unspecified
 }
 
-// checksum: b7402d29e3afbafc67203e277321d787
+// checksum: b1455bd50fefc0c5af49c9e03632e6a3

@@ -66,7 +66,7 @@ import (
 %token LEADING TRAILING BOTH
 %right COALESCE NULLIF EXTRACT DATE_TRUNC
 %right CAST UTCNOW
-%right DATE_ADD DATE_DIFF EARLIEST LATEST
+%right DATE_ADD DATE_BIN DATE_DIFF EARLIEST LATEST
 %left JOIN LEFT RIGHT CROSS INNER OUTER FULL
 %left ON
 %left APPROX_COUNT_DISTINCT
@@ -276,6 +276,14 @@ datum_or_parens
     yylex.Error(__yyfmt__.Sprintf("bad DATE_ADD part %q", $3))
   }
   $$ = expr.DateAdd(part, $5, $7)
+}
+| DATE_BIN '(' STRING ',' expr ',' expr ')'
+{
+  interval, err := parseInterval($3)
+  if err != nil {
+    yylex.Error(__yyfmt__.Sprintf("bad DATE_BIN interval: %q", err))
+  }
+  $$ = expr.DateBinWithInterval(interval, $5, $7)
 }
 | DATE_DIFF '(' ID ',' expr ',' expr ')'
 {

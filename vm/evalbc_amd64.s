@@ -341,6 +341,70 @@ TEXT bctrap(SB), NOSPLIT|NOFRAME, $0
   VPSUBQ DST_A, TMP_A4, TMP_MASK_A, DST_A                     \
   VPSUBQ DST_B, TMP_A4, TMP_MASK_B, DST_B
 
+#define BC_DIV_FLOOR_I64VEC_BY_U64IMM_IMPL(DST_Z0, DST_Z1, SRC_Z0, SRC_Z1, SRC_Z_IMM, SRC_I64_MINUS_ONE, SRC_K0, SRC_K1, TMP_Z0, TMP_Z1, TMP_Z2, TMP_Z3, TMP_Z4, TMP_Z5, TMP_Z6, TMP_K0, TMP_K1, TMP_K2, TMP_K3) \
+  /* Prepare constants */                                     \
+  VBROADCASTSD CONSTF64_1(), TMP_Z0                           \
+                                                              \
+  /* Calculate reciprocal of SRC_Z_IMM, rounded down */       \
+  VCVTUQQ2PD.RU_SAE SRC_Z_IMM, TMP_Z6                         \
+  VDIVPD.RD_SAE TMP_Z6, TMP_Z0, TMP_Z6                        \
+                                                              \
+  /* Lanes containing negative values */                      \
+  VPMOVQ2M SRC_Z0, TMP_K0                                     \
+  VPMOVQ2M SRC_Z1, TMP_K1                                     \
+                                                              \
+  /* Convert inputs to absolute values */                     \
+  VPABSQ SRC_Z0, TMP_Z4                                       \
+  VPABSQ SRC_Z1, TMP_Z5                                       \
+                                                              \
+  /* Modify dividents to get floor semantics when negative */ \
+  VPADDQ.Z SRC_Z_IMM, SRC_I64_MINUS_ONE, TMP_K0, TMP_Z2       \
+  VPADDQ.Z SRC_Z_IMM, SRC_I64_MINUS_ONE, TMP_K1, TMP_Z3       \
+  VPADDQ TMP_Z2, TMP_Z4, TMP_Z4                               \
+  VPADDQ TMP_Z3, TMP_Z5, TMP_Z5                               \
+                                                              \
+  /* Perform the first division step (estimate) */            \
+  VCVTUQQ2PD.RD_SAE TMP_Z4, TMP_Z2                            \
+  VCVTUQQ2PD.RD_SAE TMP_Z5, TMP_Z3                            \
+  VMULPD.RD_SAE TMP_Z6, TMP_Z2, TMP_Z2                        \
+  VMULPD.RD_SAE TMP_Z6, TMP_Z3, TMP_Z3                        \
+  VCVTPD2UQQ.RD_SAE.Z TMP_Z2, SRC_K0, DST_Z0                  \
+  VCVTPD2UQQ.RD_SAE.Z TMP_Z3, SRC_K1, DST_Z1                  \
+                                                              \
+  /* Decrease the dividend by the estimate */                 \
+  VPMULLQ DST_Z0, SRC_Z_IMM, TMP_Z2                           \
+  VPMULLQ DST_Z1, SRC_Z_IMM, TMP_Z3                           \
+  VPSUBQ TMP_Z2, TMP_Z4, TMP_Z0                               \
+  VPSUBQ TMP_Z3, TMP_Z5, TMP_Z1                               \
+                                                              \
+  /* Perform the second division step (correction) */         \
+  VCVTUQQ2PD.RD_SAE TMP_Z0, TMP_Z2                            \
+  VCVTUQQ2PD.RD_SAE TMP_Z1, TMP_Z3                            \
+  VMULPD.RD_SAE TMP_Z6, TMP_Z2, TMP_Z2                        \
+  VMULPD.RD_SAE TMP_Z6, TMP_Z3, TMP_Z3                        \
+  VCVTPD2UQQ.RD_SAE.Z TMP_Z2, SRC_K0, TMP_Z2                  \
+  VCVTPD2UQQ.RD_SAE.Z TMP_Z3, SRC_K1, TMP_Z3                  \
+                                                              \
+  /* Add the correction to the result estimate */             \
+  VPXORQ TMP_Z6, TMP_Z6, TMP_Z6                               \
+  VPADDQ.Z TMP_Z2, DST_Z0, SRC_K0, DST_Z0                     \
+  VPADDQ.Z TMP_Z3, DST_Z1, SRC_K1, DST_Z1                     \
+                                                              \
+  /* We can still be off by one, so correct it */             \
+  VPMULLQ DST_Z0, SRC_Z_IMM, TMP_Z2                           \
+  VPMULLQ DST_Z1, SRC_Z_IMM, TMP_Z3                           \
+  VPSUBQ TMP_Z2, TMP_Z4, TMP_Z4                               \
+  VPSUBQ TMP_Z3, TMP_Z5, TMP_Z5                               \
+                                                              \
+  VPCMPUQ $VPCMP_IMM_GE, SRC_Z_IMM, TMP_Z4, SRC_K0, TMP_K2    \
+  VPCMPUQ $VPCMP_IMM_GE, SRC_Z_IMM, TMP_Z5, SRC_K1, TMP_K3    \
+  VPSUBQ SRC_I64_MINUS_ONE, DST_Z0, TMP_K2, DST_Z0            \
+  VPSUBQ SRC_I64_MINUS_ONE, DST_Z1, TMP_K3, DST_Z1            \
+                                                              \
+  /* Negate the result, if the result must be negative */     \
+  VPSUBQ DST_Z0, TMP_Z6, TMP_K0, DST_Z0                       \
+  VPSUBQ DST_Z1, TMP_Z6, TMP_K1, DST_Z1
+
 // Integer Math Instructions
 // -------------------------
 
@@ -2654,7 +2718,38 @@ TEXT dateaddmonth_tail(SB), NOSPLIT|NOFRAME, $0
 
   NEXT_ADVANCE(0)
 
+// ts[0].k[1] = datebin(i64@imm[2], ts[3], ts[4]).k[5]
 //
+// DATE_BIN(stride, source, origin)
+TEXT bcdatebin(SB), NOSPLIT|NOFRAME, $0
+  BC_UNPACK_3xSLOT(BC_SLOT_SIZE*2+8, BX, CX, R8)
+  BC_UNPACK_ZI64(BC_SLOT_SIZE*2, OUT(Z10))        // Z10 <- Stride
+
+  BC_FILL_ONES(Z31)
+
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
+  BC_LOAD_I64_FROM_SLOT(OUT(Z0), OUT(Z1), IN(BX)) // Z0:Z1 <- Timestamp
+  BC_LOAD_I64_FROM_SLOT(OUT(Z2), OUT(Z3), IN(CX)) // Z2:Z3 <- Origin
+
+  // Timestamp - Origin
+  VPSUBQ Z2, Z0, Z4
+  VPSUBQ Z3, Z1, Z5
+
+  // (Timestamp - Origin) / Stride
+  BC_DIV_FLOOR_I64VEC_BY_U64IMM_IMPL(OUT(Z6), OUT(Z7), IN(Z4), IN(Z5), IN(Z10), IN(Z31), IN(K1), IN(K2), Z8, Z9, Z12, Z13, Z14, Z15, Z16, K3, K4, K5, K6)
+  VPMULLQ Z10, Z6, Z6
+  VPMULLQ Z10, Z7, Z7
+
+  // (Timestamp - Origin) / Stride + Origin
+  BC_UNPACK_2xSLOT(0, DX, R8)
+  VPADDQ.Z Z6, Z2, K1, Z0
+  VPADDQ.Z Z7, Z3, K2, Z1
+
+  BC_STORE_I64_TO_SLOT(IN(Z0), IN(Z1), IN(DX))
+  BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
+
+  NEXT_ADVANCE(BC_SLOT_SIZE*5 + 8)
+
 // s[0].k[1] = datediffmicrosecond(s[2], s[3]).k[4]
 //
 TEXT bcdatediffmicrosecond(SB), NOSPLIT|NOFRAME, $0

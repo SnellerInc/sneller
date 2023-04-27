@@ -171,6 +171,8 @@ const (
 	DateAddQuarter
 	DateAddYear
 
+	DateBin
+
 	DateDiffMicrosecond
 	DateDiffMillisecond
 	DateDiffSecond
@@ -562,6 +564,22 @@ func simplifyDateTrunc(part Timepart) func(Hint, []Node) Node {
 		}
 		return nil
 	}
+}
+
+func simplifyDateBin(h Hint, args []Node) Node {
+	if len(args) != 3 {
+		return nil
+	}
+
+	if interval, ok := args[0].(Integer); ok {
+		if ts, ok := args[1].(*Timestamp); ok {
+			if origin, ok := args[2].(*Timestamp); ok {
+				simplified := ts.Bin(int64(interval), *origin)
+				return &simplified
+			}
+		}
+	}
+	return nil
 }
 
 func checkInSubquery(h Hint, args []Node) error {
@@ -1083,6 +1101,7 @@ var builtinInfo = [maxBuiltin]binfo{
 	DateAddMonth:           {check: fixedArgs(IntegerType, TimeType), private: true, ret: TimeType | MissingType, simplify: dateAddMonth},
 	DateAddQuarter:         {check: fixedArgs(IntegerType, TimeType), private: true, ret: TimeType | MissingType, simplify: dateAddQuarter},
 	DateAddYear:            {check: fixedArgs(IntegerType, TimeType), private: true, ret: TimeType | MissingType, simplify: dateAddYear},
+	DateBin:                {check: fixedArgs(IntegerType, TimeType, TimeType), ret: TimeType | MissingType, simplify: simplifyDateBin},
 	DateDiffMicrosecond:    {check: fixedArgs(TimeType, TimeType), private: true, ret: IntegerType | MissingType},
 	DateDiffMillisecond:    {check: fixedArgs(TimeType, TimeType), private: true, ret: IntegerType | MissingType},
 	DateDiffSecond:         {check: fixedArgs(TimeType, TimeType), private: true, ret: IntegerType | MissingType},

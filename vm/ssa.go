@@ -2347,28 +2347,12 @@ func (p *prog) widthBucket(val, min, max, bucketCount *value) *value {
 	return p.ssa5(swidthbucketf, valf, minf, maxf, cntf, mask)
 }
 
-// These are simple cases that require no decomposition to operate on Timestamp.
-var timePartMultiplier = [...]uint64{
-	expr.Microsecond: 1,
-	expr.Millisecond: 1000,
-	expr.Second:      1000000,
-	expr.Minute:      1000000 * 60,
-	expr.Hour:        1000000 * 60 * 60,
-	expr.Day:         1000000 * 60 * 60 * 24,
-	expr.DOW:         0,
-	expr.DOY:         0,
-	expr.Week:        1000000 * 60 * 60 * 24 * 7,
-	expr.Month:       0,
-	expr.Quarter:     0,
-	expr.Year:        0,
-}
-
 func (p *prog) dateAdd(part expr.Timepart, arg0, arg1 *value) *value {
 	arg1Time, arg1Mask := p.coerceTimestamp(arg1)
 	if arg0.op == sliteral && isIntImmediate(arg0.imm) {
 		i64Imm := toi64(arg0.imm)
-		if timePartMultiplier[part] != 0 {
-			i64Imm *= timePartMultiplier[part]
+		if expr.TimePartMultiplier[part] != 0 {
+			i64Imm *= expr.TimePartMultiplier[part]
 			return p.ssa2imm(sdateaddimm, arg1Time, arg1Mask, i64Imm)
 		}
 
@@ -2392,8 +2376,8 @@ func (p *prog) dateAdd(part expr.Timepart, arg0, arg1 *value) *value {
 		}
 
 		// If the part is lesser than Month, we can just use addmulimm operation with the required scale.
-		if timePartMultiplier[part] != 0 {
-			return p.ssa3imm(sdateaddmulimm, arg1Time, arg0Int, p.and(arg1Mask, arg0Mask), timePartMultiplier[part])
+		if expr.TimePartMultiplier[part] != 0 {
+			return p.ssa3imm(sdateaddmulimm, arg1Time, arg0Int, p.and(arg1Mask, arg0Mask), expr.TimePartMultiplier[part])
 		}
 
 		if part == expr.Month {
@@ -2412,6 +2396,13 @@ func (p *prog) dateAdd(part expr.Timepart, arg0, arg1 *value) *value {
 	return p.errorf("unhandled date part %v in DateAdd()", part)
 }
 
+func (p *prog) dateBin(stride int64, arg0, arg1 *value) *value {
+	t0, m0 := p.coerceTimestamp(arg0)
+	t1, m1 := p.coerceTimestamp(arg1)
+
+	return p.ssa3imm(sdatebin, t0, t1, p.and(m0, m1), stride)
+}
+
 func (p *prog) dateDiff(part expr.Timepart, arg0, arg1 *value) *value {
 	t0, m0 := p.coerceTimestamp(arg0)
 	t1, m1 := p.coerceTimestamp(arg1)
@@ -2420,8 +2411,8 @@ func (p *prog) dateDiff(part expr.Timepart, arg0, arg1 *value) *value {
 		return p.ssa3(sdatediffmicro, t0, t1, p.and(m0, m1))
 	}
 
-	if timePartMultiplier[part] != 0 {
-		imm := timePartMultiplier[part]
+	if expr.TimePartMultiplier[part] != 0 {
+		imm := expr.TimePartMultiplier[part]
 		return p.ssa3imm(sdatediffparam, t0, t1, p.and(m0, m1), imm)
 	}
 

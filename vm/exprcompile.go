@@ -693,6 +693,14 @@ func compilefuncaux(p *prog, b *expr.Builtin, args []expr.Node) (*value, error) 
 
 		return p.powuint(arg, exp), nil
 
+	case expr.DateBin:
+		v, err := compileargs(p, args, constInteger, compileTime, compileTime)
+		if err != nil {
+			return nil, err
+		}
+
+		return p.dateBin(int64(args[0].(expr.Integer)), v[1], v[2]), nil
+
 	case expr.Concat:
 		sargs := make([]*value, len(args))
 		for i := range args {

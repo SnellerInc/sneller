@@ -319,6 +319,9 @@ func lookupKeyword(word []byte) (int, int) {
 			if equalASCII(word, []byte("DATE_ADD")) {
 				return DATE_ADD, -1
 			}
+			if equalASCII(word, []byte("DATE_BIN")) {
+				return DATE_BIN, -1
+			}
 			if equalASCIILetters8([8]byte(word), [8]byte{'D', 'I', 'S', 'T', 'I', 'N', 'C', 'T'}) {
 				return DISTINCT, -1
 			}
@@ -438,4 +441,4 @@ func equalASCIILetters9(anyCase [9]byte, upperCaseLetters [9]byte) bool {
 	return true
 }
 
-// checksum: 0e14a47f8acff0b57ed2906c8af6336f
+// checksum: e31bf3b2a31f75afe8eebbceb182f14b

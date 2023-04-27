@@ -3277,6 +3277,19 @@ func (t *Timestamp) Trunc(part Timepart) Timestamp {
 	return Timestamp{Value: date.Date(year, month, day, hour, minute, second, nsec)}
 }
 
+func (t *Timestamp) Bin(stride int64, origin Timestamp) Timestamp {
+	originUS := origin.UnixMicro()
+	diff := t.UnixMicro() - originUS
+	rem := diff % int64(stride)
+
+	if rem < 0 {
+		rem = stride + rem
+	}
+
+	result := originUS + (diff - rem)
+	return Timestamp{Value: date.UnixMicro(result)}
+}
+
 func (t *Timestamp) Datum() ion.Datum {
 	return ion.Timestamp(t.Value)
 }
@@ -3375,6 +3388,23 @@ var partstring = []string{
 	Year:        "YEAR",
 }
 
+// TimePartMultiplier provides part to microsecond multiplication constant of time parts
+// that don't require decomposition from unix time.
+var TimePartMultiplier = [...]uint64{
+	Microsecond: 1,
+	Millisecond: 1000,
+	Second:      1000000,
+	Minute:      1000000 * 60,
+	Hour:        1000000 * 60 * 60,
+	Day:         1000000 * 60 * 60 * 24,
+	DOW:         0,
+	DOY:         0,
+	Week:        1000000 * 60 * 60 * 24 * 7,
+	Month:       0,
+	Quarter:     0,
+	Year:        0,
+}
+
 func (t Timepart) String() string {
 	if t >= 0 && int(t) < len(partstring) {
 		return partstring[t]
@@ -3404,6 +3434,10 @@ func DateTrunc(part Timepart, from Node) Node {
 
 func DateTruncWeekday(from Node, dow Weekday) Node {
 	return Call(DateTruncDOW, from, Integer(dow))
+}
+
+func DateBinWithInterval(stride int64, ts Node, origin Node) Node {
+	return Call(DateBin, Integer(stride), ts, origin)
 }
 
 // Field is a field in a Struct literal,

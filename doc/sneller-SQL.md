@@ -1496,6 +1496,27 @@ to the timestamp `time`.
 
 See [Presto Timestamp functions](https://prestodb.io/docs/0.217/functions/datetime.html)
 
+#### `DATE_BIN`
+
+`DATE_BIN(stride, timestamp, origin)` bins a `timestamp` into `stride` aligned with `origin`.
+`DATE_BIN()` is similar to `TIME_BUCKET()`, but it allows to customize the granularity via the
+`stride` parameter.
+
+The `stride` parameter must be a string literal that is parsed as `INTERVAL`:
+
+ - `N microsecond` or `N microseconds`
+ - `N millisecond` or `N milliseconds`
+ - `N second` or `N seconds`
+ - `N minute` or `N minutes`
+ - `N hour` or `N hours`
+ - `N day` or `N days`
+
+A valid interval can be also a combination of the above; for example `1 day 1 hour 30 minutes`
+is a valid `INTERVAL` string.
+
+NOTE: `DATE_BIN()` function doesn't support months, years, and larger time parts, as they do
+not identify fixed-width time intervals.
+
 #### `DATE_DIFF`
 
 `DATE_DIFF(part, from, to)` determines the difference
