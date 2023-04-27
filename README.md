@@ -7,11 +7,11 @@ Here are a couple major differentiators between Sneller and other SQL solutions:
 
  <!-- TODO: Add link to "explaining" blog post for next topic as well -->
  - Sneller is designed to use cloud object storage as its **only** backing store.
- - Sneller's SQL VM is [implemented in AVX-512 assembly](https://sneller.io/blog/2023/03/22/sql-vm-in-avx-512/).
+ - Sneller's SQL VM is [implemented in AVX-512 assembly](https://sneller.io/blog/sql-vm-in-avx-512/).
    Medium-sized compute clusters provide throughput in excess of **terabytes per second**.
- - Sneller is [completely schemaless](https://sneller.io/blog/2023/03/21/why-schemaless/).
+ - Sneller is [completely schemaless](https://sneller.io/blog/why-schemaless/).
    No more ETL-ing your data! Heterogeneous JSON data can be ingested directly.
- - Sneller uses a [hybrid approach between columnar and row-oriented data layouts](https://sneller-dev.io/blog/2023/03/27/zion-format/)
+ - Sneller uses a [hybrid approach between columnar and row-oriented data layouts](https://sneller-dev.io/blog/zion-format/)
    to provide lightweight ingest, low storage footprint, and super fast scanning speeds.
 
 [Sneller Cloud](https://console.sneller.io/register) gives you access to a hosted version of the Sneller SQL engine
@@ -96,7 +96,7 @@ Scanning performance scales linearly with the number of CPU cores available,
 so for example a 1000-CPU cluster would generally provide scanning performance
 in excess of 1TB/s.
 
-The `zion` [compression format that the SQL engine consumes is "bucketized"](https://sneller.io/blog/2023/03/27/zion-format/) so that
+The `zion` [compression format that the SQL engine consumes is "bucketized"](https://sneller.io/blog/zion-format/) so that
 queries that don't touch all of the fields in the source data consume fewer cycles
 during decompression. Concretely, the top-level fields in each record are hashed
 into one of 16 buckets, and each of these buckets is compressed separately.
