@@ -109,7 +109,7 @@ func (c *chunkshandle) WriteChunks(dst vm.QuerySink, parallel int) error {
 	if err != nil {
 		return err
 	}
-	if zw, ok := dst.(blockfmt.ZionWriter); ok && zw.ConfigureZion(int64(len(c.chunks[0])), c.fields) {
+	if zw, ok := dst.(blockfmt.ZionWriter); ok && zw.ConfigureZion(c.fields) {
 		return c.writeZion(w)
 	}
 	tmp := vm.Malloc()
@@ -302,7 +302,7 @@ func (p *parallelchunks) WriteChunks(dst vm.QuerySink, parallel int) error {
 				}
 			}
 			var err error
-			if zw, ok := w.(blockfmt.ZionWriter); ok && zw.ConfigureZion(int64(len(mem)), p.fields) {
+			if zw, ok := w.(blockfmt.ZionWriter); ok && zw.ConfigureZion(p.fields) {
 				var enc zion.Encoder
 				mem, err = enc.Encode(mem, nil)
 				if err != nil {

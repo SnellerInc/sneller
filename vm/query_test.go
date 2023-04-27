@@ -31,14 +31,11 @@ import (
 	"github.com/SnellerInc/sneller/expr"
 	"github.com/SnellerInc/sneller/expr/partiql"
 	"github.com/SnellerInc/sneller/ion"
-	"github.com/SnellerInc/sneller/ion/blockfmt"
 	"github.com/SnellerInc/sneller/ion/versify"
 	"github.com/SnellerInc/sneller/plan"
 	"github.com/SnellerInc/sneller/testquery"
 	"github.com/SnellerInc/sneller/vm"
 )
-
-var _ blockfmt.ZionWriter = &vm.TeeWriter{}
 
 // symLinkFlag flag to toggle whether symlinks are crawled while searching for test cases.
 // '-symlink=true' (or '-symlink') is default. To switch off symlink crawling use '-symlink=false'
