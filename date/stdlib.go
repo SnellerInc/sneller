@@ -1,5 +1,5 @@
 // Copyright (c) 2009 The Go Authors. All rights reserved.
-// Copyright (c) 2022 Sneller, Inc.
+// Copyright (c) 2023 Sneller, Inc.
 //
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions are

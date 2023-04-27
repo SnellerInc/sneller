@@ -111,4 +111,7 @@ data, our solution needed to be completely agnostic to the structure of the data
 
 ## License
 
-Sneller is released under the AGPL-3.0 license. See the LICENSE file for more information.
+Most of Sneller is released under the AGPL-3.0 license. See the LICENSE file for more information.
+
+The `ion` and `date` packages are released under the Apache 2.0 license.
+See LICENSE.apache for more information.
