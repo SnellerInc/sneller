@@ -697,6 +697,9 @@ func (q *TestCaseIon) Execute(flags RunFlags) error {
 			if err != nil {
 				return nil, err
 			}
+			if datum.IsEmpty() {
+				continue // just a symbol table
+			}
 			datum = unsymbolize(datum, st)
 			outlst = append(outlst, datum)
 		}

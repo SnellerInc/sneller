@@ -307,7 +307,10 @@ func (u *UnionPartition) exec(dst vm.QuerySink, src TableHandle, ep *ExecParams)
 		return err
 	}
 	if len(parts) == 0 {
-		return fmt.Errorf("plan: UnionPartition: handle %T by %v produced 0 parts?", src, u.By)
+		// we can get 0 parts if a predicate
+		// removes all the blocks
+		nop := NoOutput{}
+		return nop.exec(dst, src, ep)
 	}
 	var wg sync.WaitGroup
 	errs := make([]error, len(parts))
