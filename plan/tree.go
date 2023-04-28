@@ -164,18 +164,18 @@ func (s *Substitute) exec(dst vm.QuerySink, src TableHandle, ep *ExecParams) err
 	if err := errors.Join(errlist...); err != nil {
 		return err
 	}
-	ep.AddRewrite(&replacer{inputs: rp})
+	ep.AddRewrite(&replacer{inputs: rp, simpl: expr.Simplifier(expr.NoHint)})
 	defer ep.PopRewrite()
 	return s.From.exec(dst, src, ep)
 }
 
-func (s *Substitute) encode(dst *ion.Buffer, st *ion.Symtab, rw expr.Rewriter) error {
+func (s *Substitute) encode(dst *ion.Buffer, st *ion.Symtab, ep *ExecParams) error {
 	dst.BeginStruct(-1)
 	settype("substitute", dst, st)
 	dst.BeginField(st.Intern("inner"))
 	dst.BeginList(-1)
 	for i := range s.Inner {
-		if err := s.Inner[i].encode(dst, st, rw); err != nil {
+		if err := s.Inner[i].encode(dst, st, ep); err != nil {
 			return err
 		}
 	}

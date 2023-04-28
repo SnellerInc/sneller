@@ -29,13 +29,6 @@ type Project struct {
 	Using []expr.Binding
 }
 
-func (p *Project) rewrite(rw expr.Rewriter) {
-	p.From.rewrite(rw)
-	for i := range p.Using {
-		p.Using[i].Expr = expr.Rewrite(rw, p.Using[i].Expr)
-	}
-}
-
 func (p *Project) exec(dst vm.QuerySink, src TableHandle, ep *ExecParams) error {
 	proj, err := vm.NewProjection(ep.rewriteBind(p.Using), dst)
 	if err != nil {
@@ -44,11 +37,11 @@ func (p *Project) exec(dst vm.QuerySink, src TableHandle, ep *ExecParams) error 
 	return p.From.exec(proj, src, ep)
 }
 
-func (p *Project) encode(dst *ion.Buffer, st *ion.Symtab, rw expr.Rewriter) error {
+func (p *Project) encode(dst *ion.Buffer, st *ion.Symtab, ep *ExecParams) error {
 	dst.BeginStruct(-1)
 	settype("project", dst, st)
 	dst.BeginField(st.Intern("project"))
-	encodeBindings(p.Using, dst, st, rw)
+	encodeBindings(p.Using, dst, st, ep)
 	dst.EndStruct()
 	return nil
 }

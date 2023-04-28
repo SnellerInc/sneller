@@ -203,7 +203,7 @@ func (u *UnionMap) exec(dst vm.QuerySink, src TableHandle, ep *ExecParams) error
 	return err
 }
 
-func (u *UnionMap) encode(dst *ion.Buffer, st *ion.Symtab, _ expr.Rewriter) error {
+func (u *UnionMap) encode(dst *ion.Buffer, st *ion.Symtab, ep *ExecParams) error {
 	dst.BeginStruct(-1)
 	settype("unionmap", dst, st)
 	dst.EndStruct()
@@ -221,7 +221,7 @@ type UnionPartition struct {
 	By []string
 }
 
-func (u *UnionPartition) encode(dst *ion.Buffer, st *ion.Symtab, _ expr.Rewriter) error {
+func (u *UnionPartition) encode(dst *ion.Buffer, st *ion.Symtab, ep *ExecParams) error {
 	dst.BeginStruct(-1)
 	settype("union_partition", dst, st)
 	dst.BeginField(st.Intern("by"))

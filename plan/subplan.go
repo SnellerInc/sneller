@@ -321,27 +321,20 @@ func (r *replacement) Close() error {
 	return nil
 }
 
-// replace substitutes replacement tokens
+// replacer substitutes replacement tokens
 // like IN_REPLACEMENT(expr, id)
 // and SCALAR_REPLACMENT(id)
 // with the appropriate constant from
 // the replacement list
 type replacer struct {
-	inputs  []replacement
-	simpl   expr.Rewriter
-	rewrote bool
+	inputs []replacement
+	simpl  expr.Rewriter
 }
 
 // we perform simplification after substitution
 // so that any constprop opportunities that appear
 // after replacement get taken care of
 func (r *replacer) simplify(e expr.Node) expr.Node {
-	if !r.rewrote {
-		return e
-	}
-	if r.simpl == nil {
-		r.simpl = expr.Simplifier(expr.NoHint)
-	}
 	return r.simpl.Rewrite(e)
 }
 
@@ -358,18 +351,15 @@ func (r *replacer) Rewrite(e expr.Node) expr.Node {
 	default:
 		return r.simplify(e)
 	case expr.ListReplacement:
-		r.rewrote = true
 		id := int(b.Args[0].(expr.Integer))
 		return r.inputs[id].toList()
 	case expr.InReplacement:
-		r.rewrote = true
 		id := int(b.Args[1].(expr.Integer))
 		return &expr.Member{
 			Arg: b.Args[0],
 			Set: r.inputs[id].toScalarList(),
 		}
 	case expr.HashReplacement:
-		r.rewrote = true
 		id := int(b.Args[0].(expr.Integer))
 		kind := string(b.Args[1].(expr.String))
 		label := string(b.Args[2].(expr.String))
@@ -379,11 +369,9 @@ func (r *replacer) Rewrite(e expr.Node) expr.Node {
 		}
 		return r.inputs[id].toHashLookup(kind, label, b.Args[3], elseval)
 	case expr.StructReplacement:
-		r.rewrote = true
 		id := int(b.Args[0].(expr.Integer))
 		return r.inputs[id].toStruct()
 	case expr.ScalarReplacement:
-		r.rewrote = true
 		id := int(b.Args[0].(expr.Integer))
 		return r.inputs[id].toScalar()
 	}

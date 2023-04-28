@@ -178,7 +178,7 @@ func (o *OutputPart) exec(dst vm.QuerySink, src TableHandle, ep *ExecParams) err
 	return o.From.exec(us, src, ep)
 }
 
-func (o *OutputPart) encode(dst *ion.Buffer, st *ion.Symtab, rw expr.Rewriter) error {
+func (o *OutputPart) encode(dst *ion.Buffer, st *ion.Symtab, _ *ExecParams) error {
 	dst.BeginStruct(-1)
 	settype("outpart", dst, st)
 	dst.BeginField(st.Intern("basename"))
@@ -376,7 +376,7 @@ func (o *OutputIndex) setfield(d Decoder, f ion.Field) error {
 	return err
 }
 
-func (o *OutputIndex) encode(dst *ion.Buffer, st *ion.Symtab, _ expr.Rewriter) error {
+func (o *OutputIndex) encode(dst *ion.Buffer, st *ion.Symtab, ep *ExecParams) error {
 	dst.BeginStruct(-1)
 	settype("outidx", dst, st)
 	dst.BeginField(st.Intern("db"))

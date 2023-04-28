@@ -31,16 +31,11 @@ type Unnest struct {
 	Result      string
 }
 
-func (u *Unnest) rewrite(rw expr.Rewriter) {
-	u.From.rewrite(rw)
-	u.Expr = expr.Rewrite(rw, u.Expr)
-}
-
-func (u *Unnest) encode(dst *ion.Buffer, st *ion.Symtab, rw expr.Rewriter) error {
+func (u *Unnest) encode(dst *ion.Buffer, st *ion.Symtab, ep *ExecParams) error {
 	dst.BeginStruct(-1)
 	settype("unnest", dst, st)
 	dst.BeginField(st.Intern("expr"))
-	expr.Rewrite(rw, u.Expr).Encode(dst, st)
+	ep.rewrite(u.Expr).Encode(dst, st)
 	dst.BeginField(st.Intern("result"))
 	dst.WriteString(u.Result)
 	dst.EndStruct()

@@ -32,13 +32,6 @@ func (f *Filter) String() string {
 	return "WHERE " + expr.ToString(f.Expr)
 }
 
-func (f *Filter) rewrite(rw expr.Rewriter) {
-	f.From.rewrite(rw)
-	f.Expr = expr.Rewrite(rw, f.Expr)
-	// we may have observed something interesting:
-	push(f.Expr, f.From)
-}
-
 func (f *Filter) exec(dst vm.QuerySink, src TableHandle, ep *ExecParams) error {
 	filt := ep.rewrite(f.Expr)
 	if ep.Rewriter != nil {
@@ -51,11 +44,11 @@ func (f *Filter) exec(dst vm.QuerySink, src TableHandle, ep *ExecParams) error {
 	return f.From.exec(filter, src, ep)
 }
 
-func (f *Filter) encode(dst *ion.Buffer, st *ion.Symtab, rw expr.Rewriter) error {
+func (f *Filter) encode(dst *ion.Buffer, st *ion.Symtab, ep *ExecParams) error {
 	dst.BeginStruct(-1)
 	settype("filter", dst, st)
 	dst.BeginField(st.Intern("expr"))
-	expr.Rewrite(rw, expr.Copy(f.Expr)).Encode(dst, st)
+	ep.rewrite(f.Expr).Encode(dst, st)
 	dst.EndStruct()
 	return nil
 }
