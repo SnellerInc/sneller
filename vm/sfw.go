@@ -324,6 +324,9 @@ func (q *rowSplitter) ConfigureZion(blocksize int64, fields []string) bool {
 	// populate q.zdec and q.zout
 	// conditional on configuring zion input
 	if q.zstate == nil {
+		if q.zout != nil {
+			panic("???")
+		}
 		out, ok := q.rowConsumer.(zionConsumer)
 		if ok {
 			if !out.zionOk(fields) {

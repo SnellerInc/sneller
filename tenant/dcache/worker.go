@@ -21,18 +21,6 @@ import (
 	"github.com/SnellerInc/sneller/vm"
 )
 
-func (r *reservation) add(w io.Writer, ret chan<- error, stats *Stats) {
-	done := func(pos int64, e error) {
-		stats.addBytes(pos)
-		ret <- e
-	}
-	if r.out == nil {
-		r.out = vm.NewTeeWriter(w, done)
-		return
-	}
-	r.out.Add(w, done)
-}
-
 type reservation struct {
 	seg     Segment
 	etag    string
@@ -67,12 +55,16 @@ func (q *queue) tryBackground() bool {
 
 func (q *queue) send(seg Segment, dst io.Writer, flags Flag, stats *Stats, ret chan<- error) {
 	etag := seg.ETag()
+	done := func(pos int64, e error) {
+		stats.addBytes(pos)
+		ret <- e
+	}
 	q.lock.Lock()
 	// TODO: if len(q.reserved) is too large,
 	// reject the query here
 	if res, ok := q.reserved[etag]; ok {
 		res.seg.Merge(seg)
-		res.add(dst, ret, stats)
+		res.out.Add(dst, done)
 		// treat this access as a hit, since it
 		// is coalesced with a miss
 		stats.hit()
@@ -80,12 +72,9 @@ func (q *queue) send(seg Segment, dst io.Writer, flags Flag, stats *Stats, ret c
 		return
 	}
 	res := &reservation{
-		seg:  seg,
-		etag: etag,
-		out: vm.NewTeeWriter(dst, func(pos int64, e error) {
-			stats.addBytes(pos)
-			ret <- e
-		}),
+		seg:     seg,
+		etag:    etag,
+		out:     vm.NewTeeWriter(dst, done),
 		primary: stats,
 		flags:   flags,
 	}
@@ -104,11 +93,15 @@ func (r *reservation) Write(p []byte) (int, error) {
 }
 
 func (r *reservation) close(err error) {
+	if r.out == nil {
+		return
+	}
 	if err == nil {
 		r.out.Close()
 	} else {
 		r.out.CloseError(err)
 	}
+	r.out = nil
 }
 
 func (r *reservation) hit() {
@@ -151,7 +144,7 @@ outer:
 		mp := c.mmap(res.seg, res.flags)
 
 		// remove from reserved map
-		// so that res.aux is safe to access
+		// so that res.out is safe to access
 		q.lock.Lock()
 		delete(q.reserved, res.etag)
 		q.lock.Unlock()

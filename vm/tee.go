@@ -32,8 +32,9 @@ type TeeWriter struct {
 }
 
 type teeState struct {
-	w     io.Writer
-	final func(int64, error)
+	w        io.Writer
+	final    func(int64, error)
+	oldfinal func(int64, error)
 }
 
 func (t *TeeWriter) ConfigureZion(blocksize int64, fields []string) bool {
@@ -70,6 +71,7 @@ func (t *TeeWriter) CloseError(err error) {
 	}
 	t.splitter = -1
 	t.state = t.state[:0]
+	t.zblocksize = 0
 }
 
 // Close calls final(nil) for each of
@@ -105,53 +107,57 @@ func (t *TeeWriter) EndSegment() {
 // it is called synchronously with respect to calls to Write.
 func (t *TeeWriter) Add(w io.Writer, final func(int64, error)) {
 	if rs, ok := w.(*rowSplitter); ok {
+		inner := rs.rowConsumer
+		rs.drop() // won't be used; don't "leak" it
 		if t.splitter < 0 {
-			rs.drop()
 			t.splitter = len(t.state)
-			// create a new teeSplitter that shares
-			// a symbol table with one top-level rowSplitter
-			ts := &teeSplitter{
-				state: []splitState{{
-					dst:   rs.rowConsumer,
-					final: final,
-				}},
-			}
-			sp := splitter(ts)
-			// have the rowSplitter update ts.pos
-			// on each call to Write:
-			sp.pos = &ts.pos
-			sp.rowConsumer = ts
+			sp := splitter(inner)
 			t.state = append(t.state, teeState{
 				w: sp,
 				final: func(i int64, e error) {
-					ts.close(i, e)
+					final(i, e)
 					// it's the caller's responsibility
 					// to call rs.Close(), so we don't
 					// call sp.Close() here (otherwise we'd race)
 					sp.drop()
 				},
+				oldfinal: final,
 			})
 			return
 		}
 		split := t.state[t.splitter].w.(*rowSplitter)
-		ts := split.rowConsumer.(*teeSplitter)
+		ts, ok := split.rowConsumer.(*teeSplitter)
+		if !ok {
+			// create a new teeSplitter that shares
+			// a symbol table with one top-level rowSplitter
+			old := split.rowConsumer
+			ts = &teeSplitter{
+				state: []splitState{{
+					dst:   old,
+					final: t.state[t.splitter].oldfinal,
+				}},
+			}
+			split.pos = &ts.pos
+			split.rowConsumer = ts
+			t.state[t.splitter].oldfinal = nil
+			t.state[t.splitter].final = func(i int64, e error) {
+				ts.close(i, e)
+				split.drop()
+			}
+		}
 		if tee2, ok := rs.rowConsumer.(*teeSplitter); ok {
+			// probably never happens in practice...
 			ts.state = append(ts.state, tee2.state...)
 		} else {
 			ts.state = append(ts.state, splitState{
-				dst:   rs.rowConsumer,
+				dst:   inner,
 				final: final,
 			})
 		}
 		return
 	}
 	if tw, ok := w.(*TeeWriter); ok {
-		if tw.splitter >= 0 {
-			// don't "leak" this splitter; we are going
-			// to eat its contents in Add
-			rs := tw.state[tw.splitter].w.(*rowSplitter)
-			rs.drop()
-		}
+		// probably never happens in practice...
 		// flatten multiple TeeWriters into one
 		for i := range tw.state {
 			t.Add(tw.state[i].w, tw.state[i].final)
@@ -167,11 +173,7 @@ func (t *TeeWriter) Add(w io.Writer, final func(int64, error)) {
 
 // Write implements io.Writer
 func (t *TeeWriter) Write(p []byte) (int, error) {
-	any := false
 	for i := 0; i < len(t.state); i++ {
-		if t.state[i].w == nil {
-			continue
-		}
 		n, err := t.state[i].w.Write(p)
 		if err != nil {
 			// accounting for zion blocks...
@@ -186,12 +188,10 @@ func (t *TeeWriter) Write(p []byte) (int, error) {
 			case len(t.state):
 				t.splitter = i
 			}
-			i--
-			continue
+			i-- // loop at this index again
 		}
-		any = true
 	}
-	if !any {
+	if len(t.state) == 0 {
 		return 0, io.EOF
 	}
 	if t.zblocksize > 0 {
@@ -236,7 +236,6 @@ func deleteOne[T any](src []T, i int) []T {
 }
 
 func (t *teeSplitter) symbolize(st *symtab, aux *auxbindings) error {
-	any := false
 	for i := 0; i < len(t.state); i++ {
 		t.state[i].aux.set(aux)
 		// XXX: we are really relying here on the
@@ -248,19 +247,16 @@ func (t *teeSplitter) symbolize(st *symtab, aux *auxbindings) error {
 		if err != nil {
 			t.state[i].final(t.pos, err)
 			t.state = deleteOne(t.state, i)
-			i--
-			continue
+			i-- // loop at this index again
 		}
-		any = true
 	}
-	if !any {
+	if len(t.state) == 0 {
 		return io.EOF
 	}
 	return nil
 }
 
 func (t *teeSplitter) writeRows(delims []vmref, params *rowParams) error {
-	any := false
 	multi := len(t.state) > 1
 	for i := 0; i < len(t.state); i++ {
 		// callees are allowed to clobber these,
@@ -274,12 +270,10 @@ func (t *teeSplitter) writeRows(delims []vmref, params *rowParams) error {
 		if err != nil {
 			t.state[i].final(t.pos, err)
 			t.state = deleteOne(t.state, i)
-			i--
-			continue
+			i-- // loop at this index again
 		}
-		any = true
 	}
-	if !any {
+	if len(t.state) == 0 {
 		return io.EOF
 	}
 	return nil
@@ -295,6 +289,10 @@ func (t *teeSplitter) close(pos int64, err error) {
 }
 
 func (t *teeSplitter) Close() error {
+	// vm.TeeWriter should never call Close on a rowConsumer
+	// (it is the caller's sole responsibility)
+	// so we should never reach this code path
+	panic("should never be called")
 	return nil
 }
 
