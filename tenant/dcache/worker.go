@@ -57,7 +57,14 @@ func (q *queue) send(seg Segment, dst io.Writer, flags Flag, stats *Stats, ret c
 	etag := seg.ETag()
 	done := func(pos int64, e error) {
 		stats.addBytes(pos)
-		ret <- e
+		select {
+		case ret <- e:
+			// ok
+		default:
+			// we always set cap(ret) == 1, and there should
+			// only ever be 1 segment outstanding
+			panic("queue response channel should never block")
+		}
 	}
 	q.lock.Lock()
 	// TODO: if len(q.reserved) is too large,

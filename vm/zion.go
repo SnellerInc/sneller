@@ -25,13 +25,13 @@ import (
 )
 
 type zionState struct {
-	shape      zll.Shape
-	buckets    zll.Buckets
-	components []string
-	blocksize  int64
+	shape     zll.Shape
+	buckets   zll.Buckets
+	blocksize int64
 }
 
 type zionConsumer interface {
+	symbolize(st *symtab, aux *auxbindings) error
 	zionOk(fields []string) bool
 	writeZion(state *zionState) error
 }
@@ -57,7 +57,11 @@ type zionFlattener struct {
 const maxFlatten = 8
 
 func (z *zionFlattener) zionOk(fields []string) bool {
-	return len(fields) > 0 && len(fields) < maxFlatten
+	if len(fields) > 0 && len(fields) < maxFlatten {
+		z.infields = append(z.infields[:0], fields...)
+		return true
+	}
+	return false
 }
 
 func (z *zionFlattener) symbolize(st *symtab, aux *auxbindings) error {

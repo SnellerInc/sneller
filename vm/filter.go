@@ -148,7 +148,7 @@ func (w *wherebc) symbolize(st *symtab, aux *auxbindings) error {
 	if err != nil {
 		return err
 	}
-
+	w.params.auxbound = shrink(w.params.auxbound, len(aux.bound))
 	w.constResult = progresult(&w.ssa)
 
 	// pass on same aux bindings:
@@ -164,6 +164,10 @@ func (w *wherebc) EndSegment() {
 func (w *wherebc) writeRows(delims []vmref, rp *rowParams) error {
 	if w.bc.compiled == nil {
 		panic("WriteRows() called before symbolize()")
+	}
+	if len(rp.auxbound) != len(w.params.auxbound) {
+		println(len(rp.auxbound), "!=", len(w.params.auxbound))
+		panic("mismatched auxbound len")
 	}
 
 	switch w.constResult {
@@ -181,7 +185,6 @@ func (w *wherebc) writeRows(delims []vmref, rp *rowParams) error {
 	}
 	if valid > 0 {
 		// the assembly already did the compression for us:
-		w.params.auxbound = shrink(w.params.auxbound, len(rp.auxbound))
 		for i := range w.params.auxbound {
 			w.params.auxbound[i] = sanitizeAux(rp.auxbound[i], valid) // ensure rp.auxbound[i][valid:] is zeroed up to the lane multiple
 		}

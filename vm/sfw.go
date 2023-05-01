@@ -321,30 +321,21 @@ func (q *rowSplitter) ConfigureZion(blocksize int64, fields []string) bool {
 	if blocksize > PageSize {
 		return false
 	}
-	// populate q.zdec and q.zout
-	// conditional on configuring zion input
-	if q.zstate == nil {
-		if q.zout != nil {
-			panic("???")
-		}
-		out, ok := q.rowConsumer.(zionConsumer)
-		if ok {
-			if !out.zionOk(fields) {
-				return false
-			}
-		} else {
-			out = &zionFlattener{rowConsumer: q.rowConsumer, infields: fields}
-			if !out.zionOk(fields) {
-				return false
-			}
-			q.rowConsumer = out.(rowConsumer)
-		}
-		q.zout = out
-		q.zstate = new(zionState)
+	if q.zout != nil {
 		q.zstate.blocksize = blocksize
-		q.zstate.shape.Symtab = &zionSymtab{parent: q}
+		return q.zout.zionOk(fields)
 	}
-	q.zstate.components = fields
+	out, ok := q.rowConsumer.(zionConsumer)
+	if !ok {
+		out = &zionFlattener{rowConsumer: q.rowConsumer}
+	}
+	if !out.zionOk(fields) {
+		return false
+	}
+	q.zout = out
+	q.zstate = new(zionState)
+	q.zstate.blocksize = blocksize
+	q.zstate.shape.Symtab = &zionSymtab{parent: q}
 	return true
 }
 
@@ -371,7 +362,7 @@ func (z *zionSymtab) Unmarshal(src []byte) ([]byte, error) {
 	q.shared.snapshot() // restore on next Unmarshal
 	q.shared.flags.set(sfZion)
 	q.aux.reset()
-	err = q.symbolize(&q.shared, &q.aux)
+	err = q.zout.symbolize(&q.shared, &q.aux)
 	if err != nil {
 		return rest, err
 	}
@@ -607,8 +598,12 @@ func (m *Rematerializer) writeRows(delims []vmref, rp *rowParams) error {
 
 		// let BeginField handle the sorting
 		for _, pos := range m.auxpos {
+			mem := rp.auxbound[pos][i].mem()
+			if len(mem) == 0 {
+				continue
+			}
 			m.buf.BeginField(m.aux[pos])
-			m.buf.UnsafeAppend(rp.auxbound[pos][i].mem())
+			m.buf.UnsafeAppend(mem)
 		}
 
 		for len(mem) > 0 {

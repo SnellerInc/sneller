@@ -250,6 +250,7 @@ func merge[T constraints.Ordered](dst, src []T) []T {
 	if slices.Equal(dst, src) {
 		return dst
 	}
+
 	var out []T
 	j := 0
 	for i := 0; i < len(dst); i++ {

@@ -295,11 +295,8 @@ func (p *projector) writeRows(delims []vmref, rp *rowParams) error {
 			p.aw.off += off
 		}
 		delims = delims[rewrote:]
-
-		// if we didn't process all of the delimiters,
-		// it was because we didn't have enough space,
-		// so we need to flush at each loop iteration
-		if len(delims) > 0 && p.dstrc == nil {
+		// if we didn't flush via writeRows(), then flush directly:
+		if p.dstrc == nil {
 			err := p.flush()
 			if err != nil {
 				return fmt.Errorf("Projection.flush(): %w", err)

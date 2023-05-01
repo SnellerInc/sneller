@@ -191,6 +191,20 @@ check_outer_loop:
     CMPQ    R10, $16          // loop again if shape[0] == 16
     JEQ     top
 done:
+    XORL    BX, BX
+    MOVQ    tape_len+64(FP), AX
+    SHLQ    $3, AX
+    ADDQ    tape_base+56(FP), AX // AX = &tape[len(tape)] = end-of-tape
+exhaust_tape:
+    // write out MISSING for unmatched fields
+    CMPQ    DX, AX
+    JGE     check_structs_out         // definitely not matching if tape exhausted
+    MOVL    8(SP), R14                // R14 = current struct
+    MOVQ    BX, 0(DI)(R14*8)          // fields[struct].{off, len} = 0
+    ADDQ    $(const_zionStride*8), DI // fields += sizeof([]vmref)
+    ADDQ    $8, DX                    // tape += sizeof(symbol)
+    JMP     exhaust_tape
+check_structs_out:
     INCL    8(SP)             // struct++
     CMPL    8(SP), $const_zionStride
     JB      begin_struct      // continue while (struct < zionStride)

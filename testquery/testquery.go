@@ -109,7 +109,7 @@ func (c *chunkshandle) WriteChunks(dst vm.QuerySink, parallel int) error {
 	if err != nil {
 		return err
 	}
-	if zw, ok := dst.(blockfmt.ZionWriter); ok && zw.ConfigureZion(int64(len(c.chunks[0])), c.fields) {
+	if zw, ok := w.(blockfmt.ZionWriter); ok && zw.ConfigureZion(int64(len(c.chunks[0])), c.fields) {
 		return c.writeZion(w)
 	}
 	tmp := vm.Malloc()
@@ -496,6 +496,14 @@ func CanShuffleInput(q *expr.Query) bool {
 		// cross-join permutes row order;
 		// need an ORDER BY to make results deterministic
 		return false
+	}
+	if sel.From != nil {
+		tbls := sel.From.Tables()
+		for _, tbl := range tbls {
+			if _, ok := tbl.Expr.(*expr.Unpivot); ok {
+				return false
+			}
+		}
 	}
 	if sel.GroupBy != nil || sel.Distinct {
 		// these permute the output ordering by hash

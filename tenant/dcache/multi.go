@@ -82,6 +82,9 @@ func (m *MultiTable) write(w io.Writer) error {
 			return err
 		}
 	}
+	if ret != nil {
+		close(ret) // force panic if there's a double-send
+	}
 	return nil
 }
 
