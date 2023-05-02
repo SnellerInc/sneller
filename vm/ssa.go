@@ -4221,6 +4221,9 @@ func (p *prog) isStale(st *symtab, aux *auxbindings) bool {
 		}
 	}
 	for i := range p.resolved {
+		if slices.Contains(aux.bound, p.resolved[i].val) {
+			return true // moved from inline -> aux
+		}
 		// if the symbol is -1, then we expect
 		// the symbol not to be defined; otherwise,
 		// we expect it to be the same string as we saw before
