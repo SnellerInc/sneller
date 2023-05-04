@@ -142,7 +142,6 @@ func (s *server) queryHandler(w http.ResponseWriter, r *http.Request) {
 			acceptHeader = "application/ion"
 		}
 	default:
-		s.logger.Printf("invalid accept header value %q", acceptHeader)
 		http.Error(w, "invalid 'Accept' header", http.StatusBadRequest)
 		return
 	}
@@ -226,32 +225,32 @@ func (s *server) queryHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Add("Cache-Control", "private, must-revalidate")
 	w.Header().Add("Vary", "Accept, Authentication")
 
-	if r.Method == http.MethodGet || r.Method == http.MethodHead {
-		// Check the 'If-None-Match' request header
-		ifNoneMatch := r.Header.Get("If-None-Match")
-		if ifNoneMatch != "" {
-			for _, matchEtag := range strings.Split(ifNoneMatch, ",") {
-				matchEtag = strings.TrimSpace(matchEtag)
-				if eTag == matchEtag {
-					w.WriteHeader(http.StatusNotModified)
-					return
-				}
+	skipped := http.StatusNotModified
+	if r.Method == http.MethodPost {
+		skipped = http.StatusPreconditionFailed
+	}
+	// Check the 'If-None-Match' request header
+	if ifNoneMatch := r.Header.Get("If-None-Match"); ifNoneMatch != "" {
+		for _, matchEtag := range strings.Split(ifNoneMatch, ",") {
+			matchEtag = strings.TrimSpace(matchEtag)
+			if eTag == matchEtag {
+				w.WriteHeader(skipped)
+				return
 			}
-		} else {
-			// Check the 'If-Modified-Since' request header
-			ifModifiedSince := r.Header.Get("If-Modified-Since")
-			if ifModifiedSince != "" {
-				ifModifiedSinceTime, err := time.Parse(http.TimeFormat, ifModifiedSince)
-				if err != nil {
-					w.WriteHeader(http.StatusBadRequest)
-					return
-				}
-
-				if !newestBlobTime.After(ifModifiedSinceTime) {
-					w.WriteHeader(http.StatusNotModified)
-					return
-				}
+		}
+	} else if ifModifiedSince := r.Header.Get("If-Modified-Since"); ifModifiedSince != "" {
+		ifModifiedSinceTime, err := time.Parse(http.TimeFormat, ifModifiedSince)
+		if err != nil {
+			w.Header().Add("Content-Type", "text/plain")
+			w.WriteHeader(http.StatusBadRequest)
+			if r.Method != http.MethodHead {
+				fmt.Fprintf(w, "bad timestamp in If-Modified-Since: %s\n", err)
 			}
+			return
+		}
+		if !newestBlobTime.After(ifModifiedSinceTime) {
+			w.WriteHeader(skipped)
+			return
 		}
 	}
 
