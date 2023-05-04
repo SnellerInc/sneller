@@ -1,0 +1,8 @@
+SELECT
+  PMOD(12, 3) AS x,
+  PMOD(-12, 3) AS y,
+  PMOD(11, 3) AS z,
+  PMOD(-11, 3) AS w
+---
+---
+{"x": 0, "y": 0, "z": 2, "w": 1}

@@ -156,6 +156,8 @@ const (
 	Atan
 	Atan2
 
+	Pmod
+
 	Least
 	Greatest
 	WidthBucket
@@ -1086,6 +1088,7 @@ var builtinInfo = [maxBuiltin]binfo{
 	Acos:      {check: fixedArgs(NumericType), ret: FloatType | MissingType, simplify: mathfunc(math.Acos)},
 	Atan:      {check: fixedArgs(NumericType), ret: FloatType | MissingType, simplify: mathfunc(math.Atan)},
 	Atan2:     {check: fixedArgs(NumericType, NumericType), ret: FloatType | MissingType, simplify: mathfunc2(math.Atan2)},
+	Pmod:      {check: fixedArgs(NumericType, NumericType), ret: NumericType | MissingType, simplify: simplifyPmod},
 
 	Least:       {check: variadicNumeric, ret: NumericType | MissingType, simplify: mathfuncreduce(math.Min)},
 	Greatest:    {check: variadicNumeric, ret: NumericType | MissingType, simplify: mathfuncreduce(math.Max)},

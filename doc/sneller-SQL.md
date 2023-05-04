@@ -1390,6 +1390,24 @@ NOTE: `CEILING(num)` is a synonym of `CEIL(num)`.
 
 See [Postgres Math Functions](https://www.postgresql.org/docs/current/functions-math.html)
 
+#### `PMOD`
+
+The `PMOD(x, y)` function returns a positive remainder of `x / y` expression rounded down.
+When `x` is positive the result of the operation is equivalent to `x % ABS(y)`, and
+when `x` is negative, the result is equivalent to `(ABS(y) - (-x % ABS(y))) % ABS(y)`.
+
+Examples:
+
+```sql
+PMOD(4, 4) -> 0
+PMOD(5, 4) -> 1
+PMOD(7, 4) -> 3
+PMOD(-7, 4) -> 1
+PMOD(-7, 0) -> MISSING
+```
+
+NOTE: Division by zero yields `MISSING`.
+
 ### GEO Functions
 
 #### `GEO_DISTANCE`

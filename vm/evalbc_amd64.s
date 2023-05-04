@@ -73,338 +73,6 @@ TEXT bctrap(SB), NOSPLIT|NOFRAME, $0
   BYTE $0xCC
   RET
 
-// Left = Left - Trunc(Left / Right) * Right
-#define BC_MODF64_IMPL(DstA, DstB, Src1A, Src1B, Src2A, Src2B, MaskA, MaskB, Tmp1, Tmp2) \
-  VDIVPD.RZ_SAE.Z Src2A, Src1A, MaskA, Tmp1                \
-  VDIVPD.RZ_SAE.Z Src2B, Src1B, MaskB, Tmp2                \
-  VRNDSCALEPD.Z   $VROUND_IMM_TRUNC_SAE, Tmp1, MaskA, Tmp1 \
-  VRNDSCALEPD.Z   $VROUND_IMM_TRUNC_SAE, Tmp2, MaskB, Tmp2 \
-  VFNMADD231PD    Src2A, Tmp1, MaskA, DstA                 \
-  VFNMADD231PD    Src2B, Tmp2, MaskB, DstB
-
-// This macro implements INT64 division that can be used in bytecode instructions.
-//
-// An unsigned scalar version could look like this (in C++):
-//
-// static uint64_t divu64(uint64_t a, uint64_t b) {
-//   double fa = double(a);
-//   double fb = double(b);
-//
-//   // First division step.
-//   uint64_t w1 = uint64_t(fa / fb);
-//   uint64_t x = w1 * b;
-//
-//   // Remainder of the first division step.
-//   double fc = double(int64_t(a) - int64_t(x));
-//
-//   // Second division step.
-//   int64_t w2 = int64_t(fc / fb);
-//   uint64_t w = uint64_t(w1 + w2);
-//
-//   // Correction of a possible "off by 1" result.
-//   return w - uint64_t(w * b > a);
-// }
-#define BC_DIVU64_IMPL(DST_A, DST_B, SRC_A1, SRC_B1, SRC_A2, SRC_B2, MASK_A, MASK_B, TMP_A1, TMP_B1, TMP_A2, TMP_B2, TMP_A3, TMP_B3, TMP_MASK_A, TMP_MASK_B) \
-  /* Convert to double precision */                           \
-  VCVTUQQ2PD.Z SRC_A1, MASK_A, TMP_A1                         \
-  VCVTUQQ2PD.Z SRC_B1, MASK_B, TMP_B1                         \
-  VCVTUQQ2PD.Z SRC_A2, MASK_A, TMP_A2                         \
-  VCVTUQQ2PD.Z SRC_B2, MASK_B, TMP_B2                         \
-                                                              \
-  /* First division step */                                   \
-  VDIVPD.Z TMP_A2, TMP_A1, MASK_A, TMP_A3                     \
-  VDIVPD.Z TMP_B2, TMP_B1, MASK_B, TMP_B3                     \
-                                                              \
-  VCVTPD2UQQ.Z TMP_A3, MASK_A, TMP_A3                         \
-  VCVTPD2UQQ.Z TMP_B3, MASK_B, TMP_B3                         \
-                                                              \
-  /* Decrease the dividend by the first result */             \
-  VPMULLQ.Z SRC_A2, TMP_A3, MASK_A, TMP_A1                    \
-  VPMULLQ.Z SRC_B2, TMP_B3, MASK_B, TMP_B1                    \
-                                                              \
-  VPSUBQ.Z TMP_A1, SRC_A1, MASK_A, TMP_A1                     \
-  VPSUBQ.Z TMP_B1, SRC_B1, MASK_B, TMP_B1                     \
-                                                              \
-  /* Prepare for the second division */                       \
-  VCVTQQ2PD.Z TMP_A1, MASK_A, TMP_A1                          \
-  VCVTQQ2PD.Z TMP_B1, MASK_B, TMP_B1                          \
-                                                              \
-  /* Second division step, corrects results from the first */ \
-  VDIVPD.Z TMP_A2, TMP_A1, MASK_A, TMP_A1                     \
-  VDIVPD.Z TMP_B2, TMP_B1, MASK_B, TMP_B1                     \
-                                                              \
-  VCVTPD2QQ.Z TMP_A1, MASK_A, TMP_A1                          \
-  VCVTPD2QQ.Z TMP_B1, MASK_B, TMP_B1                          \
-                                                              \
-  VPADDQ TMP_A1, TMP_A3, MASK_A, TMP_A3                       \
-  VPADDQ TMP_B1, TMP_B3, MASK_B, TMP_B3                       \
-                                                              \
-  /* Calculate the result by using the second remainder */    \
-  VPMULLQ SRC_A2, TMP_A3, MASK_A, TMP_A1                      \
-  VPMULLQ SRC_B2, TMP_B3, MASK_B, TMP_B1                      \
-                                                              \
-  /* Check whether we need to subtract 1 from the result */   \
-  VPCMPUQ $VPCMP_IMM_GT, SRC_A1, TMP_A1, MASK_A, TMP_MASK_A   \
-  VPCMPUQ $VPCMP_IMM_GT, SRC_B1, TMP_B1, MASK_B, TMP_MASK_B   \
-                                                              \
-  /* Subtract 1 from the result, if necessary */              \
-  VPSUBQ.BCST CONSTQ_1(), TMP_A3, TMP_MASK_A, TMP_A3          \
-  VPSUBQ.BCST CONSTQ_1(), TMP_B3, TMP_MASK_B, TMP_B3          \
-                                                              \
-  VMOVDQA64 TMP_A3, MASK_A, DST_A                             \
-  VMOVDQA64 TMP_B3, MASK_B, DST_B
-
-
-#define BC_MODU64_IMPL(DST_A, DST_B, SRC_A1, SRC_B1, SRC_A2, SRC_B2, MASK_A, MASK_B, TMP_A1, TMP_B1, TMP_A2, TMP_B2, TMP_A3, TMP_B3, TMP_MASK_A, TMP_MASK_B) \
-  /* Convert to double precision */                           \
-  VCVTUQQ2PD.Z SRC_A1, MASK_A, TMP_A1                         \
-  VCVTUQQ2PD.Z SRC_B1, MASK_B, TMP_B1                         \
-  VCVTUQQ2PD.Z SRC_A2, MASK_A, TMP_A2                         \
-  VCVTUQQ2PD.Z SRC_B2, MASK_B, TMP_B2                         \
-                                                              \
-  /* First division step */                                   \
-  VDIVPD.Z TMP_A2, TMP_A1, MASK_A, TMP_A3                     \
-  VDIVPD.Z TMP_B2, TMP_B1, MASK_B, TMP_B3                     \
-                                                              \
-  VCVTPD2UQQ.Z TMP_A3, MASK_A, TMP_A3                         \
-  VCVTPD2UQQ.Z TMP_B3, MASK_B, TMP_B3                         \
-                                                              \
-  /* Decrease the dividend by the first result */             \
-  VPMULLQ.Z SRC_A2, TMP_A3, MASK_A, TMP_A1                    \
-  VPMULLQ.Z SRC_B2, TMP_B3, MASK_B, TMP_B1                    \
-                                                              \
-  VPSUBQ.Z TMP_A1, SRC_A1, MASK_A, TMP_A1                     \
-  VPSUBQ.Z TMP_B1, SRC_B1, MASK_B, TMP_B1                     \
-                                                              \
-  /* Prepare for the second division */                       \
-  VCVTQQ2PD.Z TMP_A1, MASK_A, TMP_A1                          \
-  VCVTQQ2PD.Z TMP_B1, MASK_B, TMP_B1                          \
-                                                              \
-  /* Second division step, corrects results from the first */ \
-  VDIVPD.Z TMP_A2, TMP_A1, MASK_A, TMP_A1                     \
-  VDIVPD.Z TMP_B2, TMP_B1, MASK_B, TMP_B1                     \
-                                                              \
-  VCVTPD2QQ.Z TMP_A1, MASK_A, TMP_A1                          \
-  VCVTPD2QQ.Z TMP_B1, MASK_B, TMP_B1                          \
-                                                              \
-  VPADDQ.Z TMP_A1, TMP_A3, MASK_A, TMP_A3                     \
-  VPADDQ.Z TMP_B1, TMP_B3, MASK_B, TMP_B3                     \
-                                                              \
-  /* Calculate the result by using the second remainder */    \
-  VPMULLQ.Z SRC_A2, TMP_A3, MASK_A, TMP_A1                    \
-  VPMULLQ.Z SRC_B2, TMP_B3, MASK_B, TMP_B1                    \
-                                                              \
-  /* Check whether we need to subtract 1 from the result */   \
-  VPCMPUQ $VPCMP_IMM_GT, SRC_A1, TMP_A1, MASK_A, TMP_MASK_A   \
-  VPCMPUQ $VPCMP_IMM_GT, SRC_B1, TMP_B1, MASK_B, TMP_MASK_B   \
-                                                              \
-  /* Subtract 1 from the result, if necessary */              \
-  VPSUBQ.BCST CONSTQ_1(), TMP_A3, TMP_MASK_A, TMP_A3          \
-  VPSUBQ.BCST CONSTQ_1(), TMP_B3, TMP_MASK_B, TMP_B3          \
-                                                              \
-  /* Calculate the final remainder  */                        \
-  VPMULLQ SRC_A2, TMP_A3, TMP_A3                              \
-  VPMULLQ SRC_B2, TMP_B3, TMP_B3                              \
-                                                              \
-  VPSUBQ TMP_A3, SRC_A1, MASK_A, DST_A                        \
-  VPSUBQ TMP_B3, SRC_B1, MASK_B, DST_B
-
-#define BC_DIVI64_IMPL(DST_A, DST_B, SRC_A1, SRC_B1, SRC_A2, SRC_B2, MASK_A, MASK_B, TMP_A1, TMP_B1, TMP_A2, TMP_B2, TMP_A3, TMP_B3, TMP_A4, TMP_B4, TMP_A5, TMP_B5, TMP_MASK_A, TMP_MASK_B) \
-  /* We divide positive/unsigned numbers first */             \
-  VPABSQ.Z SRC_A1, MASK_A, TMP_A1                             \
-  VPABSQ.Z SRC_B1, MASK_B, TMP_B1                             \
-  VPABSQ.Z SRC_A2, MASK_A, TMP_A2                             \
-  VPABSQ.Z SRC_B2, MASK_B, TMP_B2                             \
-                                                              \
-  VCVTUQQ2PD.Z TMP_A1, MASK_A, TMP_A3                         \
-  VCVTUQQ2PD.Z TMP_B1, MASK_B, TMP_B3                         \
-  VCVTUQQ2PD.Z TMP_A2, MASK_A, TMP_A4                         \
-  VCVTUQQ2PD.Z TMP_B2, MASK_B, TMP_B4                         \
-                                                              \
-  /* First division step */                                   \
-  VDIVPD.Z TMP_A4, TMP_A3, MASK_A, TMP_A5                     \
-  VDIVPD.Z TMP_B4, TMP_B3, MASK_B, TMP_B5                     \
-                                                              \
-  VCVTPD2UQQ.Z TMP_A5, MASK_A, TMP_A5                         \
-  VCVTPD2UQQ.Z TMP_B5, MASK_B, TMP_B5                         \
-                                                              \
-  /* Decrease the dividend by the first result */             \
-  VPMULLQ.Z TMP_A2, TMP_A5, MASK_A, TMP_A3                    \
-  VPMULLQ.Z TMP_B2, TMP_B5, MASK_B, TMP_B3                    \
-                                                              \
-  VPSUBQ.Z TMP_A3, TMP_A1, MASK_A, TMP_A3                     \
-  VPSUBQ.Z TMP_B3, TMP_B1, MASK_B, TMP_B3                     \
-                                                              \
-  /* Prepare for the second division */                       \
-  VCVTQQ2PD.Z TMP_A3, MASK_A, TMP_A3                          \
-  VCVTQQ2PD.Z TMP_B3, MASK_B, TMP_B3                          \
-                                                              \
-  /* Second division step, corrects results from the first */ \
-  VDIVPD.Z TMP_A4, TMP_A3, MASK_A, TMP_A3                     \
-  VDIVPD.Z TMP_B4, TMP_B3, MASK_B, TMP_B3                     \
-                                                              \
-  VCVTPD2QQ.Z TMP_A3, MASK_A, TMP_A3                          \
-  VCVTPD2QQ.Z TMP_B3, MASK_B, TMP_B3                          \
-                                                              \
-  /* XOR signs so we can negate the result, if necessary */   \
-  VPXORQ.Z SRC_A2, SRC_A1, MASK_A, TMP_A4                     \
-  VPXORQ.Z SRC_B2, SRC_B1, MASK_B, TMP_B4                     \
-                                                              \
-  VPADDQ TMP_A3, TMP_A5, MASK_A, DST_A                        \
-  VPADDQ TMP_B3, TMP_B5, MASK_B, DST_B                        \
-                                                              \
-  /* Calculate the result by using the second remainder */    \
-  VPMULLQ TMP_A2, DST_A, MASK_A, TMP_A2                       \
-  VPMULLQ TMP_B2, DST_B, MASK_B, TMP_B2                       \
-                                                              \
-  /* Check whether we need to subtract 1 from the result */   \
-  VPCMPUQ $VPCMP_IMM_GT, TMP_A1, TMP_A2, MASK_A, TMP_MASK_A   \
-  VPCMPUQ $VPCMP_IMM_GT, TMP_B1, TMP_B2, MASK_B, TMP_MASK_B   \
-                                                              \
-  /* Subtract 1 from the result, if necessary */              \
-  VPSUBQ.BCST CONSTQ_1(), DST_A, TMP_MASK_A, DST_A            \
-  VPSUBQ.BCST CONSTQ_1(), DST_B, TMP_MASK_B, DST_B            \
-                                                              \
-  /* Negate the result, if the result must be negative */     \
-  VPMOVQ2M TMP_A4, TMP_MASK_A                                 \
-  VPMOVQ2M TMP_B4, TMP_MASK_B                                 \
-                                                              \
-  VPXORQ TMP_A4, TMP_A4, TMP_A4                               \
-  VPSUBQ DST_A, TMP_A4, TMP_MASK_A, DST_A                     \
-  VPSUBQ DST_B, TMP_A4, TMP_MASK_B, DST_B
-
-#define BC_MODI64_IMPL(DST_A, DST_B, SRC_A1, SRC_B1, SRC_A2, SRC_B2, MASK_A, MASK_B, TMP_A1, TMP_B1, TMP_A2, TMP_B2, TMP_A3, TMP_B3, TMP_A4, TMP_B4, TMP_A5, TMP_B5, TMP_MASK_A, TMP_MASK_B) \
-  /* We divide positive/unsigned numbers first */             \
-  VPABSQ.Z SRC_A1, MASK_A, TMP_A1                             \
-  VPABSQ.Z SRC_B1, MASK_B, TMP_B1                             \
-  VPABSQ.Z SRC_A2, MASK_A, TMP_A2                             \
-  VPABSQ.Z SRC_B2, MASK_B, TMP_B2                             \
-                                                              \
-  VCVTUQQ2PD.Z TMP_A1, MASK_A, TMP_A3                         \
-  VCVTUQQ2PD.Z TMP_B1, MASK_B, TMP_B3                         \
-  VCVTUQQ2PD.Z TMP_A2, MASK_A, TMP_A4                         \
-  VCVTUQQ2PD.Z TMP_B2, MASK_B, TMP_B4                         \
-                                                              \
-  /* First division step */                                   \
-  VDIVPD.Z TMP_A4, TMP_A3, MASK_A, TMP_A5                     \
-  VDIVPD.Z TMP_B4, TMP_B3, MASK_B, TMP_B5                     \
-                                                              \
-  VCVTPD2UQQ.Z TMP_A5, MASK_A, TMP_A5                         \
-  VCVTPD2UQQ.Z TMP_B5, MASK_B, TMP_B5                         \
-                                                              \
-  /* Decrease the dividend by the first result */             \
-  VPMULLQ.Z TMP_A2, TMP_A5, MASK_A, TMP_A3                    \
-  VPMULLQ.Z TMP_B2, TMP_B5, MASK_B, TMP_B3                    \
-                                                              \
-  VPSUBQ.Z TMP_A3, TMP_A1, MASK_A, TMP_A3                     \
-  VPSUBQ.Z TMP_B3, TMP_B1, MASK_B, TMP_B3                     \
-                                                              \
-  /* Prepare for the second division */                       \
-  VCVTQQ2PD.Z TMP_A3, MASK_A, TMP_A3                          \
-  VCVTQQ2PD.Z TMP_B3, MASK_B, TMP_B3                          \
-                                                              \
-  /* Second division step, corrects results from the first */ \
-  VDIVPD.Z TMP_A4, TMP_A3, MASK_A, TMP_A3                     \
-  VDIVPD.Z TMP_B4, TMP_B3, MASK_B, TMP_B3                     \
-                                                              \
-  VCVTPD2QQ.Z TMP_A3, MASK_A, TMP_A3                          \
-  VCVTPD2QQ.Z TMP_B3, MASK_B, TMP_B3                          \
-                                                              \
-  VPADDQ.Z TMP_A3, TMP_A5, MASK_A, TMP_A5                     \
-  VPADDQ.Z TMP_B3, TMP_B5, MASK_B, TMP_B5                     \
-                                                              \
-  /* Calculate the result by using the second remainder */    \
-  VPMULLQ.Z TMP_A2, TMP_A5, MASK_A, TMP_A3                    \
-  VPMULLQ.Z TMP_B2, TMP_B5, MASK_B, TMP_B3                    \
-                                                              \
-  /* Check whether we need to subtract 1 from the result */   \
-  VPCMPUQ $VPCMP_IMM_GT, TMP_A1, TMP_A3, MASK_A, TMP_MASK_A   \
-  VPCMPUQ $VPCMP_IMM_GT, TMP_B1, TMP_B3, MASK_B, TMP_MASK_B   \
-                                                              \
-  /* Subtract 1 from the result, if necessary */              \
-  VPSUBQ.BCST CONSTQ_1(), TMP_A5, TMP_MASK_A, TMP_A5          \
-  VPSUBQ.BCST CONSTQ_1(), TMP_B5, TMP_MASK_B, TMP_B5          \
-                                                              \
-  /* Calculate the mask of resulting negative results */      \
-  VPMOVQ2M SRC_A1, TMP_MASK_A                                 \
-  VPMOVQ2M SRC_B1, TMP_MASK_B                                 \
-                                                              \
-  /* Calculate the final remainder  */                        \
-  VPMULLQ TMP_A2, TMP_A5, MASK_A, DST_A                       \
-  VPMULLQ TMP_B2, TMP_B5, MASK_B, DST_B                       \
-                                                              \
-  VPSUBQ DST_A, TMP_A1, MASK_A, DST_A                         \
-  VPSUBQ DST_B, TMP_B1, MASK_B, DST_B                         \
-                                                              \
-  /* Negate the result, if the result must be negative */     \
-  VPXORQ TMP_A4, TMP_A4, TMP_A4                               \
-  VPSUBQ DST_A, TMP_A4, TMP_MASK_A, DST_A                     \
-  VPSUBQ DST_B, TMP_A4, TMP_MASK_B, DST_B
-
-#define BC_DIV_FLOOR_I64VEC_BY_U64IMM_IMPL(DST_Z0, DST_Z1, SRC_Z0, SRC_Z1, SRC_Z_IMM, SRC_I64_MINUS_ONE, SRC_K0, SRC_K1, TMP_Z0, TMP_Z1, TMP_Z2, TMP_Z3, TMP_Z4, TMP_Z5, TMP_Z6, TMP_K0, TMP_K1, TMP_K2, TMP_K3) \
-  /* Prepare constants */                                     \
-  VBROADCASTSD CONSTF64_1(), TMP_Z0                           \
-                                                              \
-  /* Calculate reciprocal of SRC_Z_IMM, rounded down */       \
-  VCVTUQQ2PD.RU_SAE SRC_Z_IMM, TMP_Z6                         \
-  VDIVPD.RD_SAE TMP_Z6, TMP_Z0, TMP_Z6                        \
-                                                              \
-  /* Lanes containing negative values */                      \
-  VPMOVQ2M SRC_Z0, TMP_K0                                     \
-  VPMOVQ2M SRC_Z1, TMP_K1                                     \
-                                                              \
-  /* Convert inputs to absolute values */                     \
-  VPABSQ SRC_Z0, TMP_Z4                                       \
-  VPABSQ SRC_Z1, TMP_Z5                                       \
-                                                              \
-  /* Modify dividents to get floor semantics when negative */ \
-  VPADDQ.Z SRC_Z_IMM, SRC_I64_MINUS_ONE, TMP_K0, TMP_Z2       \
-  VPADDQ.Z SRC_Z_IMM, SRC_I64_MINUS_ONE, TMP_K1, TMP_Z3       \
-  VPADDQ TMP_Z2, TMP_Z4, TMP_Z4                               \
-  VPADDQ TMP_Z3, TMP_Z5, TMP_Z5                               \
-                                                              \
-  /* Perform the first division step (estimate) */            \
-  VCVTUQQ2PD.RD_SAE TMP_Z4, TMP_Z2                            \
-  VCVTUQQ2PD.RD_SAE TMP_Z5, TMP_Z3                            \
-  VMULPD.RD_SAE TMP_Z6, TMP_Z2, TMP_Z2                        \
-  VMULPD.RD_SAE TMP_Z6, TMP_Z3, TMP_Z3                        \
-  VCVTPD2UQQ.RD_SAE.Z TMP_Z2, SRC_K0, DST_Z0                  \
-  VCVTPD2UQQ.RD_SAE.Z TMP_Z3, SRC_K1, DST_Z1                  \
-                                                              \
-  /* Decrease the dividend by the estimate */                 \
-  VPMULLQ DST_Z0, SRC_Z_IMM, TMP_Z2                           \
-  VPMULLQ DST_Z1, SRC_Z_IMM, TMP_Z3                           \
-  VPSUBQ TMP_Z2, TMP_Z4, TMP_Z0                               \
-  VPSUBQ TMP_Z3, TMP_Z5, TMP_Z1                               \
-                                                              \
-  /* Perform the second division step (correction) */         \
-  VCVTUQQ2PD.RD_SAE TMP_Z0, TMP_Z2                            \
-  VCVTUQQ2PD.RD_SAE TMP_Z1, TMP_Z3                            \
-  VMULPD.RD_SAE TMP_Z6, TMP_Z2, TMP_Z2                        \
-  VMULPD.RD_SAE TMP_Z6, TMP_Z3, TMP_Z3                        \
-  VCVTPD2UQQ.RD_SAE.Z TMP_Z2, SRC_K0, TMP_Z2                  \
-  VCVTPD2UQQ.RD_SAE.Z TMP_Z3, SRC_K1, TMP_Z3                  \
-                                                              \
-  /* Add the correction to the result estimate */             \
-  VPXORQ TMP_Z6, TMP_Z6, TMP_Z6                               \
-  VPADDQ.Z TMP_Z2, DST_Z0, SRC_K0, DST_Z0                     \
-  VPADDQ.Z TMP_Z3, DST_Z1, SRC_K1, DST_Z1                     \
-                                                              \
-  /* We can still be off by one, so correct it */             \
-  VPMULLQ DST_Z0, SRC_Z_IMM, TMP_Z2                           \
-  VPMULLQ DST_Z1, SRC_Z_IMM, TMP_Z3                           \
-  VPSUBQ TMP_Z2, TMP_Z4, TMP_Z4                               \
-  VPSUBQ TMP_Z3, TMP_Z5, TMP_Z5                               \
-                                                              \
-  VPCMPUQ $VPCMP_IMM_GE, SRC_Z_IMM, TMP_Z4, SRC_K0, TMP_K2    \
-  VPCMPUQ $VPCMP_IMM_GE, SRC_Z_IMM, TMP_Z5, SRC_K1, TMP_K3    \
-  VPSUBQ SRC_I64_MINUS_ONE, DST_Z0, TMP_K2, DST_Z0            \
-  VPSUBQ SRC_I64_MINUS_ONE, DST_Z1, TMP_K3, DST_Z1            \
-                                                              \
-  /* Negate the result, if the result must be negative */     \
-  VPSUBQ DST_Z0, TMP_Z6, TMP_K0, DST_Z0                       \
-  VPSUBQ DST_Z1, TMP_Z6, TMP_K1, DST_Z1
-
 // Integer Math Instructions
 // -------------------------
 
@@ -2736,7 +2404,7 @@ TEXT bcdatebin(SB), NOSPLIT|NOFRAME, $0
   VPSUBQ Z3, Z1, Z5
 
   // (Timestamp - Origin) / Stride
-  BC_DIV_FLOOR_I64VEC_BY_U64IMM_IMPL(OUT(Z6), OUT(Z7), IN(Z4), IN(Z5), IN(Z10), IN(Z31), IN(K1), IN(K2), Z8, Z9, Z12, Z13, Z14, Z15, Z16, K3, K4, K5, K6)
+  BC_DIV_FLOOR_I64VEC_BY_U64IMM(OUT(Z6), OUT(Z7), IN(Z4), IN(Z5), IN(Z10), IN(Z31), IN(K1), IN(K2), Z8, Z9, Z12, Z13, Z14, Z15, Z16, K3, K4, K5, K6)
   VPMULLQ Z10, Z6, Z6
   VPMULLQ Z10, Z7, Z7
 
@@ -3276,25 +2944,17 @@ TEXT bcdatetounixepoch(SB), NOSPLIT|NOFRAME, $0
   BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
   BC_LOAD_I64_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
 
+  BC_FILL_ONES(Z31)
+
   // Discard some bits so we can prepare the timestamp value for division.
   VPSRAQ $6, Z2, Z2
   VPSRAQ $6, Z3, Z3
 
   // 15625 == 1000000 >> 6
-  VPXORQ X5, X5, X5
   VPBROADCASTQ CONSTQ_15625(), Z4
+  BC_DIV_FLOOR_I64VEC_BY_U64IMM(OUT(Z0), OUT(Z1), IN(Z2), IN(Z3), IN(Z4), IN(Z31), IN(K1), IN(K2), Z6, Z7, Z8, Z9, Z10, Z11, Z12, K3, K4, K5, K6)
 
-  VPCMPQ $VPCMP_IMM_LT, Z5, Z2, K1, K3
-  VPCMPQ $VPCMP_IMM_LT, Z5, Z3, K2, K4
-
-  VPSUBQ.BCST CONSTQ_1(), Z4, Z5
-
-  VPSUBQ Z5, Z2, K3, Z2
-  VPSUBQ Z5, Z3, K4, Z3
-
-  BC_DIVI64_IMPL(Z2, Z3, Z2, Z3, Z4, Z4, K1, K2, Z6, Z7, Z8, Z9, Z10, Z11, Z12, Z13, Z14, Z15, K3, K4)
-
-  BC_STORE_I64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+  BC_STORE_I64_TO_SLOT(IN(Z0), IN(Z1), IN(DX))
   NEXT_ADVANCE(BC_SLOT_SIZE*3)
 
 // i64[0] = datetounixmicro(ts[1]).k[2]
@@ -3312,12 +2972,14 @@ TEXT bcdatetruncmillisecond(SB), NOSPLIT|NOFRAME, $0
   BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
   BC_LOAD_I64_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
 
+  BC_FILL_ONES(Z31)
   VPBROADCASTQ CONSTQ_1000(), Z4
-  BC_DIVU64_IMPL(Z2, Z3, Z2, Z3, Z4, Z4, K1, K2, Z6, Z7, Z8, Z9, Z10, Z11, K3, K4)
-  VPMULLQ Z4, Z2, K1, Z2
-  VPMULLQ Z4, Z3, K2, Z3
 
-  BC_STORE_I64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+  BC_MOD_FLOOR_I64VEC_BY_U64IMM(OUT(Z0), OUT(Z1), IN(Z2), IN(Z3), IN(Z4), IN(Z31), IN(K1), IN(K2), Z6, Z7, Z8, Z9, Z10, Z11, Z12, K3, K4)
+  VPSUBQ Z0, Z2, Z0
+  VPSUBQ Z1, Z3, Z1
+
+  BC_STORE_I64_TO_SLOT(IN(Z0), IN(Z1), IN(DX))
   NEXT_ADVANCE(BC_SLOT_SIZE*3)
 
 // ts[0] = datetruncsecond(ts[1]).k[2]
@@ -3326,12 +2988,14 @@ TEXT bcdatetruncsecond(SB), NOSPLIT|NOFRAME, $0
   BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
   BC_LOAD_I64_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
 
+  BC_FILL_ONES(Z31)
   VPBROADCASTQ CONSTQ_1000000(), Z4
-  BC_DIVU64_IMPL(Z2, Z3, Z2, Z3, Z4, Z4, K1, K2, Z6, Z7, Z8, Z9, Z10, Z11, K3, K4)
-  VPMULLQ Z4, Z2, K1, Z2
-  VPMULLQ Z4, Z3, K2, Z3
 
-  BC_STORE_I64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+  BC_MOD_FLOOR_I64VEC_BY_U64IMM(OUT(Z0), OUT(Z1), IN(Z2), IN(Z3), IN(Z4), IN(Z31), IN(K1), IN(K2), Z6, Z7, Z8, Z9, Z10, Z11, Z12, K3, K4)
+  VPSUBQ Z0, Z2, Z0
+  VPSUBQ Z1, Z3, Z1
+
+  BC_STORE_I64_TO_SLOT(IN(Z0), IN(Z1), IN(DX))
   NEXT_ADVANCE(BC_SLOT_SIZE*3)
 
 // ts[0] = datetruncminute(ts[1]).k[2]
@@ -3340,12 +3004,14 @@ TEXT bcdatetruncminute(SB), NOSPLIT|NOFRAME, $0
   BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
   BC_LOAD_I64_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
 
+  BC_FILL_ONES(Z31)
   VPBROADCASTQ CONSTQ_60000000(), Z4
-  BC_DIVU64_IMPL(Z2, Z3, Z2, Z3, Z4, Z4, K1, K2, Z6, Z7, Z8, Z9, Z10, Z11, K3, K4)
-  VPMULLQ Z4, Z2, K1, Z2
-  VPMULLQ Z4, Z3, K2, Z3
 
-  BC_STORE_I64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+  BC_MOD_FLOOR_I64VEC_BY_U64IMM(OUT(Z0), OUT(Z1), IN(Z2), IN(Z3), IN(Z4), IN(Z31), IN(K1), IN(K2), Z6, Z7, Z8, Z9, Z10, Z11, Z12, K3, K4)
+  VPSUBQ Z0, Z2, Z0
+  VPSUBQ Z1, Z3, Z1
+
+  BC_STORE_I64_TO_SLOT(IN(Z0), IN(Z1), IN(DX))
   NEXT_ADVANCE(BC_SLOT_SIZE*3)
 
 // ts[0] = datetrunchour(ts[1]).k[2]
@@ -3354,12 +3020,14 @@ TEXT bcdatetrunchour(SB), NOSPLIT|NOFRAME, $0
   BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
   BC_LOAD_I64_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
 
+  BC_FILL_ONES(Z31)
   VPBROADCASTQ CONSTQ_3600000000(), Z4
-  BC_DIVU64_IMPL(Z2, Z3, Z2, Z3, Z4, Z4, K1, K2, Z6, Z7, Z8, Z9, Z10, Z11, K3, K4)
-  VPMULLQ Z4, Z2, K1, Z2
-  VPMULLQ Z4, Z3, K2, Z3
 
-  BC_STORE_I64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+  BC_MOD_FLOOR_I64VEC_BY_U64IMM(OUT(Z0), OUT(Z1), IN(Z2), IN(Z3), IN(Z4), IN(Z31), IN(K1), IN(K2), Z6, Z7, Z8, Z9, Z10, Z11, Z12, K3, K4)
+  VPSUBQ Z0, Z2, Z0
+  VPSUBQ Z1, Z3, Z1
+
+  BC_STORE_I64_TO_SLOT(IN(Z0), IN(Z1), IN(DX))
   NEXT_ADVANCE(BC_SLOT_SIZE*3)
 
 // ts[0] = datetruncday(ts[1]).k[2]
@@ -3368,12 +3036,14 @@ TEXT bcdatetruncday(SB), NOSPLIT|NOFRAME, $0
   BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
   BC_LOAD_I64_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
 
+  BC_FILL_ONES(Z31)
   VPBROADCASTQ CONSTQ_86400000000(), Z4
-  BC_DIVU64_IMPL(Z2, Z3, Z2, Z3, Z4, Z4, K1, K2, Z6, Z7, Z8, Z9, Z10, Z11, K3, K4)
-  VPMULLQ Z4, Z2, K1, Z2
-  VPMULLQ Z4, Z3, K2, Z3
 
-  BC_STORE_I64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+  BC_MOD_FLOOR_I64VEC_BY_U64IMM(OUT(Z0), OUT(Z1), IN(Z2), IN(Z3), IN(Z4), IN(Z31), IN(K1), IN(K2), Z6, Z7, Z8, Z9, Z10, Z11, Z12, K3, K4)
+  VPSUBQ Z0, Z2, Z0
+  VPSUBQ Z1, Z3, Z1
+
+  BC_STORE_I64_TO_SLOT(IN(Z0), IN(Z1), IN(DX))
   NEXT_ADVANCE(BC_SLOT_SIZE*3)
 
 // ts[0] = datetruncdow(ts[1], i16@imm[2]).k[3]

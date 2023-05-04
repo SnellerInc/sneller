@@ -273,6 +273,12 @@ const (
 	smodimmi      // out = x % imm
 	srmodimmf     // out = imm % x
 	srmodimmi     // out = imm % x
+	spmodf        // out = pmod(x, y)
+	spmodi        // out = pmod(x, y)
+	spmodimmf     // out = pmod(x, imm)
+	spmodimmi     // out = pmod(x, imm)
+	srpmodimmf    // out = pmod(imm, x)
+	srpmodimmi    // out = pmod(imm, x)
 	sminvaluef    // out = min(x, y)
 	sminvaluei    // out = min(x, y)
 	sminvalueimmf // out = min(x, imm)
@@ -923,6 +929,12 @@ var _ssainfo = [_ssamax]ssaopinfo{
 	smodimmi:      {text: "mod.imm.i", rettype: stIntMasked, argtypes: []ssatype{stInt, stBool}, immfmt: fmti64, bc: opmodi64imm},
 	srmodimmf:     {text: "rmod.imm.f", rettype: stFloatMasked, argtypes: []ssatype{stFloat, stBool}, immfmt: fmtf64, bc: oprmodf64imm},
 	srmodimmi:     {text: "rmod.imm.i", rettype: stIntMasked, argtypes: []ssatype{stInt, stBool}, immfmt: fmti64, bc: oprmodi64imm},
+	spmodf:        {text: "pmod.f", rettype: stFloatMasked, argtypes: []ssatype{stFloat, stFloat, stBool}, bc: oppmodf64},
+	spmodi:        {text: "pmod.i", rettype: stIntMasked, argtypes: []ssatype{stInt, stInt, stBool}, bc: oppmodi64},
+	spmodimmf:     {text: "pmod.imm.f", rettype: stFloatMasked, argtypes: []ssatype{stFloat, stBool}, immfmt: fmtf64, bc: oppmodf64imm},
+	spmodimmi:     {text: "pmod.imm.i", rettype: stIntMasked, argtypes: []ssatype{stInt, stBool}, immfmt: fmti64, bc: oppmodi64imm},
+	srpmodimmf:    {text: "rpmod.imm.f", rettype: stFloatMasked, argtypes: []ssatype{stFloat, stBool}, immfmt: fmtf64, bc: oprpmodf64imm},
+	srpmodimmi:    {text: "rpmod.imm.i", rettype: stIntMasked, argtypes: []ssatype{stInt, stBool}, immfmt: fmti64, bc: oprpmodi64imm},
 	sminvaluef:    {text: "minvalue.f", rettype: stFloat, argtypes: []ssatype{stFloat, stFloat, stBool}, bc: opminvaluef64},
 	sminvaluei:    {text: "minvalue.i", rettype: stInt, argtypes: []ssatype{stInt, stInt, stBool}, bc: opminvaluei64},
 	sminvalueimmf: {text: "minvalue.imm.f", rettype: stFloat, argtypes: []ssatype{stFloat, stBool}, immfmt: fmtf64, bc: opminvaluef64imm},

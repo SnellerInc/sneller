@@ -619,6 +619,39 @@ func simplifyTrunc(h Hint, args []Node) Node     { return simplifyRoundOp(h, arg
 func simplifyFloor(h Hint, args []Node) Node     { return simplifyRoundOp(h, args, roundFloorOp) }
 func simplifyCeil(h Hint, args []Node) Node      { return simplifyRoundOp(h, args, roundCeilOp) }
 
+func simplifyPmod(h Hint, args []Node) Node {
+	if len(args) != 2 {
+		return nil
+	}
+
+	left := missingUnless(args[0], h, NumericType)
+	right := missingUnless(args[1], h, NumericType)
+
+	if miss(left, h) || miss(right, h) {
+		return Missing{}
+	}
+
+	if a := asrational(left); a != nil {
+		if b := asrational(right); b != nil {
+			if b.Sign() == 0 {
+				return Missing{}
+			}
+
+			if b.Sign() < 0 {
+				b = new(big.Rat).Abs(b)
+			}
+
+			result := modulusRational(a, b)
+			if result.Sign() < 0 {
+				result = result.Add(b, result)
+			}
+			return (*Rational)(result)
+		}
+	}
+
+	return nil
+}
+
 func asint64(x *big.Rat) (int64, bool) {
 	if !x.IsInt() {
 		return roundBigRat(x, roundTruncOp).Num().Int64(), true

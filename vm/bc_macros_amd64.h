@@ -32,8 +32,464 @@
 #define IN_OUT(Reg) Reg
 #define CLOBBER(Reg) Reg
 
+// Integer Utilities for Inlining
+// ------------------------------
+
+#define BC_DIV_U64VEC_BY_U64VEC(DST_Z0, DST_Z1, SRC_A_Z0, SRC_A_Z1, SRC_B_Z0, SRC_B_Z1, SRC_I64_MINUS_ONE, SRC_K0, SRC_K1, TMP_Z0, TMP_Z1, TMP_Z2, TMP_Z3, TMP_Z4, TMP_Z5, TMP_Z6, TMP_Z7, TMP_Z8, TMP_Z9, TMP_K0, TMP_K1) \
+  /* Prepare constants */                                     \
+  VBROADCASTSD CONSTF64_1(), TMP_Z0                           \
+                                                              \
+  /* Calculate the reciprocal of SRC_B_IMM, rounded down */   \
+  VCVTUQQ2PD.RU_SAE SRC_B_Z0, TMP_Z8                          \
+  VCVTUQQ2PD.RU_SAE SRC_B_Z1, TMP_Z9                          \
+  VDIVPD.RD_SAE TMP_Z8, TMP_Z0, TMP_Z8                        \
+  VDIVPD.RD_SAE TMP_Z9, TMP_Z0, TMP_Z9                        \
+                                                              \
+  /* Perform the first division step (estimate) */            \
+  VCVTUQQ2PD.RD_SAE SRC_A_Z0, TMP_Z2                          \
+  VCVTUQQ2PD.RD_SAE SRC_A_Z1, TMP_Z3                          \
+  VMULPD.RD_SAE TMP_Z8, TMP_Z2, TMP_Z2                        \
+  VMULPD.RD_SAE TMP_Z9, TMP_Z3, TMP_Z3                        \
+  VCVTPD2UQQ.RD_SAE.Z TMP_Z2, SRC_K0, DST_Z0                  \
+  VCVTPD2UQQ.RD_SAE.Z TMP_Z3, SRC_K1, DST_Z1                  \
+                                                              \
+  /* Decrease the dividend by the estimate */                 \
+  VPMULLQ DST_Z0, SRC_B_Z0, TMP_Z2                            \
+  VPMULLQ DST_Z1, SRC_B_Z1, TMP_Z3                            \
+  VPSUBQ TMP_Z2, SRC_A_Z0, TMP_Z0                             \
+  VPSUBQ TMP_Z3, SRC_A_Z1, TMP_Z1                             \
+                                                              \
+  /* Perform the second division step (correction) */         \
+  VCVTUQQ2PD.RD_SAE TMP_Z0, TMP_Z2                            \
+  VCVTUQQ2PD.RD_SAE TMP_Z1, TMP_Z3                            \
+  VMULPD.RD_SAE TMP_Z8, TMP_Z2, TMP_Z2                        \
+  VMULPD.RD_SAE TMP_Z9, TMP_Z3, TMP_Z3                        \
+  VCVTPD2UQQ.RD_SAE.Z TMP_Z2, SRC_K0, TMP_Z2                  \
+  VCVTPD2UQQ.RD_SAE.Z TMP_Z3, SRC_K1, TMP_Z3                  \
+                                                              \
+  /* Add the correction to the result estimate */             \
+  VPXORQ TMP_Z9, TMP_Z9, TMP_Z9                               \
+  VPADDQ.Z TMP_Z2, DST_Z0, SRC_K0, DST_Z0                     \
+  VPADDQ.Z TMP_Z3, DST_Z1, SRC_K1, DST_Z1                     \
+                                                              \
+  /* We can still be off by one, so correct it */             \
+  VPMULLQ DST_Z0, SRC_B_Z0, TMP_Z2                            \
+  VPMULLQ DST_Z1, SRC_B_Z1, TMP_Z3                            \
+  VPSUBQ TMP_Z2, SRC_A_Z0, TMP_Z4                             \
+  VPSUBQ TMP_Z3, SRC_A_Z1, TMP_Z5                             \
+                                                              \
+  VPCMPUQ $VPCMP_IMM_GE, SRC_B_Z0, TMP_Z4, SRC_K0, TMP_K0     \
+  VPCMPUQ $VPCMP_IMM_GE, SRC_B_Z1, TMP_Z5, SRC_K1, TMP_K1     \
+  VPSUBQ SRC_I64_MINUS_ONE, DST_Z0, TMP_K0, DST_Z0            \
+  VPSUBQ SRC_I64_MINUS_ONE, DST_Z1, TMP_K1, DST_Z1            \
+                                                              \
+  /* Lanes that must yield either zero or a negative value */ \
+  VPXORQ SRC_A_Z0, SRC_B_Z0, TMP_Z4                           \
+  VPXORQ SRC_A_Z1, SRC_B_Z1, TMP_Z5                           \
+  VPMOVQ2M TMP_Z4, TMP_K0                                     \
+  VPMOVQ2M TMP_Z5, TMP_K1                                     \
+                                                              \
+  /* Negate the result, if the result must be negative */     \
+  VPSUBQ DST_Z0, TMP_Z9, TMP_K0, DST_Z0                       \
+  VPSUBQ DST_Z1, TMP_Z9, TMP_K1, DST_Z1
+
+#define BC_DIV_TRUNC_I64VEC_BY_I64VEC(DST_Z0, DST_Z1, SRC_A_Z0, SRC_A_Z1, SRC_B_Z0, SRC_B_Z1, SRC_I64_MINUS_ONE, SRC_K0, SRC_K1, TMP_Z0, TMP_Z1, TMP_Z2, TMP_Z3, TMP_Z4, TMP_Z5, TMP_Z6, TMP_Z7, TMP_Z8, TMP_Z9, TMP_K0, TMP_K1) \
+  /* Prepare constants */                                     \
+  VBROADCASTSD CONSTF64_1(), TMP_Z0                           \
+                                                              \
+  /* Calculate the reciprocal of SRC_B, rounded down */       \
+  VPABSQ SRC_B_Z0, TMP_Z6                                     \
+  VPABSQ SRC_B_Z1, TMP_Z7                                     \
+  VCVTUQQ2PD.RU_SAE TMP_Z6, TMP_Z8                            \
+  VCVTUQQ2PD.RU_SAE TMP_Z7, TMP_Z9                            \
+  VDIVPD.RD_SAE TMP_Z8, TMP_Z0, TMP_Z8                        \
+  VDIVPD.RD_SAE TMP_Z9, TMP_Z0, TMP_Z9                        \
+                                                              \
+  /* Convert dividends to absolute values */                  \
+  VPABSQ SRC_A_Z0, TMP_Z4                                     \
+  VPABSQ SRC_A_Z1, TMP_Z5                                     \
+                                                              \
+  /* Perform the first division step (estimate) */            \
+  VCVTUQQ2PD.RD_SAE TMP_Z4, TMP_Z2                            \
+  VCVTUQQ2PD.RD_SAE TMP_Z5, TMP_Z3                            \
+  VMULPD.RD_SAE TMP_Z8, TMP_Z2, TMP_Z2                        \
+  VMULPD.RD_SAE TMP_Z9, TMP_Z3, TMP_Z3                        \
+  VCVTPD2UQQ.RD_SAE.Z TMP_Z2, SRC_K0, DST_Z0                  \
+  VCVTPD2UQQ.RD_SAE.Z TMP_Z3, SRC_K1, DST_Z1                  \
+                                                              \
+  /* Decrease the dividend by the estimate */                 \
+  VPMULLQ DST_Z0, TMP_Z6, TMP_Z2                              \
+  VPMULLQ DST_Z1, TMP_Z7, TMP_Z3                              \
+  VPSUBQ TMP_Z2, TMP_Z4, TMP_Z0                               \
+  VPSUBQ TMP_Z3, TMP_Z5, TMP_Z1                               \
+                                                              \
+  /* Perform the second division step (correction) */         \
+  VCVTUQQ2PD.RD_SAE TMP_Z0, TMP_Z2                            \
+  VCVTUQQ2PD.RD_SAE TMP_Z1, TMP_Z3                            \
+  VMULPD.RD_SAE TMP_Z8, TMP_Z2, TMP_Z2                        \
+  VMULPD.RD_SAE TMP_Z9, TMP_Z3, TMP_Z3                        \
+  VCVTPD2UQQ.RD_SAE.Z TMP_Z2, SRC_K0, TMP_Z2                  \
+  VCVTPD2UQQ.RD_SAE.Z TMP_Z3, SRC_K1, TMP_Z3                  \
+                                                              \
+  /* Add the correction to the result estimate */             \
+  VPXORQ TMP_Z9, TMP_Z9, TMP_Z9                               \
+  VPADDQ.Z TMP_Z2, DST_Z0, SRC_K0, DST_Z0                     \
+  VPADDQ.Z TMP_Z3, DST_Z1, SRC_K1, DST_Z1                     \
+                                                              \
+  /* We can still be off by one, so correct it */             \
+  VPMULLQ DST_Z0, TMP_Z6, TMP_Z2                              \
+  VPMULLQ DST_Z1, TMP_Z7, TMP_Z3                              \
+  VPSUBQ TMP_Z2, TMP_Z4, TMP_Z4                               \
+  VPSUBQ TMP_Z3, TMP_Z5, TMP_Z5                               \
+                                                              \
+  VPCMPUQ $VPCMP_IMM_GE, TMP_Z6, TMP_Z4, SRC_K0, TMP_K0       \
+  VPCMPUQ $VPCMP_IMM_GE, TMP_Z7, TMP_Z5, SRC_K1, TMP_K1       \
+  VPSUBQ SRC_I64_MINUS_ONE, DST_Z0, TMP_K0, DST_Z0            \
+  VPSUBQ SRC_I64_MINUS_ONE, DST_Z1, TMP_K1, DST_Z1            \
+                                                              \
+  /* Lanes that must yield either zero or a negative value */ \
+  VPXORQ SRC_A_Z0, SRC_B_Z0, TMP_Z4                           \
+  VPXORQ SRC_A_Z1, SRC_B_Z1, TMP_Z5                           \
+  VPMOVQ2M TMP_Z4, TMP_K0                                     \
+  VPMOVQ2M TMP_Z5, TMP_K1                                     \
+                                                              \
+  /* Negate the result, if the result must be negative */     \
+  VPSUBQ DST_Z0, TMP_Z9, TMP_K0, DST_Z0                       \
+  VPSUBQ DST_Z1, TMP_Z9, TMP_K1, DST_Z1
+
+#define BC_DIV_TRUNC_I64VEC_BY_I64IMM(DST_Z0, DST_Z1, SRC_A_Z0, SRC_A_Z1, SRC_B_IMM, SRC_I64_MINUS_ONE, SRC_K0, SRC_K1, TMP_Z0, TMP_Z1, TMP_Z2, TMP_Z3, TMP_Z4, TMP_Z5, TMP_Z6, TMP_Z7, TMP_K0, TMP_K1) \
+  /* Prepare constants */                                     \
+  VBROADCASTSD CONSTF64_1(), TMP_Z0                           \
+                                                              \
+  /* Calculate the reciprocal of SRC_B_IMM, rounded down */   \
+  VPABSQ SRC_B_IMM, TMP_Z7                                    \
+  VCVTUQQ2PD.RU_SAE TMP_Z7, TMP_Z6                            \
+  VDIVPD.RD_SAE TMP_Z6, TMP_Z0, TMP_Z6                        \
+                                                              \
+  /* Convert dividends to absolute values */                  \
+  VPABSQ SRC_A_Z0, TMP_Z4                                     \
+  VPABSQ SRC_A_Z1, TMP_Z5                                     \
+                                                              \
+  /* Perform the first division step (estimate) */            \
+  VCVTUQQ2PD.RD_SAE TMP_Z4, TMP_Z2                            \
+  VCVTUQQ2PD.RD_SAE TMP_Z5, TMP_Z3                            \
+  VMULPD.RD_SAE TMP_Z6, TMP_Z2, TMP_Z2                        \
+  VMULPD.RD_SAE TMP_Z6, TMP_Z3, TMP_Z3                        \
+  VCVTPD2UQQ.RD_SAE.Z TMP_Z2, SRC_K0, DST_Z0                  \
+  VCVTPD2UQQ.RD_SAE.Z TMP_Z3, SRC_K1, DST_Z1                  \
+                                                              \
+  /* Decrease the dividend by the estimate */                 \
+  VPMULLQ DST_Z0, TMP_Z7, TMP_Z2                              \
+  VPMULLQ DST_Z1, TMP_Z7, TMP_Z3                              \
+  VPSUBQ TMP_Z2, TMP_Z4, TMP_Z0                               \
+  VPSUBQ TMP_Z3, TMP_Z5, TMP_Z1                               \
+                                                              \
+  /* Perform the second division step (correction) */         \
+  VCVTUQQ2PD.RD_SAE TMP_Z0, TMP_Z2                            \
+  VCVTUQQ2PD.RD_SAE TMP_Z1, TMP_Z3                            \
+  VMULPD.RD_SAE TMP_Z6, TMP_Z2, TMP_Z2                        \
+  VMULPD.RD_SAE TMP_Z6, TMP_Z3, TMP_Z3                        \
+  VCVTPD2UQQ.RD_SAE.Z TMP_Z2, SRC_K0, TMP_Z2                  \
+  VCVTPD2UQQ.RD_SAE.Z TMP_Z3, SRC_K1, TMP_Z3                  \
+                                                              \
+  /* Add the correction to the result estimate */             \
+  VPXORQ TMP_Z6, TMP_Z6, TMP_Z6                               \
+  VPADDQ.Z TMP_Z2, DST_Z0, SRC_K0, DST_Z0                     \
+  VPADDQ.Z TMP_Z3, DST_Z1, SRC_K1, DST_Z1                     \
+                                                              \
+  /* We can still be off by one, so correct it */             \
+  VPMULLQ DST_Z0, TMP_Z7, TMP_Z2                              \
+  VPMULLQ DST_Z1, TMP_Z7, TMP_Z3                              \
+  VPSUBQ TMP_Z2, TMP_Z4, TMP_Z4                               \
+  VPSUBQ TMP_Z3, TMP_Z5, TMP_Z5                               \
+                                                              \
+  VPCMPUQ $VPCMP_IMM_GE, TMP_Z7, TMP_Z4, SRC_K0, TMP_K0       \
+  VPCMPUQ $VPCMP_IMM_GE, TMP_Z7, TMP_Z5, SRC_K1, TMP_K1       \
+  VPSUBQ SRC_I64_MINUS_ONE, DST_Z0, TMP_K0, DST_Z0            \
+  VPSUBQ SRC_I64_MINUS_ONE, DST_Z1, TMP_K1, DST_Z1            \
+                                                              \
+  /* Lanes that must yield either zero or a negative value */ \
+  VPXORQ SRC_A_Z0, SRC_B_IMM, TMP_Z4                          \
+  VPXORQ SRC_A_Z1, SRC_B_IMM, TMP_Z5                          \
+  VPMOVQ2M TMP_Z4, TMP_K0                                     \
+  VPMOVQ2M TMP_Z5, TMP_K1                                     \
+                                                              \
+  /* Negate the result, if the result must be negative */     \
+  VPSUBQ DST_Z0, TMP_Z6, TMP_K0, DST_Z0                       \
+  VPSUBQ DST_Z1, TMP_Z6, TMP_K1, DST_Z1
+
+#define BC_DIV_FLOOR_I64VEC_BY_U64IMM(DST_Z0, DST_Z1, SRC_A_Z0, SRC_A_Z1, SRC_B_IMM, SRC_I64_MINUS_ONE, SRC_K0, SRC_K1, TMP_Z0, TMP_Z1, TMP_Z2, TMP_Z3, TMP_Z4, TMP_Z5, TMP_Z6, TMP_K0, TMP_K1, TMP_K2, TMP_K3) \
+  /* Prepare constants */                                     \
+  VBROADCASTSD CONSTF64_1(), TMP_Z0                           \
+                                                              \
+  /* Calculate reciprocal of SRC_B_IMM, rounded down */       \
+  VCVTUQQ2PD.RU_SAE SRC_B_IMM, TMP_Z6                         \
+  VDIVPD.RD_SAE TMP_Z6, TMP_Z0, TMP_Z6                        \
+                                                              \
+  /* Lanes containing negative values */                      \
+  VPMOVQ2M SRC_A_Z0, TMP_K0                                   \
+  VPMOVQ2M SRC_A_Z1, TMP_K1                                   \
+                                                              \
+  /* Convert inputs to absolute values */                     \
+  VPABSQ SRC_A_Z0, TMP_Z4                                     \
+  VPABSQ SRC_A_Z1, TMP_Z5                                     \
+                                                              \
+  /* Modify dividents to get floor semantics when negative */ \
+  VPADDQ.Z SRC_B_IMM, SRC_I64_MINUS_ONE, TMP_K0, TMP_Z2       \
+  VPADDQ.Z SRC_B_IMM, SRC_I64_MINUS_ONE, TMP_K1, TMP_Z3       \
+  VPADDQ TMP_Z2, TMP_Z4, TMP_Z4                               \
+  VPADDQ TMP_Z3, TMP_Z5, TMP_Z5                               \
+                                                              \
+  /* Perform the first division step (estimate) */            \
+  VCVTUQQ2PD.RD_SAE TMP_Z4, TMP_Z2                            \
+  VCVTUQQ2PD.RD_SAE TMP_Z5, TMP_Z3                            \
+  VMULPD.RD_SAE TMP_Z6, TMP_Z2, TMP_Z2                        \
+  VMULPD.RD_SAE TMP_Z6, TMP_Z3, TMP_Z3                        \
+  VCVTPD2UQQ.RD_SAE.Z TMP_Z2, SRC_K0, DST_Z0                  \
+  VCVTPD2UQQ.RD_SAE.Z TMP_Z3, SRC_K1, DST_Z1                  \
+                                                              \
+  /* Decrease the dividend by the estimate */                 \
+  VPMULLQ DST_Z0, SRC_B_IMM, TMP_Z2                           \
+  VPMULLQ DST_Z1, SRC_B_IMM, TMP_Z3                           \
+  VPSUBQ TMP_Z2, TMP_Z4, TMP_Z0                               \
+  VPSUBQ TMP_Z3, TMP_Z5, TMP_Z1                               \
+                                                              \
+  /* Perform the second division step (correction) */         \
+  VCVTUQQ2PD.RD_SAE TMP_Z0, TMP_Z2                            \
+  VCVTUQQ2PD.RD_SAE TMP_Z1, TMP_Z3                            \
+  VMULPD.RD_SAE TMP_Z6, TMP_Z2, TMP_Z2                        \
+  VMULPD.RD_SAE TMP_Z6, TMP_Z3, TMP_Z3                        \
+  VCVTPD2UQQ.RD_SAE.Z TMP_Z2, SRC_K0, TMP_Z2                  \
+  VCVTPD2UQQ.RD_SAE.Z TMP_Z3, SRC_K1, TMP_Z3                  \
+                                                              \
+  /* Add the correction to the result estimate */             \
+  VPXORQ TMP_Z6, TMP_Z6, TMP_Z6                               \
+  VPADDQ.Z TMP_Z2, DST_Z0, SRC_K0, DST_Z0                     \
+  VPADDQ.Z TMP_Z3, DST_Z1, SRC_K1, DST_Z1                     \
+                                                              \
+  /* We can still be off by one, so correct it */             \
+  VPMULLQ DST_Z0, SRC_B_IMM, TMP_Z2                           \
+  VPMULLQ DST_Z1, SRC_B_IMM, TMP_Z3                           \
+  VPSUBQ TMP_Z2, TMP_Z4, TMP_Z4                               \
+  VPSUBQ TMP_Z3, TMP_Z5, TMP_Z5                               \
+                                                              \
+  VPCMPUQ $VPCMP_IMM_GE, SRC_B_IMM, TMP_Z4, SRC_K0, TMP_K2    \
+  VPCMPUQ $VPCMP_IMM_GE, SRC_B_IMM, TMP_Z5, SRC_K1, TMP_K3    \
+  VPSUBQ SRC_I64_MINUS_ONE, DST_Z0, TMP_K2, DST_Z0            \
+  VPSUBQ SRC_I64_MINUS_ONE, DST_Z1, TMP_K3, DST_Z1            \
+                                                              \
+  /* Negate the result, if the result must be negative */     \
+  VPSUBQ DST_Z0, TMP_Z6, TMP_K0, DST_Z0                       \
+  VPSUBQ DST_Z1, TMP_Z6, TMP_K1, DST_Z1
+
+#define BC_MOD_FLOOR_I64VEC_BY_U64VEC(DST_Z0, DST_Z1, SRC_A_Z0, SRC_A_Z1, SRC_B_Z0, SRC_B_Z1, SRC_I64_MINUS_ONE, SRC_K0, SRC_K1, TMP_Z0, TMP_Z1, TMP_Z2, TMP_Z3, TMP_Z4, TMP_Z5, TMP_Z6, TMP_Z7, TMP_K0, TMP_K1) \
+  /* Prepare constants */                                     \
+  VBROADCASTSD CONSTF64_1(), TMP_Z0                           \
+                                                              \
+  /* Calculate reciprocal of SRC_B_IMM, rounded down */       \
+  VCVTUQQ2PD.RU_SAE SRC_B_Z0, TMP_Z6                          \
+  VCVTUQQ2PD.RU_SAE SRC_B_Z1, TMP_Z7                          \
+  VDIVPD.RD_SAE TMP_Z6, TMP_Z0, TMP_Z6                        \
+  VDIVPD.RD_SAE TMP_Z7, TMP_Z0, TMP_Z7                        \
+                                                              \
+  /* Convert inputs to absolute values */                     \
+  VPABSQ SRC_A_Z0, TMP_Z4                                     \
+  VPABSQ SRC_A_Z1, TMP_Z5                                     \
+                                                              \
+  /* Perform the first division step (estimate) */            \
+  VCVTUQQ2PD.RD_SAE TMP_Z4, TMP_Z2                            \
+  VCVTUQQ2PD.RD_SAE TMP_Z5, TMP_Z3                            \
+  VMULPD.RD_SAE TMP_Z6, TMP_Z2, TMP_Z2                        \
+  VMULPD.RD_SAE TMP_Z7, TMP_Z3, TMP_Z3                        \
+  VCVTPD2UQQ.RD_SAE.Z TMP_Z2, SRC_K0, DST_Z0                  \
+  VCVTPD2UQQ.RD_SAE.Z TMP_Z3, SRC_K1, DST_Z1                  \
+                                                              \
+  /* Decrease the dividend by the estimate */                 \
+  VPMULLQ DST_Z0, SRC_B_Z0, TMP_Z2                            \
+  VPMULLQ DST_Z1, SRC_B_Z1, TMP_Z3                            \
+  VPSUBQ TMP_Z2, TMP_Z4, TMP_Z0                               \
+  VPSUBQ TMP_Z3, TMP_Z5, TMP_Z1                               \
+                                                              \
+  /* Perform the second division step (correction) */         \
+  VCVTUQQ2PD.RD_SAE TMP_Z0, TMP_Z2                            \
+  VCVTUQQ2PD.RD_SAE TMP_Z1, TMP_Z3                            \
+  VMULPD.RD_SAE TMP_Z6, TMP_Z2, TMP_Z2                        \
+  VMULPD.RD_SAE TMP_Z7, TMP_Z3, TMP_Z3                        \
+  VCVTPD2UQQ.RD_SAE.Z TMP_Z2, SRC_K0, TMP_Z2                  \
+  VCVTPD2UQQ.RD_SAE.Z TMP_Z3, SRC_K1, TMP_Z3                  \
+                                                              \
+  /* Add the correction to the result estimate */             \
+  VPADDQ.Z TMP_Z2, DST_Z0, SRC_K0, DST_Z0                     \
+  VPADDQ.Z TMP_Z3, DST_Z1, SRC_K1, DST_Z1                     \
+                                                              \
+  /* We can still be off by one, so correct it */             \
+  VPMULLQ DST_Z0, SRC_B_Z0, TMP_Z2                            \
+  VPMULLQ DST_Z1, SRC_B_Z1, TMP_Z3                            \
+  VPSUBQ TMP_Z2, TMP_Z4, DST_Z0                               \
+  VPSUBQ TMP_Z3, TMP_Z5, DST_Z1                               \
+                                                              \
+  VPCMPUQ $VPCMP_IMM_GE, SRC_B_Z0, DST_Z0, SRC_K0, TMP_K0     \
+  VPCMPUQ $VPCMP_IMM_GE, SRC_B_Z1, DST_Z1, SRC_K1, TMP_K1     \
+  VPSUBQ SRC_B_Z0, DST_Z0, TMP_K0, DST_Z0                     \
+  VPSUBQ SRC_B_Z1, DST_Z1, TMP_K1, DST_Z1                     \
+                                                              \
+  /* Lanes containing negative SRC and have non-zero DST */   \
+  VPMOVQ2M SRC_A_Z0, TMP_K0                                   \
+  VPMOVQ2M SRC_A_Z1, TMP_K1                                   \
+  VPTESTMQ DST_Z0, DST_Z0, TMP_K0, TMP_K0                     \
+  VPTESTMQ DST_Z1, DST_Z1, TMP_K1, TMP_K1                     \
+                                                              \
+  /* Fixup the results to get a floor semantics */            \
+  VPSUBQ DST_Z0, SRC_B_Z0, TMP_K0, DST_Z0                     \
+  VPSUBQ DST_Z1, SRC_B_Z1, TMP_K1, DST_Z1
+
+#define BC_MOD_FLOOR_I64VEC_BY_U64IMM(DST_Z0, DST_Z1, SRC_A_Z0, SRC_A_Z1, SRC_B_IMM, SRC_I64_MINUS_ONE, SRC_K0, SRC_K1, TMP_Z0, TMP_Z1, TMP_Z2, TMP_Z3, TMP_Z4, TMP_Z5, TMP_Z6, TMP_K0, TMP_K1) \
+  /* Prepare constants */                                     \
+  VBROADCASTSD CONSTF64_1(), TMP_Z0                           \
+                                                              \
+  /* Calculate reciprocal of SRC_B_IMM, rounded down */       \
+  VCVTUQQ2PD.RU_SAE SRC_B_IMM, TMP_Z6                         \
+  VDIVPD.RD_SAE TMP_Z6, TMP_Z0, TMP_Z6                        \
+                                                              \
+  /* Convert inputs to absolute values */                     \
+  VPABSQ SRC_A_Z0, TMP_Z4                                     \
+  VPABSQ SRC_A_Z1, TMP_Z5                                     \
+                                                              \
+  /* Perform the first division step (estimate) */            \
+  VCVTUQQ2PD.RD_SAE TMP_Z4, TMP_Z2                            \
+  VCVTUQQ2PD.RD_SAE TMP_Z5, TMP_Z3                            \
+  VMULPD.RD_SAE TMP_Z6, TMP_Z2, TMP_Z2                        \
+  VMULPD.RD_SAE TMP_Z6, TMP_Z3, TMP_Z3                        \
+  VCVTPD2UQQ.RD_SAE.Z TMP_Z2, SRC_K0, DST_Z0                  \
+  VCVTPD2UQQ.RD_SAE.Z TMP_Z3, SRC_K1, DST_Z1                  \
+                                                              \
+  /* Decrease the dividend by the estimate */                 \
+  VPMULLQ DST_Z0, SRC_B_IMM, TMP_Z2                           \
+  VPMULLQ DST_Z1, SRC_B_IMM, TMP_Z3                           \
+  VPSUBQ TMP_Z2, TMP_Z4, TMP_Z0                               \
+  VPSUBQ TMP_Z3, TMP_Z5, TMP_Z1                               \
+                                                              \
+  /* Perform the second division step (correction) */         \
+  VCVTUQQ2PD.RD_SAE TMP_Z0, TMP_Z2                            \
+  VCVTUQQ2PD.RD_SAE TMP_Z1, TMP_Z3                            \
+  VMULPD.RD_SAE TMP_Z6, TMP_Z2, TMP_Z2                        \
+  VMULPD.RD_SAE TMP_Z6, TMP_Z3, TMP_Z3                        \
+  VCVTPD2UQQ.RD_SAE.Z TMP_Z2, SRC_K0, TMP_Z2                  \
+  VCVTPD2UQQ.RD_SAE.Z TMP_Z3, SRC_K1, TMP_Z3                  \
+                                                              \
+  /* Add the correction to the result estimate */             \
+  VPADDQ.Z TMP_Z2, DST_Z0, SRC_K0, DST_Z0                     \
+  VPADDQ.Z TMP_Z3, DST_Z1, SRC_K1, DST_Z1                     \
+                                                              \
+  /* We can still be off by one, so correct it */             \
+  VPMULLQ DST_Z0, SRC_B_IMM, TMP_Z2                           \
+  VPMULLQ DST_Z1, SRC_B_IMM, TMP_Z3                           \
+  VPSUBQ TMP_Z2, TMP_Z4, DST_Z0                               \
+  VPSUBQ TMP_Z3, TMP_Z5, DST_Z1                               \
+                                                              \
+  VPCMPUQ $VPCMP_IMM_GE, SRC_B_IMM, DST_Z0, SRC_K0, TMP_K0    \
+  VPCMPUQ $VPCMP_IMM_GE, SRC_B_IMM, DST_Z1, SRC_K1, TMP_K1    \
+  VPSUBQ SRC_B_IMM, DST_Z0, TMP_K0, DST_Z0                    \
+  VPSUBQ SRC_B_IMM, DST_Z1, TMP_K1, DST_Z1                    \
+                                                              \
+  /* Lanes containing negative SRC and have non-zero DST */   \
+  VPMOVQ2M SRC_A_Z0, TMP_K0                                   \
+  VPMOVQ2M SRC_A_Z1, TMP_K1                                   \
+  VPTESTMQ DST_Z0, DST_Z0, TMP_K0, TMP_K0                     \
+  VPTESTMQ DST_Z1, DST_Z1, TMP_K1, TMP_K1                     \
+                                                              \
+  /* Fixup the results to get a floor semantics */            \
+  VPSUBQ DST_Z0, SRC_B_IMM, TMP_K0, DST_Z0                    \
+  VPSUBQ DST_Z1, SRC_B_IMM, TMP_K1, DST_Z1
+
+#define BC_MODI64_IMPL(DST_A, DST_B, SRC_A1, SRC_B1, SRC_A2, SRC_B2, MASK_A, MASK_B, TMP_A1, TMP_B1, TMP_A2, TMP_B2, TMP_A3, TMP_B3, TMP_A4, TMP_B4, TMP_A5, TMP_B5, TMP_MASK_A, TMP_MASK_B) \
+  /* We divide positive/unsigned numbers first */             \
+  VPABSQ.Z SRC_A1, MASK_A, TMP_A1                             \
+  VPABSQ.Z SRC_B1, MASK_B, TMP_B1                             \
+  VPABSQ.Z SRC_A2, MASK_A, TMP_A2                             \
+  VPABSQ.Z SRC_B2, MASK_B, TMP_B2                             \
+                                                              \
+  VCVTUQQ2PD.Z TMP_A1, MASK_A, TMP_A3                         \
+  VCVTUQQ2PD.Z TMP_B1, MASK_B, TMP_B3                         \
+  VCVTUQQ2PD.Z TMP_A2, MASK_A, TMP_A4                         \
+  VCVTUQQ2PD.Z TMP_B2, MASK_B, TMP_B4                         \
+                                                              \
+  /* First division step */                                   \
+  VDIVPD.Z TMP_A4, TMP_A3, MASK_A, TMP_A5                     \
+  VDIVPD.Z TMP_B4, TMP_B3, MASK_B, TMP_B5                     \
+                                                              \
+  VCVTPD2UQQ.Z TMP_A5, MASK_A, TMP_A5                         \
+  VCVTPD2UQQ.Z TMP_B5, MASK_B, TMP_B5                         \
+                                                              \
+  /* Decrease the dividend by the first result */             \
+  VPMULLQ.Z TMP_A2, TMP_A5, MASK_A, TMP_A3                    \
+  VPMULLQ.Z TMP_B2, TMP_B5, MASK_B, TMP_B3                    \
+                                                              \
+  VPSUBQ.Z TMP_A3, TMP_A1, MASK_A, TMP_A3                     \
+  VPSUBQ.Z TMP_B3, TMP_B1, MASK_B, TMP_B3                     \
+                                                              \
+  /* Prepare for the second division */                       \
+  VCVTQQ2PD.Z TMP_A3, MASK_A, TMP_A3                          \
+  VCVTQQ2PD.Z TMP_B3, MASK_B, TMP_B3                          \
+                                                              \
+  /* Second division step, corrects results from the first */ \
+  VDIVPD.Z TMP_A4, TMP_A3, MASK_A, TMP_A3                     \
+  VDIVPD.Z TMP_B4, TMP_B3, MASK_B, TMP_B3                     \
+                                                              \
+  VCVTPD2QQ.Z TMP_A3, MASK_A, TMP_A3                          \
+  VCVTPD2QQ.Z TMP_B3, MASK_B, TMP_B3                          \
+                                                              \
+  VPADDQ.Z TMP_A3, TMP_A5, MASK_A, TMP_A5                     \
+  VPADDQ.Z TMP_B3, TMP_B5, MASK_B, TMP_B5                     \
+                                                              \
+  /* Calculate the result by using the second remainder */    \
+  VPMULLQ.Z TMP_A2, TMP_A5, MASK_A, TMP_A3                    \
+  VPMULLQ.Z TMP_B2, TMP_B5, MASK_B, TMP_B3                    \
+                                                              \
+  /* Check whether we need to subtract 1 from the result */   \
+  VPCMPUQ $VPCMP_IMM_GT, TMP_A1, TMP_A3, MASK_A, TMP_MASK_A   \
+  VPCMPUQ $VPCMP_IMM_GT, TMP_B1, TMP_B3, MASK_B, TMP_MASK_B   \
+                                                              \
+  /* Subtract 1 from the result, if necessary */              \
+  VPSUBQ.BCST CONSTQ_1(), TMP_A5, TMP_MASK_A, TMP_A5          \
+  VPSUBQ.BCST CONSTQ_1(), TMP_B5, TMP_MASK_B, TMP_B5          \
+                                                              \
+  /* Calculate the mask of resulting negative values */       \
+  VPMOVQ2M SRC_A1, TMP_MASK_A                                 \
+  VPMOVQ2M SRC_B1, TMP_MASK_B                                 \
+                                                              \
+  /* Calculate the final remainder  */                        \
+  VPMULLQ TMP_A2, TMP_A5, MASK_A, DST_A                       \
+  VPMULLQ TMP_B2, TMP_B5, MASK_B, DST_B                       \
+                                                              \
+  VPSUBQ DST_A, TMP_A1, MASK_A, DST_A                         \
+  VPSUBQ DST_B, TMP_B1, MASK_B, DST_B                         \
+                                                              \
+  /* Negate the result, if the result must be negative */     \
+  VPXORQ TMP_A4, TMP_A4, TMP_A4                               \
+  VPSUBQ DST_A, TMP_A4, TMP_MASK_A, DST_A                     \
+  VPSUBQ DST_B, TMP_A4, TMP_MASK_B, DST_B
+
 // Math Functions for Inlining
 // ---------------------------
+
+// Dst = Left - RoundTrunc(Left / Right) * Right
+#define BC_MOD_TRUNC_F64(DST_Z0, DST_Z1, SRC_L_Z0, SRC_L_Z1, SRC_R_Z0, SRC_R_Z1, MASK_0, MASK_1) \
+  VDIVPD.RZ_SAE SRC_R_Z0, SRC_L_Z0, DST_Z0          \
+  VDIVPD.RZ_SAE SRC_R_Z1, SRC_L_Z1, DST_Z1          \
+  VRNDSCALEPD $VROUND_IMM_TRUNC_SAE, DST_Z0, DST_Z0 \
+  VRNDSCALEPD $VROUND_IMM_TRUNC_SAE, DST_Z1, DST_Z1 \
+  VFNMADD132PD.Z SRC_R_Z0, SRC_L_Z0, MASK_0, DST_Z0 \
+  VFNMADD132PD.Z SRC_R_Z1, SRC_L_Z1, MASK_1, DST_Z1
+
+// Dst = Left - RoundFloor(Left / Right) * Right
+#define BC_MOD_FLOOR_F64(DST_Z0, DST_Z1, SRC_L_Z0, SRC_L_Z1, SRC_R_Z0, SRC_R_Z1, MASK_0, MASK_1) \
+  VDIVPD.RD_SAE SRC_R_Z0, SRC_L_Z0, DST_Z0          \
+  VDIVPD.RD_SAE SRC_R_Z1, SRC_L_Z1, DST_Z1          \
+  VRNDSCALEPD $VROUND_IMM_DOWN_SAE, DST_Z0, DST_Z0  \
+  VRNDSCALEPD $VROUND_IMM_DOWN_SAE, DST_Z1, DST_Z1  \
+  VFNMADD132PD.Z SRC_R_Z0, SRC_L_Z0, MASK_0, DST_Z0 \
+  VFNMADD132PD.Z SRC_R_Z1, SRC_L_Z1, MASK_1, DST_Z1
 
 // These math functions were designed to by inlinable in other bytecode instructions. They are
 // not as precise as our bytecode instructions, however, they are much faster and suitable for

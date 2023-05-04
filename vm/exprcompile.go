@@ -693,6 +693,14 @@ func compilefuncaux(p *prog, b *expr.Builtin, args []expr.Node) (*value, error) 
 
 		return p.powuint(arg, exp), nil
 
+	case expr.Pmod:
+		v, err := compileargs(p, args, compileNumber, compileNumber)
+		if err != nil {
+			return nil, err
+		}
+
+		return p.pmod(v[0], v[1]), nil
+
 	case expr.DateBin:
 		v, err := compileargs(p, args, constInteger, compileTime, compileTime)
 		if err != nil {

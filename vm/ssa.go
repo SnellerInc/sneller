@@ -2253,6 +2253,10 @@ func (p *prog) mod(left, right *value) *value {
 	return p.makeBinaryArithmeticOp(smodf, smodi, smodimmf, smodimmi, srmodimmf, srmodimmi, left, right)
 }
 
+func (p *prog) pmod(left, right *value) *value {
+	return p.makeBinaryArithmeticOp(spmodf, spmodi, spmodimmf, spmodimmi, srpmodimmf, srpmodimmi, left, right)
+}
+
 func (p *prog) makeBitwiseOp(regOp, immOp ssaop, canSwap bool, left *value, right *value) *value {
 	if left.op == sliteral && canSwap {
 		left, right = right, left

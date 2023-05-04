@@ -2,7 +2,7 @@ package expr
 
 // Code generated automatically; DO NOT EDIT
 
-var builtin2Name = [120]string{
+var builtin2Name = [121]string{
 	"CONCAT",                   // Concat
 	"TRIM",                     // Trim
 	"LTRIM",                    // Ltrim
@@ -53,6 +53,7 @@ var builtin2Name = [120]string{
 	"ACOS",                     // Acos
 	"ATAN",                     // Atan
 	"ATAN2",                    // Atan2
+	"PMOD",                     // Pmod
 	"LEAST",                    // Least
 	"GREATEST",                 // Greatest
 	"WIDTH_BUCKET",             // WidthBucket
@@ -233,6 +234,8 @@ func name2Builtin(s string) BuiltinOp {
 		return Atan
 	case "ATAN2":
 		return Atan2
+	case "PMOD":
+		return Pmod
 	case "LEAST":
 		return Least
 	case "GREATEST":
@@ -377,4 +380,4 @@ func name2Builtin(s string) BuiltinOp {
 	return Unspecified
 }
 
-// checksum: b1455bd50fefc0c5af49c9e03632e6a3
+// checksum: cb21fa727834c08d92dd0520ebfb3445
