@@ -118,8 +118,7 @@ func TestScan(t *testing.T) {
 	}
 
 	dfs := newDirFS(t, tmpdir)
-	err := WriteDefinition(dfs, "default", &Definition{
-		Name: "taxi",
+	err := WriteDefinition(dfs, "default", "taxi", &Definition{
 		Inputs: []Input{
 			{Pattern: "file://b-prefix/*.block"},
 		},
@@ -208,8 +207,7 @@ func TestScanPartitioned(t *testing.T) {
 	}
 
 	dfs := newDirFS(t, tmpdir)
-	err := WriteDefinition(dfs, "default", &Definition{
-		Name: "taxi",
+	err := WriteDefinition(dfs, "default", "taxi", &Definition{
 		Inputs: []Input{
 			{Pattern: "file://b-prefix/{part}/*.block"},
 		},
@@ -330,8 +328,7 @@ func TestNewIndexScan(t *testing.T) {
 	}
 
 	dfs := newDirFS(t, tmpdir)
-	err := WriteDefinition(dfs, "default", &Definition{
-		Name: "taxi",
+	err := WriteDefinition(dfs, "default", "taxi", &Definition{
 		Inputs: []Input{
 			{Pattern: "file://b-prefix/*.block"},
 		},
@@ -446,8 +443,7 @@ func TestScanFail(t *testing.T) {
 	}
 
 	dfs := newDirFS(t, tmpdir)
-	err := WriteDefinition(dfs, "default", &Definition{
-		Name: "files",
+	err := WriteDefinition(dfs, "default", "files", &Definition{
 		Inputs: []Input{
 			{Pattern: "file://b-prefix/*.json"},
 		},

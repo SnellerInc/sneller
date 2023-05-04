@@ -641,7 +641,7 @@ func (q *QueueRunner) updateDefs(ts *tableStates) error {
 					conf:  q.Conf,
 					ofs:   ofs,
 					db:    key.db,
-					table: def.Name,
+					table: key.table,
 					owner: q.Owner,
 				},
 			}

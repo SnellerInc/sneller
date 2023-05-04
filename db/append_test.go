@@ -84,7 +84,7 @@ func info(c *Config, owner Tenant, db, table string) *tableInfo {
 	}
 	def, err := OpenDefinition(infs, db, table)
 	if errors.Is(err, fs.ErrNotExist) {
-		def = &Definition{Name: table}
+		def = &Definition{}
 	} else if err != nil {
 		panic(err)
 	}
@@ -346,8 +346,7 @@ func TestAppendBadScan(t *testing.T) {
 	dfs := newDirFS(t, tmpdir)
 	owner := newTenant(dfs)
 
-	err := WriteDefinition(dfs, "default", &Definition{
-		Name: "foo",
+	err := WriteDefinition(dfs, "default", "foo", &Definition{
 		Inputs: []Input{{
 			Pattern: "file://a-prefix/*.json",
 			Format:  "json",

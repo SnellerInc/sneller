@@ -267,7 +267,7 @@ func (c *Config) open(db, table string, owner Tenant) (*tableState, error) {
 	}
 	def, err := OpenDefinition(ifs, db, table)
 	if errors.Is(err, fs.ErrNotExist) {
-		def = &Definition{Name: table}
+		def = &Definition{}
 	} else if err != nil {
 		return nil, err
 	}

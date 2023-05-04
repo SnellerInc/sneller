@@ -34,13 +34,10 @@ func load(defpath string) *db.Definition {
 }
 
 // entry point for 'sdb create ...'
-func create(creds db.Tenant, dbname, defpath string) {
+func create(creds db.Tenant, dbname, tblname, defpath string) {
 	ofs := outfs(creds)
 	s := load(defpath)
-	if dashv {
-		logf("creating table %q in db %q", s.Name, dbname)
-	}
-	err := db.WriteDefinition(ofs, dbname, s)
+	err := db.WriteDefinition(ofs, dbname, tblname, s)
 	if err != nil {
 		exitf("writing new definition: %s", err)
 	}
@@ -49,20 +46,18 @@ func create(creds db.Tenant, dbname, defpath string) {
 func init() {
 	addApplet(applet{
 		name: "create",
-		help: "<db> <definition.json>",
+		help: "<db> <table> <definition.json>",
 		desc: `create a new table from a def
 The command
-  $ sdb create <db> definition.json
+  $ sdb create <db> <table> definition.json
 uploads a copy of definition.json to
 the tenant root file system at
-  /db/<db>/<name>/definition.json
-using the table name given in the definition.json file
+  /db/<db>/<table>/definition.json
 
 The definition.json is expected to be a JSON
 document with the following structure:
 
   {
-    "name": "<table-name>",
     "inputs": [
       {"pattern": "s3://bucket/path/to/*.json", "format": "json"},
       {"pattern": "s3://another/path/*.json.gz", "format": "json.gz"}
@@ -71,10 +66,10 @@ document with the following structure:
 
 `,
 		run: func(args []string) bool {
-			if len(args) != 3 {
+			if len(args) != 4 {
 				return false
 			}
-			create(creds(), args[1], args[2])
+			create(creds(), args[1], args[2], args[3])
 			return true
 		},
 	})

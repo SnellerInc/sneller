@@ -97,11 +97,6 @@ type Partition struct {
 // Definition describes the set of input files
 // that belong to a table.
 type Definition struct {
-	// Name is the name of the table
-	// that will be produced from this Definition.
-	// Name should match the location of the Definition
-	// within the db filesystem hierarchy.
-	Name string `json:"name"`
 	// Inputs is the list of inputs that comprise the table.
 	Inputs []Input `json:"input,omitempty"`
 	// Partitions specifies synthetic fields that
@@ -187,22 +182,16 @@ func OpenDefinition(s fs.FS, db, table string) (*Definition, error) {
 	if err != nil {
 		return nil, err
 	}
-	if d.Name != table {
-		return nil, fmt.Errorf("definition name %q doesn't match %q", d.Name, table)
-	}
 	return d, nil
 }
 
 // WriteDefinition writes a definition to the given database.
-func WriteDefinition(dst OutputFS, db string, s *Definition) error {
-	if s.Name == "" {
-		return fmt.Errorf("cannot write definition with no Name")
-	}
+func WriteDefinition(dst OutputFS, db, table string, s *Definition) error {
 	buf, err := json.MarshalIndent(s, "", "\t")
 	if err != nil {
 		return err
 	}
-	_, err = dst.WriteFile(DefinitionPath(db, s.Name), buf)
+	_, err = dst.WriteFile(DefinitionPath(db, table), buf)
 	return err
 }
 

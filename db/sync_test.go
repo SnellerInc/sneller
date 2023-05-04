@@ -222,8 +222,7 @@ func TestSync(t *testing.T) {
 	}
 
 	dfs := newDirFS(t, tmpdir)
-	err := WriteDefinition(dfs, "default", &Definition{
-		Name: "parking",
+	err := WriteDefinition(dfs, "default", "parking", &Definition{
 		Inputs: []Input{
 			{Pattern: "file://a-prefix/*.10n"},
 			{Pattern: "file://a-prefix/*.json"},
@@ -232,8 +231,7 @@ func TestSync(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = WriteDefinition(dfs, "default", &Definition{
-		Name: "taxi",
+	err = WriteDefinition(dfs, "default", "taxi", &Definition{
 		Inputs: []Input{
 			{Pattern: "file://b-prefix/*.block"},
 		},
@@ -353,13 +351,12 @@ func TestSync(t *testing.T) {
 		t.Fatal("idx2 had no definition hash present:", err)
 	}
 	def3 := &Definition{
-		Name: "taxi",
 		Inputs: []Input{
 			{Pattern: "file://b-prefix/*.block"},
 		},
 		Features: []string{"legacy-zstd"},
 	}
-	err = WriteDefinition(dfs, "default", def3)
+	err = WriteDefinition(dfs, "default", "taxi", def3)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -437,8 +434,7 @@ func TestMaxBytesSync(t *testing.T) {
 	}
 
 	dfs := newDirFS(t, tmpdir)
-	err = WriteDefinition(dfs, "default", &Definition{
-		Name: "parking",
+	err = WriteDefinition(dfs, "default", "parking", &Definition{
 		Inputs: []Input{
 			{Pattern: "file://a-prefix/{filename}.10n"},
 		},

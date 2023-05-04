@@ -105,8 +105,7 @@ func testdirEnviron(t *testing.T) db.Tenant {
 	t.Cleanup(func() { dfs.Close() })
 	dfs.Log = t.Logf
 
-	err := db.WriteDefinition(dfs, "default", &db.Definition{
-		Name: "parking",
+	err := db.WriteDefinition(dfs, "default", "parking", &db.Definition{
 		Inputs: []db.Input{
 			{Pattern: "file://a-{prefix}/*.10n"},
 		},
@@ -115,8 +114,7 @@ func testdirEnviron(t *testing.T) db.Tenant {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = db.WriteDefinition(dfs, "default", &db.Definition{
-		Name: "parking2",
+	err = db.WriteDefinition(dfs, "default", "parking2", &db.Definition{
 		Inputs: []db.Input{
 			{Pattern: "file://a-prefix/*.json", Format: "json"},
 		},
@@ -124,8 +122,7 @@ func testdirEnviron(t *testing.T) db.Tenant {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = db.WriteDefinition(dfs, "default", &db.Definition{
-		Name: "taxi",
+	err = db.WriteDefinition(dfs, "default", "taxi", &db.Definition{
 		Inputs: []db.Input{
 			{Pattern: "file://b-prefix/*.block"},
 		},
@@ -133,8 +130,7 @@ func testdirEnviron(t *testing.T) db.Tenant {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = db.WriteDefinition(dfs, "default", &db.Definition{
-		Name: "combined",
+	err = db.WriteDefinition(dfs, "default", "combined", &db.Definition{
 		Inputs: []db.Input{
 			{Pattern: "file://a-prefix/{dataset}.json", Format: "json"},
 			{Pattern: "file://b-prefix/{dataset}.block"},

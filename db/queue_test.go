@@ -277,16 +277,14 @@ func testQueue(t *testing.T, batchsize int64, scan bool) {
 		push(dfs.Prefix()+name, etag, int64(len(text)))
 	}
 
-	check(WriteDefinition(dfs, "db0", &Definition{
-		Name: "narrow",
+	check(WriteDefinition(dfs, "db0", "narrow", &Definition{
 		Inputs: []Input{
 			{Pattern: "file://aabb/file*.json"},
 		},
 		SkipBackfill: !scan,
 	}))
 	// should get a superset of narrow
-	check(WriteDefinition(dfs, "db1", &Definition{
-		Name: "wide",
+	check(WriteDefinition(dfs, "db1", "wide", &Definition{
 		Inputs: []Input{
 			{Pattern: "file://aa*/*.json"},
 		},

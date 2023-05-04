@@ -31,7 +31,6 @@ func TestDecodeDefinition(t *testing.T) {
 	}
 	data := `
 {
-    "name": "bar",
     "input": [
         {
             "pattern": "s3://my-bucket/my-folder/*.json",
@@ -43,7 +42,6 @@ func TestDecodeDefinition(t *testing.T) {
 `
 
 	ref := &Definition{
-		Name: "bar",
 		Inputs: []Input{
 			{
 				Pattern: "s3://my-bucket/my-folder/*.json",
@@ -53,7 +51,7 @@ func TestDecodeDefinition(t *testing.T) {
 		},
 	}
 	dfs := newDirFS(t, dir)
-	err = WriteDefinition(dfs, "foo", ref)
+	err = WriteDefinition(dfs, "foo", "bar", ref)
 	if err != nil {
 		t.Fatal(err)
 	}

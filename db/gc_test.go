@@ -51,8 +51,7 @@ func TestGC(t *testing.T) {
 	}
 
 	dfs := newDirFS(t, tmpdir)
-	err = WriteDefinition(dfs, "default", &Definition{
-		Name: "parking",
+	err = WriteDefinition(dfs, "default", "parking", &Definition{
 		Inputs: []Input{
 			{Pattern: "file://a-prefix/{pre}/*.10n"},
 		},
