@@ -16,6 +16,7 @@ package aws
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -54,14 +55,13 @@ func DefaultDerive(baseURI, id, secret, token, region, service string) (*Signing
 //     variables (AWS_REGION takes precedence over
 //     AWS_DEFAULT_REGION).
 //  2. The config files in $HOME/.aws/config and
-//     $HOME/.aws/credentials, with the credentials
-//     file taking precedence over the config file.
-//     (The path to the config file can be overridden
-//     with the AWS_CONFIG_FILE environment variable.)
+//     $HOME/.aws/credentials.
 //
 // Additionally, AmbientKey respects the following
 // environment variables:
 //   - AWS_CONFIG_FILE for the config file path
+//   - AWS_SHARED_CREDENTIALS_FILE for the credentials
+//     file path
 //   - AWS_PROFILE for the name of the profile
 //     to search for in config files (otherwise "default")
 //
@@ -74,48 +74,55 @@ func DefaultDerive(baseURI, id, secret, token, region, service string) (*Signing
 // but less safe than explicitly picking up secrets
 // from where you expect to find them. Caveat emptor.
 func AmbientCreds() (id, secret, region, token string, err error) {
-	envdefault := func(base, env string) string {
-		if x := os.Getenv(env); x != "" {
-			return env
+	envdefault := func(base string, env ...string) string {
+		for _, e := range env {
+			if x := os.Getenv(e); x != "" {
+				return x
+			}
 		}
 		return base
 	}
-	profile := envdefault("default", "AWS_PROFILE")
 
-	if x := os.Getenv("AWS_ACCESS_KEY_ID"); x != "" {
-		id = x
-	}
-	if x := os.Getenv("AWS_SECRET_ACCESS_KEY"); x != "" {
-		secret = x
-	}
-	if x := os.Getenv("AWS_REGION"); x != "" {
-		region = x
-	} else if x := os.Getenv("AWS_DEFAULT_REGION"); x != "" {
-		region = x
-	}
-	if x := os.Getenv("AWS_SESSION_TOKEN"); x != "" {
-		token = x
-	}
+	id = envdefault("", "AWS_ACCESS_KEY_ID")
+	secret = envdefault("", "AWS_SECRET_ACCESS_KEY")
+	region = envdefault("", "AWS_REGION", "AWS_DEFAULT_REGION")
+	token = envdefault("", "AWS_SESSION_TOKEN")
 
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", "", "", "", fmt.Errorf("trying to find $HOME: %w", err)
 	}
-	configfile := envdefault(filepath.Join(home, ".aws", "credentials"), "AWS_CONFIG_FILE")
 
-	if id == "" || secret == "" || region == "" {
-		info, err := os.Stat(filepath.Dir(configfile))
-		if err != nil {
-			return "", "", "", "", fmt.Errorf("examining %s: %w", filepath.Dir(configfile), err)
-		}
-		err = check(info)
+	profile := envdefault("default", "AWS_PROFILE", "AWS_DEFAULT_PROFILE")
+
+	// Locations of the config/credentials file is document in
+	// https://docs.aws.amazon.com/sdkref/latest/guide/file-location.html
+	configfile := envdefault(filepath.Join(home, ".aws", "config"), "AWS_CONFIG_FILE")
+	credentialsfile := envdefault(filepath.Join(home, ".aws", "credentials"), "AWS_SHARED_CREDENTIALS_FILE")
+
+	if region == "" {
+		f, err := os.Open(configfile)
 		if err != nil {
 			return "", "", "", "", err
+		}
+		defer f.Close()
+
+		var ssoStartURL string
+		err = scan(f, fmt.Sprintf("profile %s", profile), []scanspec{
+			{"region", &region},
+			{"sso_start_url", &ssoStartURL},
+		})
+		if err != nil {
+			return "", "", "", "", err
+		}
+		if ssoStartURL != "" {
+			return "", "", "", "", errors.New("SSO profiles are not supported")
 		}
 	}
 
 	if id == "" || secret == "" {
-		f, err := os.Open(configfile)
+
+		f, err := os.Open(credentialsfile)
 		if err != nil {
 			return "", "", "", "", err
 		}
@@ -131,33 +138,14 @@ func AmbientCreds() (id, secret, region, token string, err error) {
 		err = scan(f, profile, []scanspec{
 			{"aws_access_key_id", &id},
 			{"aws_secret_access_key", &secret},
-			{"region", &region},
-			{"aws_session_token", &token},
 		})
 		if err != nil {
 			return "", "", "", "", err
 		}
-	}
-	if region == "" {
-		f, err := os.Open(filepath.Join(home, ".aws", "config"))
-		if err != nil {
-			return "", "", "", "", err
-		}
-		defer f.Close()
-		info, err := f.Stat()
-		if err != nil {
-			return "", "", "", "", fmt.Errorf("examining config: %w", err)
-		}
-		err = check(info)
-		if err != nil {
-			return "", "", "", "", err
-		}
-		err = scan(f, profile, []scanspec{
-			{"region", &region},
-		})
-		if err != nil {
-			return "", "", "", "", err
-		}
+
+		// credentials file never contain a session token,
+		// so it should be reset
+		token = ""
 	}
 	if id == "" || secret == "" {
 		return "", "", "", "", fmt.Errorf("unable to determine id or secret")
