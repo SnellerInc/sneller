@@ -207,6 +207,10 @@ func appendSig(key *Key, data []byte) ([]byte, error) {
 // See DecodeIndex for authenticating and
 // decoding a signed index blob.
 func Sign(key *Key, idx *Index) ([]byte, error) {
+	if key == nil {
+		return nil, fmt.Errorf("blockfmt.Sign: nil Key")
+	}
+
 	var buf ion.Buffer
 	var st ion.Symtab
 
