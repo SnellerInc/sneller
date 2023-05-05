@@ -799,7 +799,7 @@ func (c *Converter) runMulti(p int) error {
 				}
 			}
 			for in := range startc {
-				err := in.F.Convert(in.R, &cn, c.Constants)
+				err := in.F.Convert(in.R, &cn, slices.Clone(c.Constants))
 				err2 := in.R.Close()
 				if err == nil {
 					err = err2
