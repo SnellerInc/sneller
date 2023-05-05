@@ -216,7 +216,9 @@ func init() {
 			return rz, err
 		},
 		".zst": func(r io.Reader) (io.Reader, error) {
-			rz, err := zstd.NewReader(r)
+			// we need WithDecoderConcurrency(1) to keep calls to Read
+			// from racing with calls to io.Closer.Close; see #2914
+			rz, err := zstd.NewReader(r, zstd.WithDecoderConcurrency(1))
 			err = noEOF(err, zstd.ErrMagicMismatch)
 			return rz, err
 		},
