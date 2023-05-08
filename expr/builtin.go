@@ -386,17 +386,27 @@ func checkContains(h Hint, args []Node) error {
 }
 
 func checkEqualsContainsFuzzy(h Hint, args []Node) error {
+	const maxFuzzyThreshold = 8
+
 	if len(args) != 3 {
 		return mismatch(3, len(args))
 	}
-	if _, ok := args[1].(String); !ok {
+	arg1Value, ok1 := args[1].(String)
+	if !ok1 {
 		return errsyntaxf("second argument requires a literal string, not %v (%T)", args[1], args[1])
 	}
 	if !TypeOf(args[0], h).AnyOf(StringType) {
 		return errtype(args[0], "not a string")
 	}
-	if !TypeOf(args[2], h).AnyOf(IntegerType) {
-		return errsyntaxf("third argument requires a integer, not %q (%T)", args[2], args[2])
+	arg2Value, ok2 := args[2].(Integer)
+	if !ok2 {
+		return errsyntaxf("third argument requires an integer, not %q (%T)", args[2], args[2])
+	}
+	if arg2Value > maxFuzzyThreshold {
+		return errsyntaxf("threshold %v is too large (maximum threshold %v)", arg2Value, maxFuzzyThreshold)
+	}
+	if int(arg2Value) >= len(string(arg1Value)) {
+		return errsyntaxf("threshold %v should be smaller than the length of string literal %q", arg2Value, arg1Value)
 	}
 	return nil
 }
