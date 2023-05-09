@@ -2931,7 +2931,7 @@ func (v *value) String() string {
 		str += " " + string(argtype.char()) + strconv.Itoa(v.args[i].id)
 	}
 	if v.imm != nil {
-		str += fmt.Sprintf(" $%v", v.imm)
+		str += fmt.Sprintf(" $%#v", v.imm)
 	}
 	return str
 }
@@ -3030,8 +3030,9 @@ func (p *prog) sched(v *value, dst []*value, scheduled, parent []bool) []*value 
 	return append(dst, v)
 }
 
-func (v *value) setmask(m *value) {
+func (v *value) setmask(m *value) *value {
 	v.args[len(v.args)-1] = m
+	return v
 }
 
 func (v *value) maskarg() *value {
@@ -4150,6 +4151,15 @@ func (p *prog) clone(dst *prog) {
 	dst.reserved = make([]stackslot, len(p.reserved))
 	copy(dst.reserved, p.reserved)
 	dst.ret = dst.values[p.ret.id]
+}
+
+func (p *prog) dup(v *value) *value {
+	nv := p.val()
+	id := nv.id // don't copy id; copy everything else
+	*nv = *v
+	nv.id = id
+	nv.args = slices.Clone(nv.args)
+	return nv
 }
 
 // Renumber performs some simple dead-code elimination

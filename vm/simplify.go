@@ -17,6 +17,43 @@ package vm
 //go:generate go run -tags genrewrite genrewrite_main.go -o simplify1.go simplify.rules
 //go:generate gofmt -w simplify1.go
 
+func dependsOn(a, b *value) bool {
+	for _, arg := range a.args {
+		if arg == b || dependsOn(arg, b) {
+			return true
+		}
+	}
+	return false
+}
+
+// given a, b, produce (a AND b, true) or (nil, false)
+// by setting the mask of one of the ops to the result
+// of the other op
+func conjoin(p *prog, a, b *value) (*value, bool) {
+	if a == b {
+		return nil, false
+	}
+	try := func(p *prog, a, b *value) (*value, bool) {
+		// a must be conjunctive and not be a dependency of b
+		if ssainfo[a.op].disjunctive || dependsOn(b, a) {
+			return nil, false
+		}
+		// a must have a mask arg that is the same as b's (and be non-nil)
+		mask := a.maskarg()
+		if mask == nil || mask != b.maskarg() {
+			return nil, false
+		}
+		// success: produce a with b as its mask
+		return p.dup(a).setmask(b), true
+	}
+	// try both orderings:
+	v, ok := try(p, a, b)
+	if !ok {
+		return try(p, b, a)
+	}
+	return v, true
+}
+
 func isfalse(v *value) (*value, bool) {
 	depth := 3 // limit polynomial complexity
 	for v != nil && depth > 0 {

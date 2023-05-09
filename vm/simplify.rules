@@ -11,6 +11,10 @@
 (and.k a b), "p.mask(a) == b && !ssainfo[a.op].disjunctive" -> a
 (and.k a b), "p.mask(b) == a && !ssainfo[b.op].disjunctive" -> b
 
+// very simple short-circuiting:
+//   (and (op0 ... k) (op1 ... k)) -> (op0 ... (op1 ... k))
+(and.k a b), "res, ok := conjoin(p, a, b); ok" -> res
+
 (or.k t:(init) _) -> t
 (or.k _ t:(init)) -> t
 (or.k (false) x) -> x
