@@ -64,8 +64,6 @@ func (p *PartGroups[T]) Get(equal []ion.Datum) []T {
 }
 
 // Partition groups a list of items by associated constants.
-//
-// This function is often helpful for implementing PartitionHandle.SplitBy.
 func Partition[T any](lst []T, parts []string, getconst func(T, string) (ion.Datum, bool)) (*PartGroups[T], bool) {
 	sets := make(map[string]*cluster[T])
 	var raw ion.Bag

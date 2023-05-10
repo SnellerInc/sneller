@@ -17,6 +17,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"io/fs"
 	"log"
 	"net"
 	"net/http"
@@ -25,7 +26,9 @@ import (
 	"syscall"
 
 	"github.com/SnellerInc/sneller"
+	"github.com/SnellerInc/sneller/db"
 	"github.com/SnellerInc/sneller/debug"
+	"github.com/SnellerInc/sneller/ion"
 	"github.com/SnellerInc/sneller/tenant/dcache"
 	"github.com/SnellerInc/sneller/tenant/tnproto"
 	"github.com/SnellerInc/sneller/vm"
@@ -84,17 +87,16 @@ func runWorker(args []string) {
 	}
 	defer uc.Close()
 
-	env := sneller.TenantEnv{
+	run := sneller.TenantRunner{
 		Events: evfd,
-		Local:  testmode,
 	}
 	if cachedir := os.Getenv("CACHEDIR"); cachedir != "" {
 		info, err := os.Stat(cachedir)
 		if err != nil || !info.IsDir() {
 			logger.Printf("ignoring invalid cache dir %s", cachedir)
 		} else {
-			env.Cache = dcache.New(cachedir, env.Post)
-			env.Cache.Logger = logger
+			run.Cache = dcache.New(cachedir, run.Post)
+			run.Cache.Logger = logger
 
 			// for now, only allow root to debug us
 			ok := func(ucred *syscall.Ucred) bool {
@@ -103,7 +105,17 @@ func runWorker(args []string) {
 			debug.Path(filepath.Join(cachedir, "debug.sock"), ok, logger)
 		}
 	}
-	err = tnproto.Serve(uc, &env)
+	initfs := func(d ion.Datum) (fs.FS, error) {
+		if testmode {
+			return db.DecodeClientFS(d)
+		}
+		return db.DecodeS3FS(d)
+	}
+	srv := tnproto.Server{
+		Runner: &run,
+		InitFS: initfs,
+	}
+	err = srv.Serve(uc)
 	if err != nil {
 		logger.Fatalf("cannot serve: %v", err)
 	}

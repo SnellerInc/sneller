@@ -139,7 +139,7 @@ func hashFile(r io.Reader) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return "b2sum:" + base32.StdEncoding.EncodeToString(h.Sum(nil)), nil
+	return "\"b2sum:" + base32.StdEncoding.EncodeToString(h.Sum(nil)) + `"`, nil
 }
 
 // Prefix implements InputFS.Prefix
@@ -150,9 +150,6 @@ func (d *DirFS) Prefix() string {
 // ETag implements InputFS.ETag
 func (d *DirFS) ETag(fullpath string, info fs.FileInfo) (string, error) {
 	fullpath = path.Clean(fullpath)
-	if d.Log != nil {
-		d.Log("ETag %s", fullpath)
-	}
 	if !info.Mode().IsRegular() {
 		return "", fmt.Errorf("cannot get ETag of non-regular file %s", fullpath)
 	}
@@ -209,7 +206,7 @@ func (d *DirFS) WriteFile(fullpath string, buf []byte) (string, error) {
 		return "", err
 	}
 	ret := blake2b.Sum256(buf)
-	return "b2sum:" + base32.StdEncoding.EncodeToString(ret[:]), nil
+	return "\"b2sum:" + base32.StdEncoding.EncodeToString(ret[:]) + `"`, nil
 }
 
 // fileUploader is a BufferUploader wrapper
@@ -297,7 +294,7 @@ func (f *fileUploader) Close(final []byte) error {
 		abort()
 		return err
 	}
-	f.etag = "b2sum:" + base32.StdEncoding.EncodeToString(h.Sum(nil))
+	f.etag = "\"b2sum:" + base32.StdEncoding.EncodeToString(h.Sum(nil)) + `"`
 	return file.Close()
 }
 

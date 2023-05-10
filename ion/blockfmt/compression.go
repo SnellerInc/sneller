@@ -502,10 +502,15 @@ func appendFrame(dst []byte, comp Compressor, src []byte) ([]byte, error) {
 // that has a backing size of 'size'.
 func ReadTrailer(src io.ReaderAt, size int64) (*Trailer, error) {
 	t := new(Trailer)
-	if err := fill(t, src, size); err != nil {
+	err := t.ReadFrom(src, size)
+	if err != nil {
 		return nil, err
 	}
 	return t, nil
+}
+
+func (t *Trailer) ReadFrom(src io.ReaderAt, size int64) error {
+	return fill(t, src, size)
 }
 
 var decompScratch sync.Pool

@@ -196,7 +196,6 @@ func TestQueryError(t *testing.T) {
 		cachedir:  t.TempDir(),
 		cgroot:    os.Getenv("CGROOT"),
 		tenantcmd: []string{"./snellerd-test-binary", "worker"},
-		splitSize: 16 * 1024,
 		peers: makePeers(t,
 			peersock0.Addr().(*net.TCPAddr),
 			peersock1.Addr().(*net.TCPAddr),
@@ -215,7 +214,6 @@ func TestQueryError(t *testing.T) {
 		sandbox:   s.sandbox,
 		cachedir:  t.TempDir(),
 		tenantcmd: s.tenantcmd,
-		splitSize: s.splitSize,
 		peers:     makePeers(t, peersock0.Addr().(*net.TCPAddr), peersock1.Addr().(*net.TCPAddr)),
 	}
 	httpsock2 := listen(t)
@@ -306,7 +304,6 @@ func TestSimpleFS(t *testing.T) {
 		cachedir:  t.TempDir(),
 		cgroot:    os.Getenv("CGROOT"),
 		tenantcmd: []string{"./snellerd-test-binary", "worker"},
-		splitSize: 16 * 1024,
 		peers: makePeers(t,
 			peersock0.Addr().(*net.TCPAddr),
 			peersock1.Addr().(*net.TCPAddr),
@@ -325,7 +322,6 @@ func TestSimpleFS(t *testing.T) {
 		sandbox:   s.sandbox,
 		cachedir:  t.TempDir(),
 		tenantcmd: s.tenantcmd,
-		splitSize: s.splitSize,
 		peers:     makePeers(t, peersock0.Addr().(*net.TCPAddr), peersock1.Addr().(*net.TCPAddr)),
 	}
 	httpsock2 := listen(t)
@@ -485,68 +481,68 @@ func TestSimpleFS(t *testing.T) {
 		status    int    // if non-zero, expected HTTP status code
 	}{
 		// get coverage of both empty db and default db
-		{input: "SELECT COUNT(*) FROM default.parking", output: `{"count": 1023}`},
+		0: {input: "SELECT COUNT(*) FROM default.parking", output: `{"count": 1023}`},
 		// group by partition coverage:
-		{input: "SELECT COUNT(*), prefix FROM default.parking GROUP BY prefix", output: `{"count": 1023, "prefix": "prefix"}`},
-		{input: "SELECT COUNT(*) FROM parking", db: "default", output: `{"count": 1023}`},
+		1: {input: "SELECT COUNT(*), prefix FROM default.parking GROUP BY prefix", output: `{"count": 1023, "prefix": "prefix"}`},
+		2: {input: "SELECT COUNT(*) FROM parking", db: "default", output: `{"count": 1023}`},
 		// check base case for taxi
-		{input: "SELECT COUNT(*) FROM default.taxi", output: `{"count": 8560}`},
+		3: {input: "SELECT COUNT(*) FROM default.taxi", output: `{"count": 8560}`},
 		// this WHERE is a no-op; everything satisfies it
-		{input: "SELECT COUNT(*) FROM default.taxi WHERE tpep_pickup_datetime >= `2009-01-01T00:35:23Z`", output: `{"count": 8560}`},
+		4: {input: "SELECT COUNT(*) FROM default.taxi WHERE tpep_pickup_datetime >= `2009-01-01T00:35:23Z`", output: `{"count": 8560}`},
 		// select all but the lowest
-		{input: "SELECT COUNT(*) FROM default.taxi WHERE tpep_pickup_datetime > `2009-01-01T00:35:23Z`", output: `{"count": 8559}`},
+		5: {input: "SELECT COUNT(*) FROM default.taxi WHERE tpep_pickup_datetime > `2009-01-01T00:35:23Z`", output: `{"count": 8559}`},
 		// only the very first entries satisfies this:
-		{input: "SELECT COUNT(*) FROM default.taxi WHERE tpep_pickup_datetime <= `2009-01-01T00:35:23Z`", output: `{"count": 1}`, partial: true},
+		6: {input: "SELECT COUNT(*) FROM default.taxi WHERE tpep_pickup_datetime <= `2009-01-01T00:35:23Z`", output: `{"count": 1}`, partial: true},
 
 		// we don't really care about the results from these queries;
 		// we just need to get coverage of early errors from io.Writers
 		// in vm.TeeWriter
-		{input: "SELECT * FROM default.taxi LIMIT 3", output: `{(.*?\n{){2}.*`, rx: true},
-		{input: "SELECT * FROM default.taxi LIMIT 5", output: `{(.*?\n{){4}.*`, rx: true},
-		{input: "SELECT * FROM default.taxi LIMIT 7", output: `{(.*?\n{){6}.*`, rx: true},
+		7: {input: "SELECT * FROM default.taxi LIMIT 3", output: `{(.*?\n{){2}.*`, rx: true},
+		8: {input: "SELECT * FROM default.taxi LIMIT 5", output: `{(.*?\n{){4}.*`, rx: true},
+		9: {input: "SELECT * FROM default.taxi LIMIT 7", output: `{(.*?\n{){6}.*`, rx: true},
 
 		// ensure ORDER BY is accepted for cardinality=1 results
-		{input: "SELECT COUNT(*) FROM default.taxi WHERE tpep_pickup_datetime <= `2009-01-01T00:35:23Z` ORDER BY COUNT(*) DESC", output: `{"count": 1}`, partial: true},
+		10: {input: "SELECT COUNT(*) FROM default.taxi WHERE tpep_pickup_datetime <= `2009-01-01T00:35:23Z` ORDER BY COUNT(*) DESC", output: `{"count": 1}`, partial: true},
 
 		// these two should be satisfied w/o scanning
-		{input: "SELECT EARLIEST(tpep_pickup_datetime) FROM default.taxi", output: `{"min": "2009-01-01T00:35:23Z"}`, partial: true},
-		{input: "SELECT LATEST(tpep_pickup_datetime) FROM default.taxi", output: `{"max": "2009-01-31T23:55:00Z"}`, partial: true},
+		11: {input: "SELECT EARLIEST(tpep_pickup_datetime) FROM default.taxi", output: `{"min": "2009-01-01T00:35:23Z"}`, partial: true},
+		12: {input: "SELECT LATEST(tpep_pickup_datetime) FROM default.taxi", output: `{"max": "2009-01-31T23:55:00Z"}`, partial: true},
 
-		{input: "SELECT fare_amount FROM default.taxi ORDER BY tpep_pickup_datetime DESC LIMIT 2", output: "{\"fare_amount\": 4.9}\n{\"fare_amount\": 4.5}"},
-		{input: "SELECT COUNT(*) FROM default.taxi WHERE tpep_pickup_datetime < `2009-01-01T00:35:23Z`", output: `{"count": 0}`, partial: true},
+		13: {input: "SELECT fare_amount FROM default.taxi ORDER BY tpep_pickup_datetime DESC LIMIT 2", output: "{\"fare_amount\": 4.9}\n{\"fare_amount\": 4.5}"},
+		14: {input: "SELECT COUNT(*) FROM default.taxi WHERE tpep_pickup_datetime < `2009-01-01T00:35:23Z`", output: `{"count": 0}`, partial: true},
 		// about half of the entries satisfy this:
-		{input: "SELECT COUNT(*) FROM default.taxi WHERE tpep_pickup_datetime >= `2009-01-15T00:00:00Z`", output: `{"count": 4853}`, partial: true},
-		{input: "SELECT COUNT(*) FROM default.taxi WHERE tpep_pickup_datetime < `2009-01-15T00:00:00Z`", output: `{"count": 3707}`, partial: true},
+		15: {input: "SELECT COUNT(*) FROM default.taxi WHERE tpep_pickup_datetime >= `2009-01-15T00:00:00Z`", output: `{"count": 4853}`, partial: true},
+		16: {input: "SELECT COUNT(*) FROM default.taxi WHERE tpep_pickup_datetime < `2009-01-15T00:00:00Z`", output: `{"count": 3707}`, partial: true},
 		// similar to above; different date range
-		{input: "SELECT COUNT(*) FROM default.taxi WHERE tpep_pickup_datetime >= `2009-01-14T00:06:00Z`", output: `{"count": 5169}`, partial: true},
-		{input: "SELECT COUNT(*) FROM default.taxi WHERE tpep_pickup_datetime < `2009-01-14T00:06:00Z`", output: `{"count": 3391}`, partial: true},
-		{
+		17: {input: "SELECT COUNT(*) FROM default.taxi WHERE tpep_pickup_datetime >= `2009-01-14T00:06:00Z`", output: `{"count": 5169}`, partial: true},
+		18: {input: "SELECT COUNT(*) FROM default.taxi WHERE tpep_pickup_datetime < `2009-01-14T00:06:00Z`", output: `{"count": 3391}`, partial: true},
+		19: {
 			input:   "SELECT (SELECT COUNT(tpep_pickup_datetime) FROM default.taxi WHERE tpep_pickup_datetime < `2009-01-14T00:06:00Z`) AS count0, (SELECT COUNT(*) FROM default.taxi WHERE tpep_pickup_datetime < `2009-01-14T00:06:00Z`) AS count1",
 			output:  `{"count0": 3391, "count1": 3391}`,
 			partial: true,
 		},
-		{input: "SELECT COUNT(*), VendorID FROM default.taxi GROUP BY VendorID ORDER BY SUM(trip_distance) DESC", output: "{\"count\": 7353, \"VendorID\": \"VTS\"}\n{\"count\": 1055, \"VendorID\": \"CMT\"}\n{\"count\": 152, \"VendorID\": \"DDS\"}"},
-		{input: "SELECT COUNT(DISTINCT RPState) from default.parking", output: `{"count": 25}`},
+		20: {input: "SELECT COUNT(*), VendorID FROM default.taxi GROUP BY VendorID ORDER BY SUM(trip_distance) DESC", output: "{\"count\": 7353, \"VendorID\": \"VTS\"}\n{\"count\": 1055, \"VendorID\": \"CMT\"}\n{\"count\": 152, \"VendorID\": \"DDS\"}"},
+		21: {input: "SELECT COUNT(DISTINCT RPState) from default.parking", output: `{"count": 25}`},
 
 		// don't care much about the result here; this just
 		// exercises the vm scratch save+restore code
-		{input: "SELECT COUNT(*), tm FROM default.taxi GROUP BY DATE_TRUNC(DAY, tpep_pickup_datetime) AS tm", output: ".*", rx: true},
-		{
+		22: {input: "SELECT COUNT(*), tm FROM default.taxi GROUP BY DATE_TRUNC(DAY, tpep_pickup_datetime) AS tm", output: ".*", rx: true},
+		23: {
 			// get coverage of the same table
 			// being referenced more than once
 			input: `WITH top_vendors AS (SELECT COUNT(*), VendorID FROM default.taxi GROUP BY VendorID ORDER BY COUNT(*) DESC)
-SELECT ROUND(SUM(total_amount)) AS "sum" FROM default.taxi WHERE VendorID = (SELECT VendorID FROM top_vendors LIMIT 1)`,
+			SELECT ROUND(SUM(total_amount)) AS "sum" FROM default.taxi WHERE VendorID = (SELECT VendorID FROM top_vendors LIMIT 1)`,
 			output: `{"sum": 76333}`, // rounded so that floating point noise doesn't break the test
 		},
-		{input: `SELECT COUNT(*) FROM TABLE_GLOB("[pt]a*")`, db: "default", output: `{"count": 10666}`},
-		{input: `SELECT COUNT(*) FROM TABLE_GLOB("ta*") ++ TABLE_GLOB("pa*")`, db: "default", output: `{"count": 10666}`},
-		{input: `SELECT * INTO foo.bar FROM default.taxi`, output: `{"table": "foo\..*`, rx: true},
-		{input: "SELECT COUNT(*) from default.combined WHERE dataset = 'parking2'", output: `{"count": 1023}`},
-		{input: "SELECT COUNT(*) from default.combined WHERE dataset = 'parking3'", output: `{"count": 60}`},
-		{input: "SELECT COUNT(*) from default.combined WHERE dataset = 'nyc-taxi'", output: `{"count": 8560}`},
+		24: {input: `SELECT COUNT(*) FROM TABLE_GLOB("[pt]a*")`, db: "default", output: `{"count": 10666}`},
+		25: {input: `SELECT COUNT(*) FROM TABLE_GLOB("ta*") ++ TABLE_GLOB("pa*")`, db: "default", output: `{"count": 10666}`},
+		26: {input: `SELECT * INTO foo.bar FROM default.taxi`, output: `{"table": "foo\..*`, rx: true},
+		27: {input: "SELECT COUNT(*) from default.combined WHERE dataset = 'parking2'", output: `{"count": 1023}`},
+		28: {input: "SELECT COUNT(*) from default.combined WHERE dataset = 'parking3'", output: `{"count": 60}`},
+		29: {input: "SELECT COUNT(*) from default.combined WHERE dataset = 'nyc-taxi'", output: `{"count": 8560}`},
 		// Note: 'default1' is not a valid path, an indexer returns error during
 		//       parsing the FROM part.
-		{input: "SELECT * FROM default1.taxi", status: http.StatusNotFound},
+		30: {input: "SELECT * FROM default1.taxi", status: http.StatusNotFound},
 	}
 	var subwg sync.WaitGroup
 	subwg.Add(len(queries))
@@ -613,32 +609,35 @@ SELECT ROUND(SUM(total_amount)) AS "sum" FROM default.taxi WHERE VendorID = (SEL
 	jsqueries := []struct {
 		query, result string
 	}{
-		{
+		0: {
 			query:  `SELECT Location FROM default.parking WHERE Route = '2A75' AND IssueTime = 945`,
 			result: `[{"Location": "721 S WESTLAKE"}]`,
 		},
-		{
+		1: {
 			query:  `SELECT Ticket FROM default.parking WHERE Route = '2A75' AND IssueTime <= 1100`,
 			result: `[{"Ticket": 1106506402},{"Ticket": 1106506413},{"Ticket": 1106506424}]`,
 		},
 	}
 	for i := range jsqueries {
-		r := rq.getQueryJSON("", jsqueries[i].query)
-		res, err := http.DefaultClient.Do(r)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if res.StatusCode != http.StatusOK {
-			t.Fatalf("status %s", res.Status)
-		}
-		got, err := io.ReadAll(res.Body)
-		res.Body.Close()
-		if err != nil {
-			t.Fatal(err)
-		}
-		if string(got) != jsqueries[i].result {
-			t.Errorf("got %q, want %q", got, jsqueries[i].result)
-		}
-		checkTiming(t, res)
+		name := fmt.Sprintf("jsquery%d", i)
+		t.Run(name, func(t *testing.T) {
+			r := rq.getQueryJSON("", jsqueries[i].query)
+			res, err := http.DefaultClient.Do(r)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if res.StatusCode != http.StatusOK {
+				t.Fatalf("status %s", res.Status)
+			}
+			got, err := io.ReadAll(res.Body)
+			res.Body.Close()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if string(got) != jsqueries[i].result {
+				t.Errorf("got %q, want %q", got, jsqueries[i].result)
+			}
+			checkTiming(t, res)
+		})
 	}
 }

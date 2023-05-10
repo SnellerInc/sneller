@@ -15,7 +15,6 @@
 package vm_test
 
 import (
-	"context"
 	"flag"
 	"fmt"
 	"io"
@@ -51,16 +50,16 @@ type benchTable struct {
 	count int64
 }
 
-func (b *benchTable) Open(_ context.Context) (vm.Table, error) {
-	return b, nil
+func (b *benchTable) Run(dst vm.QuerySink, _ []int, parallel int) error {
+	return b.WriteChunks(dst, parallel)
 }
 
 func (b *benchTable) Size() int64 {
 	return b.count * int64(len(b.buf))
 }
 
-func (b *benchTable) Encode(dst *ion.Buffer, st *ion.Symtab) error {
-	return fmt.Errorf("unexpected benchTable.Encode")
+func (b *benchTable) Trailer() *blockfmt.Trailer {
+	return nil
 }
 
 func (b *benchTable) WriteChunks(dst vm.QuerySink, parallel int) error {
@@ -131,8 +130,7 @@ func benchInput(b *testing.B, sel *expr.Query, inbuf []byte, rows int) {
 		count: int64(b.N),
 		buf:   inbuf,
 	}
-
-	env := &testquery.Env{In: []plan.TableHandle{bt}}
+	env := &testquery.Env{In: []testquery.Input{bt}}
 	tree, err := plan.New(sel, env)
 	if err != nil {
 		b.Fatal(err)
@@ -140,8 +138,10 @@ func benchInput(b *testing.B, sel *expr.Query, inbuf []byte, rows int) {
 	b.SetBytes(int64(len(inbuf)))
 	b.ResetTimer()
 	start := time.Now()
-	var stats plan.ExecStats
-	err = plan.Exec(tree, io.Discard, &stats)
+	err = plan.Exec(&plan.ExecParams{
+		Plan:   tree,
+		Output: io.Discard,
+	})
 	if err != nil {
 		b.Fatal(err)
 	}

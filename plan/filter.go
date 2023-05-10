@@ -32,7 +32,7 @@ func (f *Filter) String() string {
 	return "WHERE " + expr.ToString(f.Expr)
 }
 
-func (f *Filter) exec(dst vm.QuerySink, src TableHandle, ep *ExecParams) error {
+func (f *Filter) exec(dst vm.QuerySink, src *Input, ep *ExecParams) error {
 	filt := ep.rewrite(f.Expr)
 	if ep.Rewriter != nil {
 		push(filt, f.From)
@@ -53,7 +53,7 @@ func (f *Filter) encode(dst *ion.Buffer, st *ion.Symtab, ep *ExecParams) error {
 	return nil
 }
 
-func (f *Filter) setfield(d Decoder, sf ion.Field) error {
+func (f *Filter) SetField(sf ion.Field) error {
 	switch sf.Label {
 	case "expr":
 		e, err := expr.Decode(sf.Datum)

@@ -25,7 +25,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/SnellerInc/sneller/expr/blob"
 	"github.com/SnellerInc/sneller/ion/blockfmt"
 )
 
@@ -241,14 +240,17 @@ func TestAppend(t *testing.T) {
 	}
 	checkContents(t, idx1, dfs)
 	checkNoGarbage(t, dfs, "db/default/parking", idx1)
-	blobs, _, err := Blobs(dfs, idx1, nil)
+	blobs, blocks, _, err := idx1.Descs(dfs, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(blobs.Contents) == 0 {
+	if len(blobs) == 0 {
 		t.Fatal("no blobs?")
 	}
-	tr := blobs.Contents[0].(*blob.CompressedPart).Parent.Trailer
+	if len(blocks) == 0 {
+		t.Fatal("no blocks?")
+	}
+	tr := blobs[0].Trailer
 	ranges := tr.Sparse.Fields()
 	if ranges == 0 {
 		// the parking2.json file

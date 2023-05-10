@@ -51,7 +51,7 @@ func decodeSel(dst *vm.Selection, d ion.Datum) error {
 	return nil
 }
 
-func (u *Unnest) setfield(d Decoder, f ion.Field) error {
+func (u *Unnest) SetField(f ion.Field) error {
 	switch f.Label {
 	case "result":
 		s, err := f.String()
@@ -80,7 +80,7 @@ func (u *Unnest) String() string {
 	return out.String()
 }
 
-func (u *Unnest) exec(dst vm.QuerySink, src TableHandle, ep *ExecParams) error {
+func (u *Unnest) exec(dst vm.QuerySink, src *Input, ep *ExecParams) error {
 	op, err := vm.NewUnnest(dst, ep.rewrite(u.Expr), u.Result)
 	if err != nil {
 		return err

@@ -47,8 +47,7 @@ type savedList struct {
 
 // FSEnv provides a plan.Env from a db.FS
 type FSEnv struct {
-	Root     db.FS
-	Splitter *Splitter
+	Root db.InputFS
 
 	db     string
 	tenant db.Tenant
@@ -65,13 +64,9 @@ type FSEnv struct {
 }
 
 func Environ(t db.Tenant, dbname string) (*FSEnv, error) {
-	root, err := t.Root()
+	src, err := t.Root()
 	if err != nil {
 		return nil, err
-	}
-	src, ok := root.(db.FS)
-	if !ok {
-		return nil, fmt.Errorf("db %T from auth cannot be used for reading", root)
 	}
 	h, _ := blake2b.New256(nil)
 	return &FSEnv{
@@ -151,25 +146,22 @@ func (f *FSEnv) index(e expr.Node) (*blockfmt.Index, error) {
 func (f *FSEnv) MaxScanned() int64 { return f.maxscan }
 
 // Stat implements plan.Env.Stat
-func (f *FSEnv) Stat(e expr.Node, h *plan.Hints) (plan.TableHandle, error) {
+func (f *FSEnv) Stat(e expr.Node, h *plan.Hints) (*plan.Input, error) {
 	index, err := f.index(e)
 	if err != nil {
 		return nil, err
 	}
-	fh := &FilterHandle{
-		Splitter:  f.Splitter,
-		Expr:      h.Filter,
-		Fields:    h.Fields,
-		AllFields: h.AllFields,
-	}
-	fh.compiled.Compile(fh.Expr)
-	blobs, size, err := db.Blobs(f.Root, index, &fh.compiled)
+	var compiled blockfmt.Filter
+	compiled.Compile(h.Filter)
+	descs, blocks, size, err := index.Descs(f.Root, &compiled)
 	if err != nil {
 		return nil, err
 	}
 	f.maxscan += size
-	fh.Blobs = blobs
-	return fh, nil
+	return &plan.Input{
+		Descs:  descs,
+		Blocks: blocks,
+	}, nil
 }
 
 var _ plan.TableLister = (*FSEnv)(nil)

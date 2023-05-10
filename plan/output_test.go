@@ -31,7 +31,7 @@ func TestOutput(t *testing.T) {
 	cases := []struct {
 		text string // create temp table
 	}{{
-		text: "SELECT * INTO foo.bar FROM 'parking.10n'",
+		text: "SELECT * INTO foo.bar FROM parking",
 	}}
 	for i := range cases {
 		c := &cases[i]
@@ -50,12 +50,16 @@ func TestOutput(t *testing.T) {
 			}
 			t.Logf("query: %s", expr.ToString(q))
 			t.Run("serialize-plan", func(t *testing.T) {
-				testPlanSerialize(t, tree, env)
+				testPlanSerialize(t, tree)
 			})
 			t.Logf("plan:\n%s", tree)
 			var dst bytes.Buffer
-			var stat ExecStats
-			err = Exec(tree, &dst, &stat)
+			err = Exec(&ExecParams{
+				Plan:   tree,
+				Output: &dst,
+				Runner: env,
+				FS:     env.fs,
+			})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -97,10 +101,7 @@ func TestOutput(t *testing.T) {
 	}
 }
 
-var _ interface {
-	UploadEnv
-	UploaderDecoder
-} = (*outputenv)(nil)
+var _ UploadEnv = (*outputenv)(nil)
 
 type outputenv struct {
 	testenv
@@ -119,10 +120,6 @@ func mkoutenv(t *testing.T, dir string) *outputenv {
 
 func (o *outputenv) Uploader() UploadFS { return o.fs }
 func (o *outputenv) Key() *blockfmt.Key { return o.key }
-
-func (o *outputenv) DecodeUploader(d ion.Datum) (UploadFS, error) {
-	return db.DecodeDirFS(d)
-}
 
 type logfs struct {
 	t *testing.T

@@ -59,7 +59,7 @@ func (e *ExecStats) atomicAdd(tmp *ExecStats) {
 	atomic.AddInt64(&e.BytesScanned, tmp.BytesScanned)
 }
 
-func (e *ExecStats) observe(table vm.Table) {
+func (e *ExecStats) Observe(table vm.Table) {
 	ct, ok := table.(CachedTable)
 	if !ok {
 		return

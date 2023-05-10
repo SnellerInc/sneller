@@ -15,21 +15,20 @@
 package tnproto
 
 import (
-	"context"
 	"crypto/rand"
 	"encoding/binary"
 	"io"
 	"net"
 	"runtime"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/SnellerInc/sneller/expr"
-	"github.com/SnellerInc/sneller/ion"
+	"github.com/SnellerInc/sneller/ion/blockfmt"
 	"github.com/SnellerInc/sneller/plan"
 	"github.com/SnellerInc/sneller/usock"
-	"github.com/SnellerInc/sneller/vm"
 )
 
 func randpair() (id ID, key Key) {
@@ -62,21 +61,16 @@ func TestAttach(t *testing.T) {
 	}
 }
 
-type largeOpaque struct{}
-
-func (l largeOpaque) Open(_ context.Context) (vm.Table, error) {
-	panic("largeOpaque.Open()")
-}
-
 const largeSize = 500000
 
-func (l largeOpaque) Encode(dst *ion.Buffer, st *ion.Symtab) error {
-	buf := make([]byte, largeSize)
-	dst.WriteBlob(buf)
-	return nil
-}
-
-func (l largeOpaque) Size() int64 { return 100 * 1000 * 1000 }
+var largeInput = []*plan.Input{{
+	Descs: []blockfmt.Descriptor{{
+		ObjectInfo: blockfmt.ObjectInfo{
+			Path: strings.Repeat("A", largeSize),
+			Size: largeSize,
+		},
+	}},
+}}
 
 // See #381
 //
@@ -105,9 +99,7 @@ func TestDirectExecHugeBody(t *testing.T) {
 	go func() {
 		var b Buffer
 		b.Prepare(&plan.Tree{
-			Inputs: []plan.Input{{
-				Handle: largeOpaque{},
-			}},
+			Inputs: largeInput,
 			Root: plan.Node{
 				Input: 0,
 				Op: &plan.Leaf{

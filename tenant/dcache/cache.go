@@ -268,29 +268,32 @@ func (c *Cache) mmap(s Segment, flags Flag) *mapping {
 			atomic.AddInt64(&c.failures, 1)
 			return nil
 		}
-		buf, err := mmap(f, fi.Size(), true)
-		if err != nil {
-			f.Close()
-			// should we os.Remove() here too?
-			c.unlockID(id)
-			c.errorf("Cache.mmap: mmap: %s", err)
-			atomic.AddInt64(&c.failures, 1)
-			return nil
+		size := s.Size()
+		if size <= fi.Size() {
+			buf, err := mmap(f, fi.Size(), true)
+			if err != nil {
+				f.Close()
+				// should we os.Remove() here too?
+				c.unlockID(id)
+				c.errorf("Cache.mmap: mmap: %s", err)
+				atomic.AddInt64(&c.failures, 1)
+				return nil
+			}
+			atomic.AddInt64(&c.hits, 1)
+			mp := &mapping{
+				file:   f,
+				id:     id,
+				target: target,
+				// have the slice arrange so that
+				// cap(mem) = filesystem size,
+				// len(mem) = range of actual data
+				mem:       buf[:size],
+				populated: true,
+				refcount:  1,
+			}
+			c.unlockIDMapped(id, mp)
+			return mp
 		}
-		atomic.AddInt64(&c.hits, 1)
-		mp := &mapping{
-			file:   f,
-			id:     id,
-			target: target,
-			// have the slice arrange so that
-			// cap(mem) = filesystem size,
-			// len(mem) = range of actual data
-			mem:       buf[:s.Size()],
-			populated: true,
-			refcount:  1,
-		}
-		c.unlockIDMapped(id, mp)
-		return mp
 	}
 	if flags&FlagNoFill != 0 {
 		atomic.AddInt64(&c.misses, 1)
@@ -342,7 +345,7 @@ func (c *Cache) mmap(s Segment, flags Flag) *mapping {
 		id:   id,
 		// cap(mem) = fallocated space,
 		// len(mem) = size of data
-		mem:       buf[:s.Size()],
+		mem:       buf[:size],
 		target:    target,
 		populated: false,
 		refcount:  1,
@@ -541,10 +544,14 @@ func readThrough(seg Segment, mp *mapping, w io.Writer) (bool, error) {
 	if mp != nil {
 		buf = mp.mem
 	} else {
-		if wt, ok := rd.(io.WriterTo); ok {
-			_, err := wt.WriteTo(w)
-			return false, err
-		}
+		// FIXME: we can't use WriteTo on compressed
+		// objects
+		/*
+			if wt, ok := rd.(io.WriterTo); ok {
+				_, err := wt.WriteTo(w)
+				return false, err
+			}
+		*/
 		size := seg.Size()
 		// no backing; just use a regular buffer
 		buf = make([]byte, size, size+16)

@@ -19,13 +19,10 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
-	"net/http"
+	"io/fs"
 	"os"
 
 	"github.com/SnellerInc/sneller/db"
-	"github.com/SnellerInc/sneller/expr"
-	"github.com/SnellerInc/sneller/expr/blob"
-	"github.com/SnellerInc/sneller/ion"
 	"github.com/SnellerInc/sneller/ion/blockfmt"
 	"github.com/SnellerInc/sneller/plan"
 	"github.com/SnellerInc/sneller/tenant/dcache"
@@ -54,55 +51,8 @@ func init() {
 // used as such.
 type TenantEnv struct {
 	*FSEnv
-	HTTPClient *http.Client
-	Events     *os.File
-	Cache      *dcache.Cache
-
-	// Local causes DecodeUploader to return a
-	// *db.DirFS instead of a *db.S3FS. This is
-	// intended to be used for testing.
-	Local bool
-}
-
-type TenantHandle struct {
-	*FilterHandle // share Size(), Encode()
-	parent        *TenantEnv
-
-	pg *plan.PartGroups[blob.Interface]
-}
-
-var (
-	_ plan.SplitHandle     = &TenantHandle{}
-	_ plan.PartitionHandle = &TenantHandle{}
-)
-
-func (t *TenantEnv) Stat(tbl expr.Node, h *plan.Hints) (plan.TableHandle, error) {
-	if t.FSEnv == nil {
-		panic("plan.TenantEnv: cannot call Stat without FSEnv set")
-	}
-	th, err := t.FSEnv.Stat(tbl, h)
-	if err != nil {
-		return nil, err
-	}
-	return &TenantHandle{parent: t, FilterHandle: th.(*FilterHandle)}, nil
-}
-
-func (t *TenantEnv) DecodeHandle(d ion.Datum) (plan.TableHandle, error) {
-	h := new(FilterHandle)
-	if err := h.Decode(d); err != nil {
-		return nil, err
-	}
-	return &TenantHandle{parent: t, FilterHandle: h}, nil
-}
-
-var _ plan.UploaderDecoder = (*TenantEnv)(nil)
-
-// DecodeUploader implements plan.UploaderDecoder.
-func (t *TenantEnv) DecodeUploader(d ion.Datum) (plan.UploadFS, error) {
-	if t.Local {
-		return db.DecodeDirFS(d)
-	}
-	return db.DecodeS3FS(d)
+	Events *os.File
+	Cache  *dcache.Cache
 }
 
 func (t *TenantEnv) Post() {
@@ -111,138 +61,57 @@ func (t *TenantEnv) Post() {
 	}
 }
 
-func (h *TenantHandle) Split() (plan.Subtables, error) {
-	return h.Splitter.split(h)
+type TenantRunner struct {
+	Events *os.File
+	Cache  *dcache.Cache
 }
 
-func (h *TenantHandle) Open(ctx context.Context) (vm.Table, error) {
-	fh := h.FilterHandle
-	lst := fh.Blobs
-	if !CanVMOpen {
-		panic("shouldn't have called tenantHandle.Open()")
+func (r *TenantRunner) Post() {
+	if r.Events != nil {
+		r.Events.Write(onebuf[:])
 	}
-	filt, _ := fh.CompileFilter()
-	segs := make([]dcache.Segment, 0, len(lst.Contents))
+}
+
+func (r *TenantRunner) Run(dst vm.QuerySink, in *plan.Input, ep *plan.ExecParams) error {
+	// TODO: this should be reimplemented in terms
+	// of plan.FSRunner
+	ctx := ep.Context
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if !CanVMOpen {
+		panic("shouldn't have called Run")
+	}
+	segs := make([]dcache.Segment, 0, len(in.Blocks))
 	var size int64
-	for i := range lst.Contents {
-		if h.parent.HTTPClient != nil {
-			blob.Use(lst.Contents[i], h.parent.HTTPClient)
-		}
-		b := lst.Contents[i]
-		if pc, ok := b.(*blob.CompressedPart); ok && filt != nil {
-			if !filt.Overlaps(&pc.Parent.Trailer.Sparse, pc.StartBlock, pc.EndBlock) {
-				continue
-			}
-		}
-		seg := &blobSegment{
-			fields:    fh.Fields,
-			allFields: fh.AllFields,
-			blob:      b,
-		}
-		// make sure info can be populated successfully
-		s, err := seg.stat()
-		if err != nil {
-			return nil, err
+	for i := range in.Blocks {
+		seg := &tenantSegment{
+			fs:     ep.FS,
+			desc:   in.Descs[in.Blocks[i].Index],
+			block:  in.Blocks[i].Offset,
+			fields: in.Fields,
 		}
 		segs = append(segs, seg)
-		size += s.Size
 	}
 	if len(segs) == 0 {
-		return emptyTable{}, nil
+		return nil
 	}
 	var flags dcache.Flag
 	if CacheLimit > 0 && size > CacheLimit {
 		flags = dcache.FlagNoFill
 	}
-	return h.parent.Cache.MultiTable(ctx, segs, flags), nil
+	tbl := r.Cache.MultiTable(ctx, segs, flags)
+	err := tbl.WriteChunks(dst, ep.Parallel)
+	ep.Stats.Observe(tbl)
+	return err
 }
 
-func (h *TenantHandle) Filter(e expr.Node) plan.TableHandle {
-	return &TenantHandle{
-		parent:       h.parent,
-		FilterHandle: h.FilterHandle.Filter(e).(*FilterHandle),
-	}
-}
-
-func (h *TenantHandle) buildpg(parts []string) (*plan.PartGroups[blob.Interface], error) {
-	// stash a cached copy of this partitioned list,
-	// since SplitOn tends to be called multiple times
-	// with the same set of partition keys
-	if h.pg != nil && slices.Equal(h.pg.Fields(), parts) {
-		return h.pg, nil
-	}
-	getconst := func(b blob.Interface, x string) (ion.Datum, bool) {
-		switch b := b.(type) {
-		case *blob.Compressed:
-			return b.Trailer.Sparse.Const(x)
-		case *blob.CompressedPart:
-			return b.Parent.Trailer.Sparse.Const(x)
-		default:
-			return ion.Empty, false
-		}
-	}
-	pg, ok := plan.Partition(h.Blobs.Contents, parts, getconst)
-	if !ok {
-		return nil, fmt.Errorf("cannot partition plan by %v", parts)
-	}
-	h.pg = pg
-	return pg, nil
-}
-
-// SplitOn implements plan.PartitionHandle.SplitOn
-func (h *TenantHandle) SplitOn(parts []string, equal []ion.Datum) (plan.TableHandle, error) {
-	pg, err := h.buildpg(parts)
-	if err != nil {
-		return nil, err
-	}
-	lst := pg.Get(equal)
-	fh := new(FilterHandle)
-	*fh = *h.FilterHandle
-	fh.Blobs = &blob.List{Contents: lst}
-	fh.compiled = blockfmt.Filter{}
-	return &TenantHandle{parent: h.parent, FilterHandle: fh}, nil
-}
-
-// SplitBy implements plan.PartitionHandle.SplitBy
-func (h *TenantHandle) SplitBy(parts []string) ([]plan.TablePart, error) {
-	pg, err := h.buildpg(parts)
-	if err != nil {
-		return nil, err
-	}
-	ret := make([]plan.TablePart, 0, pg.Groups())
-	pg.Each(func(parts []ion.Datum, lst []blob.Interface) {
-		fh := new(FilterHandle)
-		*fh = *h.FilterHandle
-		fh.Blobs = &blob.List{Contents: lst}
-		// not safe to copy:
-		fh.compiled = blockfmt.Filter{}
-		ret = append(ret, plan.TablePart{
-			Handle: &TenantHandle{
-				parent:       h.parent,
-				FilterHandle: fh,
-			},
-			Parts: parts,
-		})
-	})
-	return ret, nil
-}
-
-type emptyTable struct{}
-
-func (emptyTable) WriteChunks(dst vm.QuerySink, parallel int) error {
-	w, err := dst.Open()
-	if err != nil {
-		return err
-	}
-	return w.Close()
-}
-
-// blobSegment implements dcache.Segment
-type blobSegment struct {
-	blob      blob.Interface
-	info      *blob.Info
-	fields    []string
-	allFields bool
+// tenantSegment implements dcache.Segment
+type tenantSegment struct {
+	fs     fs.FS
+	desc   blockfmt.Descriptor
+	block  int
+	fields []string
 }
 
 // merge two sorted slices
@@ -273,55 +142,42 @@ func merge[T constraints.Ordered](dst, src []T) []T {
 	return out
 }
 
-// fieldList produces the canonical field list
-// for use in blockfmt.Decoder.Fields (see the
-// doc comment about the difference btw a nil
-// slice versus a zero-length slice)
-func (b *blobSegment) fieldList() []string {
-	if b.allFields {
-		return nil
+func (s *tenantSegment) Merge(other dcache.Segment) {
+	o := other.(*tenantSegment)
+	all := s.fields == nil || o.fields == nil
+	if all {
+		s.fields = nil
+	} else {
+		s.fields = merge(s.fields, o.fields)
 	}
-	ret := b.fields
-	if ret == nil {
-		ret = []string{}
-	}
-	return ret
-}
-
-func (b *blobSegment) Merge(other dcache.Segment) {
-	o := other.(*blobSegment)
-	b.allFields = b.allFields || o.allFields
-	if b.allFields {
-		b.fields = nil
-		return
-	}
-	b.fields = merge(b.fields, o.fields)
-}
-
-func (b *blobSegment) stat() (*blob.Info, error) {
-	if b.info != nil {
-		return b.info, nil
-	}
-	info, err := b.blob.Stat()
-	if err != nil {
-		return nil, err
-	}
-	b.info = info
-	return info, nil
 }
 
 // Size is currently the blob size
-func (b *blobSegment) Size() int64 { return b.info.Size }
-
-// ETag implements dcache.Segment.ETag
-func (b *blobSegment) ETag() string { return b.info.ETag }
-
-// Read implements dcache.Segment.Open
-func (b *blobSegment) Open() (io.ReadCloser, error) {
-	return b.blob.Reader(0, b.info.Size)
+func (s *tenantSegment) Size() int64 {
+	size := int64(0)
+	start, end := s.desc.Trailer.BlockRange(s.block)
+	size += end - start
+	return size
 }
 
-func (b *blobSegment) Ephemeral() bool { return b.info.Ephemeral }
+// ETag implements dcache.Segment.ETag
+func (s *tenantSegment) ETag() string {
+	return fmt.Sprintf("%s-%d", s.desc.ETag, s.block)
+}
+
+// Read implements dcache.Segment.Open
+func (s *tenantSegment) Open() (io.ReadCloser, error) {
+	f, err := s.fs.Open(s.desc.Path)
+	if err != nil {
+		return nil, err
+	}
+	start, end := s.desc.Trailer.BlockRange(s.block)
+	return plan.SectionReader(f, start, end-start)
+}
+
+func (s *tenantSegment) Ephemeral() bool {
+	return s.desc.Size < db.DefaultMinMerge
+}
 
 func vmMalloc(size int) []byte {
 	if size > vm.PageSize {
@@ -331,36 +187,12 @@ func vmMalloc(size int) []byte {
 }
 
 // Decode implements dcache.Segment.Decode
-func (b *blobSegment) Decode(dst io.Writer, src []byte) error {
-	if c, ok := b.blob.(*blob.CompressedPart); ok {
-		// compressed: do decoding
-		var dec blockfmt.Decoder
-		dec.Malloc = vmMalloc
-		dec.Free = vm.Free
-		dec.Fields = b.fieldList()
-		dec.Set(&c.Parent.Trailer, c.EndBlock)
-		_, err := dec.CopyBytes(dst, src)
-		return err
-	}
-	if c, ok := b.blob.(*blob.Compressed); ok {
-		var dec blockfmt.Decoder
-		dec.Malloc = vmMalloc
-		dec.Free = vm.Free
-		dec.Set(&c.Trailer, len(c.Trailer.Blocks))
-		dec.Fields = b.fieldList()
-		_, err := dec.CopyBytes(dst, src)
-		return err
-	}
-	// default: just write the segments directly
-	for off := int64(0); off < b.info.Size; off += int64(b.info.Align) {
-		mem := src[off:]
-		if len(mem) > b.info.Align {
-			mem = mem[:b.info.Align]
-		}
-		_, err := dst.Write(mem)
-		if err != nil {
-			return err
-		}
-	}
-	return nil
+func (s *tenantSegment) Decode(dst io.Writer, src []byte) error {
+	var dec blockfmt.Decoder
+	dec.Malloc = vmMalloc
+	dec.Free = vm.Free
+	dec.Fields = s.fields
+	dec.Set(&s.desc.Trailer, s.block+1)
+	_, err := dec.CopyBytes(dst, src)
+	return err
 }

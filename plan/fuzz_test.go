@@ -18,7 +18,6 @@ package plan_test
 
 import (
 	"bufio"
-	"context"
 	"io/fs"
 	"os"
 	"path"
@@ -30,32 +29,18 @@ import (
 	"github.com/SnellerInc/sneller/expr/partiql"
 	"github.com/SnellerInc/sneller/ion"
 	"github.com/SnellerInc/sneller/plan"
-	"github.com/SnellerInc/sneller/vm"
 )
 
 type fuzzEnv struct{}
 
-type fuzzHandle struct{}
-
-func (f fuzzHandle) Encode(dst *ion.Buffer, st *ion.Symtab) error {
-	dst.WriteNull()
-	return nil
+func (f fuzzEnv) Stat(_ expr.Node, _ *plan.Hints) (*plan.Input, error) {
+	return &plan.Input{}, nil
 }
 
-func (f fuzzHandle) Size() int64 { return 0 }
-
-func (f fuzzHandle) Open(_ context.Context) (vm.Table, error) {
-	return nil, nil
-}
-
-func (f fuzzEnv) Stat(_ expr.Node, _ *plan.Hints) (plan.TableHandle, error) {
-	return fuzzHandle{}, nil
-}
-
-type fuzzDecoder struct{}
-
-func (f fuzzDecoder) DecodeHandle(d ion.Datum) (plan.TableHandle, error) {
-	return fuzzHandle{}, nil
+func (f fuzzEnv) Geometry() *plan.Geometry {
+	return &plan.Geometry{
+		Peers: []plan.Transport{&plan.LocalTransport{}, &plan.LocalTransport{}},
+	}
 }
 
 func addQueries(f *testing.F) {
@@ -116,7 +101,7 @@ func FuzzNewPlan(f *testing.F) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		_, err = plan.Decode(fuzzDecoder{}, &st, buf.Bytes())
+		_, err = plan.Decode(&st, buf.Bytes())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -143,7 +128,7 @@ func FuzzNewSplit(f *testing.F) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		_, err = plan.Decode(fuzzDecoder{}, &st, buf.Bytes())
+		_, err = plan.Decode(&st, buf.Bytes())
 		if err != nil {
 			t.Fatal(err)
 		}

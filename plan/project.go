@@ -29,7 +29,7 @@ type Project struct {
 	Using []expr.Binding
 }
 
-func (p *Project) exec(dst vm.QuerySink, src TableHandle, ep *ExecParams) error {
+func (p *Project) exec(dst vm.QuerySink, src *Input, ep *ExecParams) error {
 	proj, err := vm.NewProjection(ep.rewriteBind(p.Using), dst)
 	if err != nil {
 		return err
@@ -46,7 +46,7 @@ func (p *Project) encode(dst *ion.Buffer, st *ion.Symtab, ep *ExecParams) error 
 	return nil
 }
 
-func (p *Project) setfield(d Decoder, f ion.Field) error {
+func (p *Project) SetField(f ion.Field) error {
 	switch f.Label {
 	case "project":
 		bind, err := expr.DecodeBindings(f.Datum)

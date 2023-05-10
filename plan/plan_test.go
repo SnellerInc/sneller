@@ -15,35 +15,28 @@
 package plan
 
 import (
-	"context"
 	"testing"
 
-	"github.com/SnellerInc/sneller/expr"
 	"github.com/SnellerInc/sneller/expr/partiql"
-	"github.com/SnellerInc/sneller/ion"
-	"github.com/SnellerInc/sneller/vm"
+	"github.com/SnellerInc/sneller/ion/blockfmt"
 
 	"golang.org/x/exp/slices"
 )
 
-type sizeHandle int64
-
-func (s sizeHandle) Open(_ context.Context) (vm.Table, error) {
-	panic("nope!")
+func mksized(size int64) *Input {
+	return &Input{
+		Descs: []blockfmt.Descriptor{{
+			ObjectInfo: blockfmt.ObjectInfo{Size: size},
+		}},
+	}
 }
-
-func (s sizeHandle) Encode(dst *ion.Buffer, st *ion.Symtab) error {
-	panic("nope!")
-}
-
-func (s sizeHandle) Size() int64 { return int64(s) }
 
 func TestDistribute(t *testing.T) {
 	run := func(in []int64, val int, out []int) {
 		t.Helper()
-		parts := make([]TablePart, len(in))
+		parts := make([]tablePart, len(in))
 		for i := range parts {
-			parts[i].Handle = sizeHandle(in[i])
+			parts[i].contents = mksized(in[i])
 		}
 		result := distribute(parts, val)
 		if !slices.Equal(result, out) {
@@ -79,29 +72,10 @@ func TestNewSplit(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			_, err = NewSplit(q, testEnv{})
+			_, err = NewSplit(q, &splitEnv{})
 			if err != nil {
 				t.Fatal(err)
 			}
 		})
 	}
-}
-
-type testEnv struct{}
-
-type testHandle struct{}
-
-func (f testHandle) Encode(dst *ion.Buffer, st *ion.Symtab) error {
-	dst.WriteNull()
-	return nil
-}
-
-func (f testHandle) Size() int64 { return 0 }
-
-func (f testHandle) Open(_ context.Context) (vm.Table, error) {
-	return nil, nil
-}
-
-func (f testEnv) Stat(_ expr.Node, _ *Hints) (TableHandle, error) {
-	return testHandle{}, nil
 }

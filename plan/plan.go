@@ -15,7 +15,6 @@
 package plan
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -35,6 +34,7 @@ import (
 // will be queried.
 type Op interface {
 	fmt.Stringer
+	ion.FieldSetter
 
 	// input returns the input to Op,
 	// or nil if this is a terminal input op
@@ -44,7 +44,7 @@ type Op interface {
 
 	// exec should write the contents of src into dst,
 	// taking care to honor the rewrite rules in ep
-	exec(dst vm.QuerySink, src TableHandle, ep *ExecParams) error
+	exec(dst vm.QuerySink, src *Input, ep *ExecParams) error
 
 	// encode should write the op as an ion structure
 	// to 'dst'; the first field of the structure
@@ -53,12 +53,12 @@ type Op interface {
 	// the type of the plan op (see decode.go)
 	encode(dst *ion.Buffer, st *ion.Symtab, ep *ExecParams) error
 
-	// setfield should take the field label name "name"
+	// SetField should take the field label name "name"
 	// and use it to set the corresponding struct field
 	// to the decoded value of 'obj'
 	//
 	// Method has to report unrecognized fields.
-	setfield(d Decoder, f ion.Field) error
+	SetField(ion.Field) error
 }
 
 // Nonterminal is embedded in every
@@ -75,51 +75,13 @@ func (s *Nonterminal) setinput(p Op) {
 	s.From = p
 }
 
-// TableHandle is a handle to a table object.
-type TableHandle interface {
-	// Open opens the handle for reading
-	// by the query execution engine.
-	Open(ctx context.Context) (vm.Table, error)
-
-	// Size should return the (maximum) number of ion bytes
-	// that comprise this table handle.
-	Size() int64
-
-	// Encode should serialize the table handle
-	// so that it can be deserialized by a corresponding
-	// HandleDecodeFn.
-	//
-	// If Encode produces a list, HandleDecodeFn
-	// will be called for each item in the list,
-	// which might not be the desired behavior.
-	Encode(dst *ion.Buffer, st *ion.Symtab) error
-}
-
-// SplitHandle is a TableHandle that can be split.
-type SplitHandle interface {
-	TableHandle
-	Split() (Subtables, error)
-}
-
-// Filterable may be implemented by a TableHandle that
-// can use a filter predicate to optimize its data
-// access decisions. It is not required that the filter
-// be applied precisely, as the returned rows will
-// still be filtered during query execution.
-type Filterable interface {
-	// Filter returns a TableHandle that may use
-	// the given filter expression to optimize
-	// access to the underlying table data.
-	Filter(expr.Node) TableHandle
-}
-
 // Hints describes a set of hints passed
 // to Env.Stat that can be used to optimize
 // the access to a table.
 type Hints struct {
 	// Filter, if non-nil, is a predicate
 	// that is applied to every row of the table.
-	// (Env.Stat may use this to produce a TableHandle
+	// (Env.Stat may use this to produce a *Input
 	// that produces fewer rows than it otherwise would
 	// due to the presence of some secondary indexing information.)
 	Filter expr.Node
@@ -136,32 +98,88 @@ type Hints struct {
 // Env represents the global binding environment
 // at the time that the query was compiled
 type Env interface {
-	// Stat returns a TableHandle
+	// Stat returns a *Input
 	// associated with the given PartiQL expression.
 	// The Hints provided in the second
 	// argument can be used to constrain the set of
-	// rows and columns that are present in the returned TableHandle.
-	// The information provided by the TableHandle
+	// rows and columns that are present in the returned *Input.
+	// The information provided by the *Input
 	// is used by the query planner to make query-splitting
 	// decisions.
-	Stat(tbl expr.Node, h *Hints) (TableHandle, error)
+	Stat(tbl expr.Node, h *Hints) (*Input, error)
+}
+
+// Geometry represents the shape of a distributed query
+// in terms of the peers that are available for dispatching
+// partial queries.
+type Geometry struct {
+	Peers []Transport
+
+	// TODO: weights, etc.
+}
+
+func decodeGeometry(d ion.Datum) (*Geometry, error) {
+	g := new(Geometry)
+	err := d.UnpackStruct(func(f ion.Field) error {
+		switch f.Label {
+		case "peers":
+			return f.UnpackList(func(d ion.Datum) error {
+				t, err := DecodeTransport(d)
+				if err != nil {
+					return err
+				}
+				g.Peers = append(g.Peers, t)
+				return nil
+			})
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return g, nil
+}
+
+func (g *Geometry) encode(dst *ion.Buffer, st *ion.Symtab) error {
+	dst.BeginStruct(-1)
+	dst.BeginField(st.Intern("peers"))
+	dst.BeginList(-1)
+	for i := range g.Peers {
+		if err := EncodeTransport(g.Peers[i], st, dst); err != nil {
+			return err
+		}
+	}
+	dst.EndList()
+	dst.EndStruct()
+	return nil
+}
+
+// SplitEnv is an Env that can be used for planning
+// distributed queries by supplying a Geometry.
+type SplitEnv interface {
+	Env
+	Geometry() *Geometry
 }
 
 // stat handles calling env.Stat(tbl, flt), with
 // special handling for certain table expressions
 // (TABLE_GLOB, TABLE_PATTERN, ++ operator).
-func stat(env Env, tbl expr.Node, h *Hints) (TableHandle, error) {
+func stat(env Env, tbl expr.Node, h *Hints) (*Input, error) {
 	switch e := tbl.(type) {
 	case *expr.Appended:
-		ths := make(tableHandles, len(e.Values))
+		var ret *Input
 		for i := range e.Values {
-			th, err := stat(env, e.Values[i], h)
+			input, err := stat(env, e.Values[i], h)
 			if err != nil {
 				return nil, err
 			}
-			ths[i] = th
+			if ret == nil {
+				ret = input
+			} else {
+				ret.Append(input)
+			}
 		}
-		return ths, nil
+		return ret, nil
 	case *expr.Builtin:
 		switch e.Func {
 		case expr.TableGlob, expr.TablePattern:
@@ -302,7 +320,7 @@ func (s *SimpleAggregate) String() string {
 	return str
 }
 
-func (s *SimpleAggregate) exec(dst vm.QuerySink, src TableHandle, ep *ExecParams) error {
+func (s *SimpleAggregate) exec(dst vm.QuerySink, src *Input, ep *ExecParams) error {
 	var sysagg expr.AggregateOp
 	system := 0
 	regular := 0
@@ -358,7 +376,7 @@ func (s *SimpleAggregate) encode(dst *ion.Buffer, st *ion.Symtab, ep *ExecParams
 	return nil
 }
 
-func (s *SimpleAggregate) setfield(d Decoder, f ion.Field) error {
+func (s *SimpleAggregate) SetField(f ion.Field) error {
 	switch f.Label {
 	case "nonempty":
 		var err error
@@ -413,7 +431,10 @@ func (l *Leaf) describe() string {
 	return s
 }
 
-func (l *Leaf) exec(dst vm.QuerySink, src TableHandle, ep *ExecParams) error {
+func (l *Leaf) exec(dst vm.QuerySink, src *Input, ep *ExecParams) error {
+	if ep.Runner == nil {
+		return fmt.Errorf("can't execute query: ExecParams.Runner is nil")
+	}
 	filt := ep.rewrite(l.Filter)
 	var partvals []ion.Datum
 	if len(l.EqualExpr) > 0 {
@@ -428,33 +449,25 @@ func (l *Leaf) exec(dst vm.QuerySink, src TableHandle, ep *ExecParams) error {
 	}
 	// apply any last-minute filtering
 	if filt != nil {
-		if f, ok := src.(Filterable); ok {
-			src = f.Filter(filt)
-		}
+		src = src.Filter(filt)
 	}
 	if len(partvals) > 0 {
-		ph, ok := src.(PartitionHandle)
+		groups, ok := src.Partition(l.OnEqual)
 		if !ok {
-			return fmt.Errorf("cannot partition on %T", src)
+			return fmt.Errorf("cannot partition on %T %v", src, l.OnEqual)
 		}
-		var err error
-		src, err = ph.SplitOn(l.OnEqual, partvals)
-		if err != nil {
-			return err
+		src = groups.Get(partvals)
+		if src == nil {
+			return dst.Close()
 		}
 	}
-	tbl, err := src.Open(ep.Context)
-	if err != nil {
-		return err
+	err := ep.Runner.Run(dst, src, ep)
+	if errors.Is(err, io.EOF) {
+		err = nil
 	}
-	err = tbl.WriteChunks(dst, ep.Parallel)
-	ep.Stats.observe(tbl)
 	err2 := dst.Close()
 	if err == nil {
 		err = err2
-	}
-	if errors.Is(err, io.EOF) {
-		err = nil
 	}
 	return err
 }
@@ -488,7 +501,7 @@ func (l *Leaf) encode(dst *ion.Buffer, st *ion.Symtab, ep *ExecParams) error {
 	return nil
 }
 
-func (l *Leaf) setfield(d Decoder, f ion.Field) error {
+func (l *Leaf) SetField(f ion.Field) error {
 	switch f.Label {
 	case "orig":
 		n, err := expr.Decode(f.Datum)
@@ -552,7 +565,7 @@ func writeIon(b *ion.Buffer, dst vm.QuerySink) error {
 	return err
 }
 
-func (n NoOutput) exec(dst vm.QuerySink, _ TableHandle, ep *ExecParams) error {
+func (n NoOutput) exec(dst vm.QuerySink, _ *Input, ep *ExecParams) error {
 	// just output an empty symbol table
 	// and no data following it
 	var b ion.Buffer
@@ -568,7 +581,7 @@ func (n NoOutput) encode(dst *ion.Buffer, st *ion.Symtab, ep *ExecParams) error 
 	return nil
 }
 
-func (n NoOutput) setfield(d Decoder, f ion.Field) error {
+func (n NoOutput) SetField(f ion.Field) error {
 	return errUnexpectedField
 }
 
@@ -580,7 +593,7 @@ func (n DummyOutput) setinput(o Op) {
 	panic("DummyOutput: cannot setinput()")
 }
 
-func (n DummyOutput) exec(dst vm.QuerySink, src TableHandle, ep *ExecParams) error {
+func (n DummyOutput) exec(dst vm.QuerySink, src *Input, ep *ExecParams) error {
 	// just output an empty symbol table
 	// plus an empty structure
 	//
@@ -601,7 +614,7 @@ func (n DummyOutput) encode(dst *ion.Buffer, st *ion.Symtab, _ *ExecParams) erro
 	return nil
 }
 
-func (n DummyOutput) setfield(d Decoder, f ion.Field) error {
+func (n DummyOutput) SetField(f ion.Field) error {
 	return errUnexpectedField
 }
 
@@ -614,7 +627,7 @@ func (l *Limit) String() string {
 	return fmt.Sprintf("LIMIT %d", l.Num)
 }
 
-func (l *Limit) exec(dst vm.QuerySink, src TableHandle, ep *ExecParams) error {
+func (l *Limit) exec(dst vm.QuerySink, src *Input, ep *ExecParams) error {
 	return l.From.exec(vm.NewLimit(l.Num, dst), src, ep)
 }
 
@@ -627,7 +640,7 @@ func (l *Limit) encode(dst *ion.Buffer, st *ion.Symtab, _ *ExecParams) error {
 	return nil
 }
 
-func (l *Limit) setfield(d Decoder, f ion.Field) error {
+func (l *Limit) SetField(f ion.Field) error {
 	switch f.Label {
 	case "limit":
 		i, err := f.Int()
@@ -662,7 +675,7 @@ func (c *CountStar) String() string {
 	return "COUNT(*) AS " + c.name()
 }
 
-func (c *CountStar) exec(dst vm.QuerySink, src TableHandle, ep *ExecParams) error {
+func (c *CountStar) exec(dst vm.QuerySink, src *Input, ep *ExecParams) error {
 	qs := countSink{dst: dst, as: c.name(), nonempty: c.NonEmpty}
 	return c.From.exec(&qs, src, ep)
 }
@@ -724,7 +737,7 @@ func (c *CountStar) encode(dst *ion.Buffer, st *ion.Symtab, ep *ExecParams) erro
 	return nil
 }
 
-func (c *CountStar) setfield(d Decoder, f ion.Field) error {
+func (c *CountStar) SetField(f ion.Field) error {
 	switch f.Label {
 	case "nonempty":
 		var err error
@@ -821,7 +834,7 @@ func (h *HashAggregate) encode(dst *ion.Buffer, st *ion.Symtab, ep *ExecParams) 
 	return nil
 }
 
-func (h *HashAggregate) setfield(d Decoder, f ion.Field) error {
+func (h *HashAggregate) SetField(f ion.Field) error {
 	switch f.Label {
 	case "agg":
 		return decodeAggregation(&h.Agg, f.Datum)
@@ -885,7 +898,7 @@ func (h *HashAggregate) setfield(d Decoder, f ion.Field) error {
 	return nil
 }
 
-func (h *HashAggregate) exec(dst vm.QuerySink, src TableHandle, ep *ExecParams) error {
+func (h *HashAggregate) exec(dst vm.QuerySink, src *Input, ep *ExecParams) error {
 	ha, err := vm.NewHashAggregate(ep.rewriteAgg(h.Agg), ep.rewriteAgg(h.Windows), ep.rewriteBind(h.By), dst)
 	if err != nil {
 		return err
@@ -942,7 +955,7 @@ func (o *OrderBy) String() string {
 	return b.String()
 }
 
-func (o *OrderBy) exec(dst vm.QuerySink, src TableHandle, ep *ExecParams) error {
+func (o *OrderBy) exec(dst vm.QuerySink, src *Input, ep *ExecParams) error {
 	writer, err := dst.Open()
 	if err != nil {
 		return err
@@ -1029,7 +1042,7 @@ func (o *OrderBy) encode(dst *ion.Buffer, st *ion.Symtab, ep *ExecParams) error 
 	return nil
 }
 
-func (o *OrderBy) setfield(d Decoder, f ion.Field) error {
+func (o *OrderBy) SetField(f ion.Field) error {
 	switch f.Label {
 	case "columns":
 		return f.UnpackList(func(v ion.Datum) error {
@@ -1095,7 +1108,7 @@ type Distinct struct {
 	Limit  int64
 }
 
-func (d *Distinct) exec(dst vm.QuerySink, src TableHandle, ep *ExecParams) error {
+func (d *Distinct) exec(dst vm.QuerySink, src *Input, ep *ExecParams) error {
 	df, err := vm.NewDistinct(ep.rewriteAll(d.Fields), dst)
 	if err != nil {
 		return err
@@ -1123,7 +1136,7 @@ func (d *Distinct) encode(dst *ion.Buffer, st *ion.Symtab, ep *ExecParams) error
 	return nil
 }
 
-func (d *Distinct) setfield(_ Decoder, f ion.Field) error {
+func (d *Distinct) SetField(f ion.Field) error {
 	switch f.Label {
 	case "fields":
 		return f.UnpackList(func(v ion.Datum) error {
@@ -1192,7 +1205,7 @@ func (u *Unpivot) encode(dst *ion.Buffer, st *ion.Symtab, ep *ExecParams) error 
 	return nil
 }
 
-func (u *Unpivot) setfield(_ Decoder, f ion.Field) error {
+func (u *Unpivot) SetField(f ion.Field) error {
 	var err error
 	switch f.Label {
 	case "As":
@@ -1209,7 +1222,7 @@ func (u *Unpivot) setfield(_ Decoder, f ion.Field) error {
 	return err
 }
 
-func (u *Unpivot) exec(dst vm.QuerySink, src TableHandle, ep *ExecParams) error {
+func (u *Unpivot) exec(dst vm.QuerySink, src *Input, ep *ExecParams) error {
 	vmu, err := vm.NewUnpivot(u.As, u.At, dst)
 	if err != nil {
 		return err
@@ -1252,6 +1265,10 @@ func (t *Tree) encode(dst *ion.Buffer, st *ion.Symtab, ep *ExecParams) error {
 		t.Inputs[i].encode(dst, st)
 	}
 	dst.EndList()
+	if !t.Data.IsEmpty() {
+		dst.BeginField(st.Intern("data"))
+		t.Data.Encode(dst, st)
+	}
 	dst.BeginField(st.Intern("root"))
 	if err := t.Root.encode(dst, st, ep); err != nil {
 		return err
@@ -1293,7 +1310,7 @@ func (u *UnpivotAtDistinct) encode(dst *ion.Buffer, st *ion.Symtab, _ *ExecParam
 	return nil
 }
 
-func (u *UnpivotAtDistinct) exec(dst vm.QuerySink, src TableHandle, ep *ExecParams) error {
+func (u *UnpivotAtDistinct) exec(dst vm.QuerySink, src *Input, ep *ExecParams) error {
 	vmu, err := vm.NewUnpivotAtDistinct(u.At, dst)
 	if err != nil {
 		return err
@@ -1301,7 +1318,7 @@ func (u *UnpivotAtDistinct) exec(dst vm.QuerySink, src TableHandle, ep *ExecPara
 	return u.From.exec(vmu, src, ep)
 }
 
-func (u *UnpivotAtDistinct) setfield(_ Decoder, f ion.Field) error {
+func (u *UnpivotAtDistinct) SetField(f ion.Field) error {
 	var err error
 	switch f.Label {
 	case "At":
@@ -1339,7 +1356,7 @@ func (e *Explain) encode(dst *ion.Buffer, st *ion.Symtab, ep *ExecParams) error 
 	return nil
 }
 
-func (e *Explain) setfield(d Decoder, f ion.Field) error {
+func (e *Explain) SetField(f ion.Field) error {
 	switch f.Label {
 	case "format":
 		k, err := f.Int()
@@ -1354,7 +1371,7 @@ func (e *Explain) setfield(d Decoder, f ion.Field) error {
 		}
 		e.Query = q
 	case "tree":
-		tree, err := DecodeDatum(d, f.Datum)
+		tree, err := DecodeDatum(f.Datum)
 		if err != nil {
 			return err
 		}
@@ -1368,7 +1385,7 @@ func (e *Explain) setfield(d Decoder, f ion.Field) error {
 	return nil
 }
 
-func (e *Explain) exec(dst vm.QuerySink, src TableHandle, ep *ExecParams) error {
+func (e *Explain) exec(dst vm.QuerySink, src *Input, ep *ExecParams) error {
 	var b ion.Buffer
 	var st ion.Symtab
 

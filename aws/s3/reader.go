@@ -348,7 +348,7 @@ func (r *Reader) RangeReader(off, width int64) (io.ReadCloser, error) {
 		return nil, err
 	}
 	req.Header.Set("Range", fmt.Sprintf("bytes=%d-%d", off, off+width-1))
-	req.Header.Set("If-Not-Modified", r.ETag)
+	req.Header.Set("If-Match", r.ETag)
 	r.Key.SignV4(req, nil)
 	res, err := flakyDo(r.Client, req)
 	if err != nil {

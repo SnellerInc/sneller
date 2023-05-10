@@ -203,13 +203,29 @@ func (s *server) queryHandler(w http.ResponseWriter, r *http.Request) {
 	if len(endPoints) == 0 {
 		tree, err = plan.New(parsedQuery, planEnv)
 	} else {
-		planEnv.Splitter = s.newSplitter(id, key, endPoints)
-		tree, err = plan.NewSplit(parsedQuery, planEnv)
+		splitter := s.newSplitter(id, key, endPoints)
+		tree, err = plan.NewSplit(parsedQuery, struct {
+			*sneller.FSEnv
+			*sneller.Splitter
+		}{planEnv, splitter})
 	}
 	if err != nil {
 		s.logger.Printf("tenant %s query ID %s planning failed: %s", tenantID, queryID, err)
 		planError(w, err)
 		return
+	}
+	// TODO: clean this up
+	if enc, ok := planEnv.Root.(interface {
+		Encode(*ion.Buffer, *ion.Symtab) error
+	}); ok {
+		var buf ion.Buffer
+		var st ion.Symtab
+		if err := enc.Encode(&buf, &st); err != nil {
+			s.logger.Printf("tenant %s query ID %s encoding file system: %s", tenantID, queryID, err)
+			planError(w, err)
+			return
+		}
+		tree.Data, _, _ = ion.ReadDatum(&st, buf.Bytes())
 	}
 	willScan := uint64(tree.MaxScanned())
 	w.Header().Set("X-Sneller-Max-Scanned-Bytes", utoa(willScan))

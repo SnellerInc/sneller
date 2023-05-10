@@ -21,7 +21,6 @@ import (
 
 	"github.com/SnellerInc/sneller/date"
 	"github.com/SnellerInc/sneller/expr"
-	"github.com/SnellerInc/sneller/expr/blob"
 	"github.com/SnellerInc/sneller/expr/partiql"
 	"github.com/SnellerInc/sneller/ion"
 	"github.com/SnellerInc/sneller/ion/blockfmt"
@@ -36,13 +35,12 @@ func BenchmarkDecodeTree(b *testing.B) {
 		b.Run(fmt.Sprintf("%d-blocks", count), func(b *testing.B) {
 			var buf ion.Buffer
 			var st ion.Symtab
-			var be benchenv
 			tree := mkplan(b, count)
 			tree.Encode(&buf, &st)
 			b.ResetTimer()
 			b.ReportAllocs()
 			for i := 0; i < b.N; i++ {
-				_, err := Decode(&be, &st, buf.Bytes())
+				_, err := Decode(&st, buf.Bytes())
 				if err != nil {
 					b.Fatal(err)
 				}
@@ -68,60 +66,23 @@ type benchenv struct {
 	blocks int
 }
 
-func (b *benchenv) DecodeHandle(v ion.Datum) (TableHandle, error) {
-	l, err := blob.DecodeList(v)
-	if err != nil {
-		return nil, err
-	}
-	return &blobHandle{l}, nil
-}
-
 func (b *benchenv) Open(_ context.Context) (vm.Table, error) {
 	return nil, fmt.Errorf("open not allowed")
 }
 
-type blobHandle struct {
-	*blob.List
-}
-
-func (b *blobHandle) Size() int64 {
-	n := int64(0)
-	for i := range b.Contents {
-		if pc, ok := b.Contents[i].(*blob.Compressed); ok {
-			n += pc.Trailer.Decompressed()
-		} else {
-			info, _ := b.Contents[i].Stat()
-			if info != nil {
-				n += info.Size
-			}
-		}
-	}
-	return n
-}
-
-func (b *blobHandle) Open(_ context.Context) (vm.Table, error) {
-	return nil, fmt.Errorf("Open() not allowed")
-}
-
-func (b *blobHandle) Encode(dst *ion.Buffer, st *ion.Symtab) error {
-	b.List.Encode(dst, st)
-	return nil
-}
-
-func (b *benchenv) Stat(_ expr.Node, _ *Hints) (TableHandle, error) {
+func (b *benchenv) Stat(_ expr.Node, _ *Hints) (*Input, error) {
 	// produce N fake compressed blobs
 	// with data that is reasonably sized
-	lst := make([]blob.Interface, b.blocks)
-	for i := range lst {
-		lst[i] = &blob.Compressed{
-			From: &blob.URL{
-				Value: "https://s3.amazonaws.com/a-very-long/path-to-the-object/finally.ion.zst",
-				Info: blob.Info{
-					ETag:         "\"abc123xyzandmoreetagstringhere\"",
-					Size:         1234567,
-					Align:        1024 * 1024,
-					LastModified: date.Now(),
-				},
+	descs := make([]blockfmt.Descriptor, b.blocks)
+	blocks := make([]blockfmt.Block, b.blocks)
+	for i := range descs {
+		descs[i] = blockfmt.Descriptor{
+			ObjectInfo: blockfmt.ObjectInfo{
+				Path:         "a-very-long/path-to-the-object/finally.ion.zst",
+				ETag:         "\"abc123xyzandmoreetagstringhere\"",
+				LastModified: date.Now(),
+				Format:       "zion+zstd",
+				Size:         1234567,
 			},
 			Trailer: blockfmt.Trailer{
 				Version:    1,
@@ -137,5 +98,11 @@ func (b *benchenv) Stat(_ expr.Node, _ *Hints) (TableHandle, error) {
 			},
 		}
 	}
-	return &blobHandle{&blob.List{Contents: lst}}, nil
+	for i := range blocks {
+		blocks[i].Index = i
+	}
+	return &Input{
+		Descs:  descs,
+		Blocks: blocks,
+	}, nil
 }

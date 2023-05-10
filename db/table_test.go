@@ -16,8 +16,6 @@ package db
 
 import (
 	"crypto/rand"
-	"io/fs"
-	"net/url"
 	"os"
 	"path"
 	"path/filepath"
@@ -27,7 +25,6 @@ import (
 	"time"
 
 	"github.com/SnellerInc/sneller/date"
-	"github.com/SnellerInc/sneller/expr/blob"
 	"github.com/SnellerInc/sneller/ion"
 	"github.com/SnellerInc/sneller/ion/blockfmt"
 )
@@ -222,44 +219,11 @@ func TestBuildBlobs(t *testing.T) {
 	if !match {
 		t.Fatalf("unexpected contents[0] path %s", idx.Inline[0].Path)
 	}
-	lst, _, err := Blobs(dfs, idx, nil)
+	lst, _, _, err := idx.Descs(dfs, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(lst.Contents) != 1 {
-		t.Fatalf("got %d blobs back?", len(lst.Contents))
-	}
-	bc, ok := lst.Contents[0].(*blob.CompressedPart)
-	if !ok {
-		t.Fatalf("expected *blob.CompressedPart; got %T", bc)
-	}
-	urlb := bc.Parent.From.(*blob.URL)
-	info, err := fs.Stat(dfs, idx.Inline[0].Path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Logf("after Stat: %d", openFiles(t))
-
-	// etag should match object etag
-	inputETag, err := dfs.ETag(idx.Inline[0].Path, info)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Logf("after ETag: %d", openFiles(t))
-	if urlb.Info.ETag != inputETag {
-		t.Errorf("got ETag %q but wanted ETag %q", urlb.Info.ETag, inputETag)
-	}
-
-	// uri should match object path
-	uri, err := url.Parse(urlb.Value)
-	if err != nil {
-		t.Fatalf("invalid url %q: %s", urlb.Value, err)
-	}
-	match, err = path.Match("/db/db0/table0/packed*.zion", uri.Path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !match {
-		t.Errorf("unexpected path %s", uri.Path)
+	if len(lst) != 1 {
+		t.Fatalf("got %d blobs back?", len(lst))
 	}
 }

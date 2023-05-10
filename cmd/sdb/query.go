@@ -42,31 +42,8 @@ import (
 	"golang.org/x/sys/cpu"
 )
 
-// plan.TableHandle implementation for a local file
-type fileHandle struct {
-	trailer *blockfmt.Trailer
-	ra      io.ReaderAt
-	fields  []string
-}
-
-func (f *fileHandle) Open(ctx context.Context) (vm.Table, error) {
-	return &readerTable{
-		t:      f.trailer,
-		src:    f.ra,
-		fields: f.fields,
-	}, nil
-}
-
-func (f *fileHandle) Size() int64 {
-	return f.trailer.Decompressed()
-}
-
-func (f *fileHandle) Encode(dst *ion.Buffer, st *ion.Symtab) error {
-	return fmt.Errorf("fileHandle.Encode unimplemented")
-}
-
 // handle read_file('path/to/file')
-func readFileHandle(root fs.FS, args []expr.Node, hint *plan.Hints) (plan.TableHandle, error) {
+func readFile(root fs.FS, args []expr.Node, hint *plan.Hints) (*plan.Input, error) {
 	if len(args) != 1 {
 		return nil, fmt.Errorf("read_file() should have 1 argument")
 	}
@@ -78,28 +55,32 @@ func readFileHandle(root fs.FS, args []expr.Node, hint *plan.Hints) (plan.TableH
 	if err != nil {
 		return nil, err
 	}
+	defer f.Close()
 	ra, ok := f.(io.ReaderAt)
 	if !ok {
-		f.Close()
 		return nil, fmt.Errorf("%T doesn't implement io.ReaderAt", f)
 	}
 	info, err := f.Stat()
 	if err != nil {
 		return nil, err
 	}
-	trailer, err := blockfmt.ReadTrailer(ra, info.Size())
+	tr, err := blockfmt.ReadTrailer(ra, info.Size())
 	if err != nil {
-		f.Close()
 		return nil, err
 	}
-	fh := &fileHandle{
-		trailer: trailer,
-		ra:      ra,
+	blocks := make([]blockfmt.Block, len(tr.Blocks))
+	for i := range blocks {
+		blocks[i].Offset = i
 	}
-	if !hint.AllFields {
-		fh.fields = hint.Fields
-	}
-	return fh, nil
+	return &plan.Input{
+		Descs: []blockfmt.Descriptor{{
+			ObjectInfo: blockfmt.ObjectInfo{
+				Path: string(str),
+			},
+			Trailer: *tr,
+		}},
+		Blocks: blocks,
+	}, nil
 }
 
 type cmdlineEnv struct {
@@ -118,9 +99,9 @@ func (c *cmdlineEnv) Index(e expr.Node) (plan.Index, error) {
 	return nil, nil
 }
 
-func (c *cmdlineEnv) Stat(tbl expr.Node, h *plan.Hints) (plan.TableHandle, error) {
+func (c *cmdlineEnv) Stat(tbl expr.Node, h *plan.Hints) (*plan.Input, error) {
 	if b, ok := tbl.(*expr.Builtin); ok && strings.EqualFold(b.Text, "read_file") {
-		return readFileHandle(c.root, b.Args, h)
+		return readFile(c.root, b.Args, h)
 	}
 	return c.Env.Stat(tbl, h)
 }
@@ -250,6 +231,16 @@ func query(args []string) bool {
 	if err != nil {
 		exitf("planning query: %s", err)
 	}
+	if enc, ok := rootfs.(interface {
+		Encode(*ion.Buffer, *ion.Symtab) error
+	}); ok {
+		var buf ion.Buffer
+		var st ion.Symtab
+		if err := enc.Encode(&buf, &st); err != nil {
+			exitf("encoding file system: %s", err)
+		}
+		tree.Data, _, _ = ion.ReadDatum(&st, buf.Bytes())
+	}
 
 	if dashtrace != "" {
 		w := os.Stderr
@@ -281,7 +272,12 @@ func query(args []string) bool {
 
 	var stats plan.ExecStats
 	start := time.Now()
-	err = plan.Exec(tree, stdout, &stats)
+	ep := plan.ExecParams{
+		Plan:   tree,
+		Output: stdout,
+		Runner: &plan.FSRunner{FS: rootfs},
+	}
+	err = plan.Exec(&ep)
 	if err != nil {
 		exitf("%s", err)
 	}

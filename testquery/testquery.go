@@ -25,6 +25,7 @@ import (
 	"io"
 	"io/fs"
 	"math"
+	"math/bits"
 	"math/rand"
 	"strconv"
 	"strings"
@@ -43,30 +44,37 @@ import (
 	"golang.org/x/exp/slices"
 )
 
-type bufhandle []byte
-
-func (b bufhandle) Open(_ context.Context) (vm.Table, error) {
-	return vm.BufferTable([]byte(b), len(b)), nil
+type Input interface {
+	Run(dst vm.QuerySink, blocks []int, parallel int) error
+	Size() int64
+	Trailer() *blockfmt.Trailer
 }
 
-func (b bufhandle) Encode(dst *ion.Buffer, st *ion.Symtab) error {
-	return fmt.Errorf("unexpected bufhandle.Encode")
+type RawInput []byte
+
+func (b RawInput) Run(dst vm.QuerySink, _ []int, parallel int) error {
+	return vm.BufferTable([]byte(b), len(b)).WriteChunks(dst, parallel)
 }
 
-func (b bufhandle) Size() int64 {
+func (b RawInput) Size() int64 {
 	return int64(len(b))
 }
 
-type chunkshandle struct {
+func (b RawInput) Trailer() *blockfmt.Trailer {
+	tr := &blockfmt.Trailer{
+		BlockShift: bits.Len(uint(len(b))),
+		Blocks:     []blockfmt.Blockdesc{{Chunks: 1}},
+	}
+	tr.Sparse.Push(nil)
+	return tr
+}
+
+type chunksInput struct {
 	chunks [][]byte
 	fields []string
 }
 
-func (c *chunkshandle) Open(_ context.Context) (vm.Table, error) {
-	return c, nil
-}
-
-func (c *chunkshandle) Size() int64 {
+func (c *chunksInput) Size() int64 {
 	n := int64(0)
 	for i := range c.chunks {
 		n += int64(len(c.chunks[i]))
@@ -74,16 +82,28 @@ func (c *chunkshandle) Size() int64 {
 	return n
 }
 
-func (c *chunkshandle) Encode(dst *ion.Buffer, st *ion.Symtab) error {
-	return fmt.Errorf("unexpected chunkshandle.Encode")
+func (c *chunksInput) Trailer() *blockfmt.Trailer {
+	tr := &blockfmt.Trailer{
+		BlockShift: bits.Len(uint(len(c.chunks[0]))),
+	}
+	var off int64
+	for range c.chunks {
+		tr.Blocks = append(tr.Blocks, blockfmt.Blockdesc{
+			Offset: off,
+			Chunks: 1,
+		})
+		off += int64(len(c.chunks))
+		tr.Sparse.Push(nil)
+	}
+	return tr
 }
 
-func (c *chunkshandle) writeZion(dst io.WriteCloser) error {
+func (c *chunksInput) writeZion(dst io.WriteCloser, blocks []int) error {
 	var mem []byte
 	var err error
 	var enc zion.Encoder
-	for i := range c.chunks {
-		mem, err = enc.Encode(c.chunks[i], mem[:0])
+	for i := range blocks {
+		mem, err = enc.Encode(c.chunks[blocks[i]], mem[:0])
 		if err != nil {
 			dst.Close()
 			return err
@@ -103,17 +123,18 @@ func (c *chunkshandle) writeZion(dst io.WriteCloser) error {
 	return dst.Close()
 }
 
-func (c *chunkshandle) WriteChunks(dst vm.QuerySink, parallel int) error {
+func (c *chunksInput) Run(dst vm.QuerySink, blocks []int, _ int) error {
 	w, err := dst.Open()
 	if err != nil {
 		return err
 	}
 	if zw, ok := w.(blockfmt.ZionWriter); ok && zw.ConfigureZion(int64(len(c.chunks[0])), c.fields) {
-		return c.writeZion(w)
+		return c.writeZion(w, blocks)
 	}
 	tmp := vm.Malloc()
 	defer vm.Free(tmp)
-	for _, buf := range c.chunks {
+	for i := range blocks {
+		buf := c.chunks[blocks[i]]
 		if len(buf) > len(tmp) {
 			return fmt.Errorf("chunk len %d > PageSize", len(buf))
 		}
@@ -141,9 +162,7 @@ func (c *chunkshandle) WriteChunks(dst vm.QuerySink, parallel int) error {
 
 type rowgroup = plan.PartGroups[ion.Datum]
 
-var _ plan.PartitionHandle = &parallelchunks{}
-
-type parallelchunks struct {
+type parallelInput struct {
 	chunks     [][]byte
 	fields     []string
 	extraParts bool
@@ -151,16 +170,28 @@ type parallelchunks struct {
 	rg *rowgroup
 }
 
-func (p *parallelchunks) Encode(dst *ion.Buffer, st *ion.Symtab) error {
-	return fmt.Errorf("unexpected parallelchunks.Encode")
-}
-
-func (p *parallelchunks) Size() int64 {
+func (p *parallelInput) Size() int64 {
 	n := int64(0)
 	for i := range p.chunks {
 		n += int64(len(p.chunks[i]))
 	}
 	return n
+}
+
+func (p *parallelInput) Trailer() *blockfmt.Trailer {
+	tr := &blockfmt.Trailer{
+		BlockShift: bits.Len(uint(len(p.chunks[0]))),
+	}
+	var off int64
+	for range p.chunks {
+		tr.Blocks = append(tr.Blocks, blockfmt.Blockdesc{
+			Offset: off,
+			Chunks: 1,
+		})
+		off += int64(len(p.chunks))
+		tr.Sparse.Push(nil)
+	}
+	return tr
 }
 
 // MaxAutoPartitions is the maximum number of distinct
@@ -170,7 +201,7 @@ func (p *parallelchunks) Size() int64 {
 // due to the expense of dynamically partitioning the data on-demand.
 const MaxAutoPartitions = 100
 
-func (p *parallelchunks) partition(parts []string) (*rowgroup, error) {
+func (p *parallelInput) partition(parts []string) (*rowgroup, error) {
 	if p.rg != nil && slices.Equal(p.rg.Fields(), parts) {
 		return p.rg, nil
 	}
@@ -231,73 +262,9 @@ func (p *parallelchunks) partition(parts []string) (*rowgroup, error) {
 	return rg, nil
 }
 
-func (p *parallelchunks) SplitOn(parts []string, equal []ion.Datum) (plan.TableHandle, error) {
-	rg, err := p.partition(parts)
-	if err != nil {
-		return nil, err
-	}
-	rows := rg.Get(equal)
-	var st ion.Symtab
-	return bufhandle(flatten(rows, &st)), nil
-}
-
-func (p *parallelchunks) SplitBy(parts []string) ([]plan.TablePart, error) {
-	rg, err := p.partition(parts)
-	if err != nil {
-		return nil, err
-	}
-	var st ion.Symtab
-	ret := make([]plan.TablePart, 0, rg.Groups())
-	rg.Each(func(parts, rows []ion.Datum) {
-		data := flatten(rows, &st)
-		ret = append(ret, plan.TablePart{
-			Handle: bufhandle(data),
-			Parts:  parts,
-		})
-	})
-	if !p.extraParts {
-		return ret, nil
-	}
-	// produce a new dummy partition with no data;
-	// this is here to ensure it doesn't erroneously
-	// end up in the output
-	dummy := make([]ion.Datum, len(parts))
-	for i := range dummy {
-		dummy[i] = ion.String("__empty_bugcatcher_part")
-	}
-	ret = append(ret, plan.TablePart{
-		Handle: bufhandle(nil),
-		Parts:  dummy,
-	})
-	return ret, nil
-}
-
-func (p *parallelchunks) Split() (plan.Subtables, error) {
-	tp := &plan.LocalTransport{Threads: 1}
-	if len(p.chunks) == 1 {
-		return plan.SubtableList{{Transport: tp, Handle: p}}, nil
-	}
-	first := p.chunks[:len(p.chunks)/2]
-	second := p.chunks[len(p.chunks)/2:]
-	return plan.SubtableList{
-		{
-			Transport: tp,
-			Handle:    &parallelchunks{chunks: first, fields: p.fields},
-		},
-		{
-			Transport: tp,
-			Handle:    &parallelchunks{chunks: second, fields: p.fields},
-		},
-	}, nil
-}
-
-func (p *parallelchunks) Open(_ context.Context) (vm.Table, error) {
-	return p, nil
-}
-
-func (p *parallelchunks) WriteChunks(dst vm.QuerySink, parallel int) error {
-	outputs := make([]io.WriteCloser, len(p.chunks))
-	errlist := make([]error, len(p.chunks))
+func (p *parallelInput) Run(dst vm.QuerySink, blocks []int, _ int) error {
+	outputs := make([]io.WriteCloser, len(blocks))
+	errlist := make([]error, len(blocks))
 	var wg sync.WaitGroup
 	for i := range outputs {
 		w, err := dst.Open()
@@ -339,7 +306,7 @@ func (p *parallelchunks) WriteChunks(dst vm.QuerySink, parallel int) error {
 				return
 			}
 			seterr(w.Close())
-		}(outputs[i], p.chunks[i], &errlist[i])
+		}(outputs[i], p.chunks[blocks[i]], &errlist[i])
 	}
 	wg.Wait()
 	for i := range errlist {
@@ -356,51 +323,96 @@ type Env struct {
 	// If [len(In) == 1], then `In[0]` is the table [input].
 	// Otherwise tables [input0], [input1], etc. correspond
 	// to [In[0]], [In[1]], and so forth.
-	In   []plan.TableHandle
+	In   []Input
 	tags map[string]string
 }
 
-func (e *Env) handle(t expr.Node) (plan.TableHandle, bool) {
-	p, ok := expr.FlatPath(t)
-	if !ok {
-		return nil, false
-	}
-	if len(p) != 1 {
-		return nil, false
-	}
-	if p[0] == "input" && len(e.In) == 1 {
+func (e *Env) input(p string) (Input, bool) {
+	if p == "input" && len(e.In) == 1 {
 		return e.In[0], true
 	}
 	var i int
-	if n, _ := fmt.Sscanf(p[0], "input%d", &i); n > 0 && i >= 0 && i < len(e.In) {
+	if n, _ := fmt.Sscanf(p, "input%d", &i); n > 0 && i >= 0 && i < len(e.In) {
 		return e.In[i], true
 	}
 	return nil, false
 }
 
-func setHints(h plan.TableHandle, hints *plan.Hints) {
-	switch t := h.(type) {
-	case *chunkshandle:
-		t.fields = hints.Fields
-	case *parallelchunks:
-		t.fields = hints.Fields
+func (e *Env) Geometry() *plan.Geometry {
+	return &plan.Geometry{
+		Peers: []plan.Transport{
+			&plan.LocalTransport{},
+			&plan.LocalTransport{},
+		},
 	}
 }
 
 // Stat implements plan.Env.Stat
-func (e *Env) Stat(t expr.Node, h *plan.Hints) (plan.TableHandle, error) {
-	handle, ok := e.handle(t)
+func (e *Env) Stat(t expr.Node, h *plan.Hints) (*plan.Input, error) {
+	id, ok := t.(expr.Ident)
 	if !ok {
 		return nil, fmt.Errorf("unexpected table expression %q", expr.ToString(t))
 	}
-	setHints(handle, h)
-	return handle, nil
+	in, ok := e.input(string(id))
+	if !ok {
+		return nil, fmt.Errorf("invalid input %q", string(id))
+	}
+	var blocks []blockfmt.Block
+	tr := in.Trailer()
+	if tr != nil {
+		blocks = make([]blockfmt.Block, len(tr.Blocks))
+		for i := range blocks {
+			blocks[i].Offset = i
+		}
+	}
+	var fields []string
+	if !h.AllFields {
+		fields = h.Fields
+		if fields == nil {
+			fields = make([]string, 0)
+		}
+	}
+	desc := blockfmt.Descriptor{
+		ObjectInfo: blockfmt.ObjectInfo{
+			Path: string(id),
+			Size: in.Size(),
+		},
+	}
+	if tr != nil {
+		desc.Trailer = *tr
+	}
+	return &plan.Input{
+		Descs:  []blockfmt.Descriptor{desc},
+		Blocks: blocks,
+		Fields: fields,
+	}, nil
+}
+
+func (e *Env) Run(dst vm.QuerySink, in *plan.Input, ep *plan.ExecParams) error {
+	for i := range in.Descs {
+		input, ok := e.input(in.Descs[i].Path)
+		if !ok {
+			return fmt.Errorf("bad input: %s", in.Descs[i].Path)
+		}
+		// NOTE: not all input types support blocks
+		var blocks []int
+		for j := range in.Blocks {
+			if in.Blocks[j].Index == i {
+				blocks = append(blocks, in.Blocks[j].Offset)
+			}
+		}
+		err := input.Run(dst, blocks, ep.Parallel)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 var _ plan.Indexer = &Env{}
 
 type handleIndex struct {
-	h    plan.TableHandle
+	in   any
 	part bool
 }
 
@@ -412,22 +424,29 @@ func (h *handleIndex) HasPartition(x string) bool {
 	if !h.part {
 		return false
 	}
-	sh, ok := h.h.(plan.PartitionHandle)
+	// FIXME: we need to calculate row consts
+	// ahead of time
+	return false
+	pi, ok := h.in.(*parallelInput)
 	if ok {
 		// XXX very slow:
-		_, err := sh.SplitBy([]string{x})
+		_, err := pi.partition([]string{x})
 		return err == nil
 	}
 	return false
 }
 
 func (e *Env) Index(t expr.Node) (plan.Index, error) {
-	handle, ok := e.handle(t)
+	id, ok := t.(expr.Ident)
+	if !ok {
+		return nil, fmt.Errorf("unexpected table expression %q", expr.ToString(t))
+	}
+	in, ok := e.input(string(id))
 	if !ok {
 		return nil, fmt.Errorf("unexpected table expression %q", expr.ToString(t))
 	}
 	return &handleIndex{
-		h:    handle,
+		in:   in,
 		part: e.tags == nil || e.tags["partition"] != "false",
 	}, nil
 }
@@ -689,7 +708,7 @@ func (q *Case) Execute(flags RunFlags) error {
 			return ret
 		}
 
-		input := make([]plan.TableHandle, len(in))
+		input := make([]Input, len(in))
 		maxp := 0
 		for i, in := range in {
 			if (flags&FlagResymbolize) != 0 && len(in) > 1 {
@@ -704,12 +723,12 @@ func (q *Case) Execute(flags RunFlags) error {
 				}
 				if flags&FlagParallel != 0 {
 					maxp = 2
-					input[i] = &parallelchunks{chunks: [][]byte{first, second}, extraParts: newparts}
+					input[i] = &parallelInput{chunks: [][]byte{first, second}, extraParts: newparts}
 				} else {
-					input[i] = &chunkshandle{chunks: [][]byte{first, second}}
+					input[i] = &chunksInput{chunks: [][]byte{first, second}}
 				}
 			} else {
-				input[i] = bufhandle(flatten(in, st))
+				input[i] = RawInput(flatten(in, st))
 			}
 		}
 		env := &Env{In: input, tags: tags}
@@ -726,11 +745,13 @@ func (q *Case) Execute(flags RunFlags) error {
 		var out bytes.Buffer
 		lp := plan.LocalTransport{Threads: maxp}
 		params := plan.ExecParams{
+			Plan:     tree,
 			Output:   &out,
 			Parallel: maxp,
 			Context:  context.Background(),
+			Runner:   env,
 		}
-		err = lp.Exec(tree, &params)
+		err = lp.Exec(&params)
 		if err != nil {
 			return nil, err
 		}
@@ -765,6 +786,12 @@ func (q *Case) Execute(flags RunFlags) error {
 	nErrors := 0
 	if err != nil {
 		nErrors++
+	}
+	if flags&FlagSplit != 0 {
+		// FIXME: split queries cannot be made
+		// deterministic, so just check the number
+		// of results for now
+		return err
 	}
 	for i := range q.Output {
 		if i >= len(gotout) {

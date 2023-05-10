@@ -35,6 +35,7 @@ import (
 	"github.com/SnellerInc/sneller/expr"
 	"github.com/SnellerInc/sneller/expr/partiql"
 	"github.com/SnellerInc/sneller/ion"
+	"github.com/SnellerInc/sneller/ion/blockfmt"
 	"github.com/SnellerInc/sneller/vm"
 )
 
@@ -43,7 +44,8 @@ import (
 // ../testdata/ directory
 type testenv struct {
 	t       testing.TB
-	open    map[string]*os.File
+	tmp     string
+	lock    sync.Mutex
 	schema  expr.Hint
 	indexer Indexer
 
@@ -52,68 +54,22 @@ type testenv struct {
 	mustfail string
 }
 
-func (t *testenv) stat(fname string) int64 {
-	t.t.Helper()
-	f := t.get(fname)
-	info, err := f.Stat()
+func (t *testenv) fsys() *blockfmt.DirFS {
+	t.lock.Lock()
+	defer t.lock.Unlock()
+	if t.tmp != "" {
+		return blockfmt.NewDirFS(t.tmp)
+	}
+	t.tmp = t.t.TempDir()
+	dir, err := filepath.Abs("../testdata")
 	if err != nil {
 		t.t.Fatal(err)
 	}
-	return info.Size()
-}
-
-func (t *testenv) get(fname string) *os.File {
-	t.t.Helper()
-	if t.open != nil {
-		f := t.open[fname]
-		if f != nil {
-			return f
-		}
-	}
-	f, err := os.Open(fname)
+	err = os.Symlink(dir, filepath.Join(t.tmp, "testdata"))
 	if err != nil {
 		t.t.Fatal(err)
 	}
-	if t.open == nil {
-		t.open = make(map[string]*os.File)
-		t.t.Cleanup(t.clean)
-	}
-	t.t.Logf("opened %s", f.Name())
-	t.open[fname] = f
-	return f
-}
-
-func (t *testenv) DecodeHandle(d ion.Datum) (TableHandle, error) {
-	if t.mustfail != "" {
-		return nil, errors.New(t.mustfail)
-	}
-	switch typ := d.Type(); typ {
-	case ion.BlobType:
-		buf, err := d.Blob()
-		if err != nil {
-			return nil, err
-		}
-		return &literalHandle{buf}, nil
-	case ion.StringType:
-		str, err := d.String()
-		if err != nil {
-			return nil, err
-		}
-		return &fileHandle{parent: t, name: str}, nil
-	default:
-		panic("unexpected table handle: " + typ.String())
-	}
-}
-
-func (t *testenv) clean() {
-	if t.open == nil {
-		return
-	}
-	for _, v := range t.open {
-		v.Close()
-		t.t.Logf("closed %s", v.Name())
-	}
-	t.open = nil
+	return blockfmt.NewDirFS(t.tmp)
 }
 
 func (t *testenv) Schema(tbl expr.Node) expr.Hint {
@@ -129,68 +85,103 @@ func (t *testenv) Index(tbl expr.Node) (Index, error) {
 	return t.indexer.Index(tbl)
 }
 
-type literalHandle struct {
-	body []byte
-}
-
-func (l *literalHandle) Size() int64 { return int64(len(l.body)) }
-
-func (l *literalHandle) Open(_ context.Context) (vm.Table, error) {
-	return vm.BufferTable(l.body, len(l.body)), nil
-}
-
-func (l *literalHandle) Encode(dst *ion.Buffer, st *ion.Symtab) error {
-	dst.WriteBlob(l.body)
-	return nil
-}
-
-func str2json(arg expr.Node) (TableHandle, error) {
+func (t *testenv) str2json(arg expr.Node) (*Input, error) {
 	str, ok := arg.(expr.String)
 	if !ok {
 		return nil, fmt.Errorf("unexpected argument to NDJSON: %s", arg)
 	}
-	d := json.NewDecoder(strings.NewReader(string(str)))
-	var out []ion.Datum
-	var st ion.Symtab
-	for {
-		d, err := ion.FromJSON(&st, d)
-		if errors.Is(err, io.EOF) {
-			break
-		}
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, d)
+	src := struct {
+		*strings.Reader
+		io.Closer
+	}{strings.NewReader(string(str)), io.NopCloser(nil)}
+	name := uuid() + ".zion"
+	up, err := blockfmt.NewDirFS(t.tmp).Create(name)
+	if err != nil {
+		return nil, err
 	}
-	var buf ion.Buffer
-	for i := range out {
-		out[i].Encode(&buf, &st)
+	c := blockfmt.Converter{
+		Inputs: []blockfmt.Input{{
+			Size: src.Size(),
+			R:    src,
+			F:    blockfmt.MustSuffixToFormat(".json"),
+		}},
+		Output:     up,
+		Comp:       "zion",
+		Align:      1024,
+		FlushMeta:  50 * 1024,
+		TargetSize: 8 * 1024,
 	}
-	tail := buf.Bytes()
-	buf.Set(nil)
-	st.Marshal(&buf, true)
-	buf.UnsafeAppend(tail)
-	return &literalHandle{buf.Bytes()}, nil
+	err = c.Run()
+	if err != nil {
+		return nil, err
+	}
+	tr := c.Trailer()
+	blocks := make([]blockfmt.Block, len(tr.Blocks))
+	for i := range blocks {
+		blocks[i].Offset = i
+	}
+	return &Input{
+		Descs: []blockfmt.Descriptor{{
+			ObjectInfo: blockfmt.ObjectInfo{
+				Path: filepath.Join(name),
+			},
+			Trailer: *tr,
+		}},
+		Blocks: blocks,
+	}, nil
 }
 
-func (t *testenv) Stat(tbl expr.Node, h *Hints) (TableHandle, error) {
+func (t *testenv) Stat(tbl expr.Node, h *Hints) (*Input, error) {
 	b, ok := tbl.(*expr.Builtin)
 	if ok {
 		switch b.Name() {
 		case "JSON":
-			return str2json(b.Args[0])
+			return t.str2json(b.Args[0])
 		default:
 			return nil, fmt.Errorf("don't understand builtin %s", expr.ToString(tbl))
 		}
 	}
-	str, ok := tbl.(expr.String)
+	str, ok := tbl.(expr.Ident)
 	if !ok {
 		return nil, fmt.Errorf("don't understand table expression %s", expr.ToString(tbl))
 	}
 	if t.mustfail != "" {
 		return nil, errors.New(t.mustfail)
 	}
-	return &fileHandle{parent: t, name: filepath.Join("../testdata/", string(str))}, nil
+	path := "testdata/" + string(str) + ".zion"
+	f, err := t.fsys().Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	info, err := f.Stat()
+	if err != nil {
+		return nil, err
+	}
+	tr, err := blockfmt.ReadTrailer(f.(io.ReaderAt), info.Size())
+	if err != nil {
+		return nil, fmt.Errorf("reading trailer: %v", err)
+	}
+	blocks := make([]blockfmt.Block, len(tr.Blocks))
+	for i := range blocks {
+		blocks[i].Offset = i
+	}
+	return &Input{
+		Descs: []blockfmt.Descriptor{{
+			ObjectInfo: blockfmt.ObjectInfo{Path: path},
+			Trailer:    *tr,
+		}},
+		Blocks: blocks,
+	}, nil
+}
+
+// Run implements Runner.Run
+func (t *testenv) Run(dst vm.QuerySink, src *Input, ep *ExecParams) error {
+	if t.mustfail != "" {
+		return errors.New(t.mustfail)
+	}
+	r := FSRunner{FS: t.fsys()}
+	return r.Run(dst, src, ep)
 }
 
 var _ TableLister = (*testenv)(nil)
@@ -199,39 +190,19 @@ func (t *testenv) ListTables(db string) ([]string, error) {
 	if db != "" {
 		return nil, fmt.Errorf("no such database: %s", db)
 	}
-	ds, err := os.ReadDir("../testdata")
+	ds, err := os.ReadDir(filepath.Join(t.tmp, "testdata"))
 	if err != nil {
 		return nil, err
 	}
-	list := make([]string, len(ds))
+	var list []string
 	for i := range ds {
-		list[i] = ds[i].Name()
+		name := ds[i].Name()
+		if !strings.HasSuffix(name, ".zion") {
+			continue
+		}
+		list = append(list, strings.TrimSuffix(name, ".zion"))
 	}
 	return list, nil
-}
-
-// fileHandle is a TableHandle implementation for an *os.File
-type fileHandle struct {
-	name   string
-	parent *testenv
-}
-
-func (fh *fileHandle) Size() int64 {
-	return fh.parent.stat(fh.name)
-}
-
-func (fh *fileHandle) Open(ctx context.Context) (vm.Table, error) {
-	f := fh.parent.get(fh.name)
-	i, err := f.Stat()
-	if err != nil {
-		return nil, err
-	}
-	return vm.NewReaderAtTable(f, i.Size(), 1024*1024), nil
-}
-
-func (fh *fileHandle) Encode(dst *ion.Buffer, st *ion.Symtab) error {
-	dst.WriteString(fh.name)
-	return nil
 }
 
 func countmsg(n int) string {
@@ -290,7 +261,7 @@ func partial(field string, ts expr.TypeSet) expr.Hint {
 
 const (
 	nycTaxiBytes = 1048576
-	parkingBytes = 116243
+	parkingBytes = 1048576
 )
 
 func toJSON(st *ion.Symtab, d ion.Datum) string {
@@ -338,7 +309,7 @@ func TestExec(t *testing.T) {
 		expectBytes int
 	}{
 		{
-			query: `SELECT COUNT(*), VendorID FROM 'nyc-taxi.block' GROUP BY VendorID ORDER BY SUM(trip_distance) DESC`,
+			query: `SELECT COUNT(*), VendorID FROM nyc_taxi GROUP BY VendorID ORDER BY SUM(trip_distance) DESC`,
 			expectedRows: []string{
 				`{"count": 7353, "VendorID": "VTS"}`,
 				`{"count": 1055, "VendorID": "CMT"}`,
@@ -346,69 +317,69 @@ func TestExec(t *testing.T) {
 			},
 		},
 		{
-			query:       `select * from 'nyc-taxi.block'`,
+			query:       `select * from nyc_taxi`,
 			rows:        8560,
 			expectBytes: nycTaxiBytes,
 		},
 		{
-			query:       `select COUNT(*) from 'nyc-taxi.block' t`,
+			query:       `select COUNT(*) from nyc_taxi t`,
 			rows:        1,
 			firstrow:    countmsg(8560),
 			expectBytes: nycTaxiBytes,
 		},
 		{
-			query:       `select COUNT(*) from 'parking.10n' where Make is missing`,
+			query:       `select COUNT(*) from parking where Make is missing`,
 			rows:        1,
 			firstrow:    countmsg(4),
 			expectBytes: parkingBytes,
 		},
 		{
 			// reverse of above:
-			query:       `select COUNT(Make) from 'parking.10n'`,
+			query:       `select COUNT(Make) from parking`,
 			rows:        1,
 			firstrow:    countmsg(1023 - 4),
 			expectBytes: parkingBytes,
 		},
 		{
-			query:       "select COUNT(*) from 'nyc-taxi.block' where tpep_pickup_datetime<`2009-01-16T00:05:31Z`",
+			query:       "select COUNT(*) from nyc_taxi where tpep_pickup_datetime<`2009-01-16T00:05:31Z`",
 			rows:        1,
 			firstrow:    countmsg(4057),
 			expectBytes: nycTaxiBytes,
 		},
 		{
-			query:       "select COUNT(*) from 'nyc-taxi.block' where tpep_pickup_datetime>`2009-01-16T00:05:31Z`",
+			query:       "select COUNT(*) from nyc_taxi where tpep_pickup_datetime>`2009-01-16T00:05:31Z`",
 			rows:        1,
 			firstrow:    countmsg(4502),
 			expectBytes: nycTaxiBytes,
 		},
 		{
-			query:       "select COUNT(*) from 'nyc-taxi.block' where tpep_pickup_datetime>=`2009-01-16T00:05:31Z`",
+			query:       "select COUNT(*) from nyc_taxi where tpep_pickup_datetime>=`2009-01-16T00:05:31Z`",
 			rows:        1,
 			firstrow:    countmsg(4503),
 			expectBytes: nycTaxiBytes,
 		},
 		{
-			query:       "select COUNT(*) from 'nyc-taxi.block' where tpep_pickup_datetime=`2009-01-16T00:05:31Z`",
+			query:       "select COUNT(*) from nyc_taxi where tpep_pickup_datetime=`2009-01-16T00:05:31Z`",
 			rows:        1,
 			firstrow:    countmsg(1),
 			expectBytes: nycTaxiBytes,
 		},
 		{
-			query:       "select COUNT(*) from 'nyc-taxi.block' where tpep_pickup_datetime between `2009-01-15T00:00:00Z` and `2009-01-15T23:59:59Z`",
+			query:       "select COUNT(*) from nyc_taxi where tpep_pickup_datetime between `2009-01-15T00:00:00Z` and `2009-01-15T23:59:59Z`",
 			rows:        1,
 			firstrow:    countmsg(350),
 			expectBytes: nycTaxiBytes,
 		},
 		{
 			// partiql oddity: MISSING is not NULL
-			query:       `select COUNT(*) from 'parking.10n' where Make is not null`,
+			query:       `select COUNT(*) from parking where Make is not null`,
 			rows:        1,
 			firstrow:    countmsg(1023 - 4),
 			expectBytes: parkingBytes,
 		},
 		{
 			// test coalesce in projection position
-			query: `select coalesce(Make, 'unknown') as mk from 'parking.10n' where Make is missing`,
+			query: `select coalesce(Make, 'unknown') as mk from parking where Make is missing`,
 			expectedRows: []string{
 				`{"mk": "unknown"}`,
 				`{"mk": "unknown"}`,
@@ -432,7 +403,7 @@ select distinct pronounce from
      when VendorID = 'DDS' then 'dee dee ess'
      else NULL
      end) as pronounce
-   from 'nyc-taxi.block')
+   from nyc_taxi)
 order by pronounce`,
 			expectedRows: []string{
 				`{"pronounce": "cee emm tee"}`,
@@ -446,7 +417,7 @@ order by pronounce`,
 			// should yield all rows
 			query: `
 select count(*)
-from 'parking.10n'
+from parking
 where case
       when Make is not null then Ticket > 0
       else true
@@ -460,7 +431,7 @@ where case
 			// there are 122 actual Make="HOND" entries,
 			// so using "HOND" as the default Make value
 			// should yield exactly 4 more
-			query:       `select count(*) from 'parking.10n' where coalesce(Make, 'HOND') = 'HOND'`,
+			query:       `select count(*) from parking where coalesce(Make, 'HOND') = 'HOND'`,
 			rows:        1,
 			firstrow:    countmsg(122 + 4),
 			expectBytes: parkingBytes,
@@ -487,12 +458,12 @@ where coalesce(x, y, z) = 3`,
 			rows: 0, // no rows match, because the first non-null coalesce arg is never 3
 		},
 		{
-			query:    `select avg(fare_amount) from 'nyc-taxi.block'`,
+			query:    `select avg(fare_amount) from nyc_taxi`,
 			rows:     1,
 			firstrow: fmt.Sprintf(`{"avg": %g}`, 9.475478898890179),
 		},
 		{
-			query: `select avg(fare_amount), VendorID from 'nyc-taxi.block' group by VendorID order by avg(fare_amount)`,
+			query: `select avg(fare_amount), VendorID from nyc_taxi group by VendorID order by avg(fare_amount)`,
 			rows:  3,
 			expectedRows: []string{
 				`{"VendorID": "VTS", "avg": 9.435699641166867}`,
@@ -502,216 +473,216 @@ where coalesce(x, y, z) = 3`,
 		},
 		// Test arithmetic expressions with immediate values, which should use optimized bytecode.
 		{
-			query:    `select MAX(Ticket) from 'parking.10n'`,
+			query:    `select MAX(Ticket) from parking`,
 			rows:     1,
 			firstrow: `{"max": 4272473892}`,
 		},
 		{
-			query:    `select MIN(-Ticket) from 'parking.10n'`,
+			query:    `select MIN(-Ticket) from parking`,
 			rows:     1,
 			firstrow: `{"min": -4272473892}`,
 		},
 		{
-			query:    `select MAX(Ticket + 1) from 'parking.10n'`,
+			query:    `select MAX(Ticket + 1) from parking`,
 			rows:     1,
 			firstrow: `{"max": 4272473893}`,
 		},
 		{
-			query:    `select MAX(1 + Ticket) from 'parking.10n'`,
+			query:    `select MAX(1 + Ticket) from parking`,
 			rows:     1,
 			firstrow: `{"max": 4272473893}`,
 		},
 		{
-			query:    `select MAX(Ticket - 1) from 'parking.10n'`,
+			query:    `select MAX(Ticket - 1) from parking`,
 			rows:     1,
 			firstrow: `{"max": 4272473891}`,
 		},
 		{
-			query:    `select MAX(1 - Ticket) from 'parking.10n'`,
+			query:    `select MAX(1 - Ticket) from parking`,
 			rows:     1,
 			firstrow: `{"max": -1103341115}`,
 		},
 		{
-			query:    `select MAX(Ticket * 2) from 'parking.10n'`,
+			query:    `select MAX(Ticket * 2) from parking`,
 			rows:     1,
 			firstrow: `{"max": 8544947784}`,
 		},
 		{
-			query:    `select MAX(2 * Ticket) from 'parking.10n'`,
+			query:    `select MAX(2 * Ticket) from parking`,
 			rows:     1,
 			firstrow: `{"max": 8544947784}`,
 		},
 		{
-			query:    `select MAX(Ticket * 2 + 1) from 'parking.10n'`,
+			query:    `select MAX(Ticket * 2 + 1) from parking`,
 			rows:     1,
 			firstrow: `{"max": 8544947785}`,
 		},
 		{
-			query:    `select MAX(2 * Ticket + 1) from 'parking.10n'`,
+			query:    `select MAX(2 * Ticket + 1) from parking`,
 			rows:     1,
 			firstrow: `{"max": 8544947785}`,
 		},
 		{
-			query:    `select MAX(1 + 2 * Ticket) from 'parking.10n'`,
+			query:    `select MAX(1 + 2 * Ticket) from parking`,
 			rows:     1,
 			firstrow: `{"max": 8544947785}`,
 		},
 		{
-			query:    `select MAX(Ticket * 2 - 1) from 'parking.10n'`,
+			query:    `select MAX(Ticket * 2 - 1) from parking`,
 			rows:     1,
 			firstrow: `{"max": 8544947783}`,
 		},
 		{
-			query:    `select MAX(Ticket / 2) from 'parking.10n'`,
+			query:    `select MAX(Ticket / 2) from parking`,
 			rows:     1,
 			firstrow: `{"max": 2136236946}`,
 		},
 		{
-			query:    `select MAX(Ticket / 2 + 1) from 'parking.10n'`,
+			query:    `select MAX(Ticket / 2 + 1) from parking`,
 			rows:     1,
 			firstrow: `{"max": 2136236947}`,
 		},
 		{
-			query:    `select MAX(1 + Ticket / 2) from 'parking.10n'`,
+			query:    `select MAX(1 + Ticket / 2) from parking`,
 			rows:     1,
 			firstrow: `{"max": 2136236947}`,
 		},
 		{
-			query:    `select MAX(Ticket / 2 - 1) from 'parking.10n'`,
+			query:    `select MAX(Ticket / 2 - 1) from parking`,
 			rows:     1,
 			firstrow: `{"max": 2136236945}`,
 		},
 		{
-			query:    `select MAX(1 - Ticket / 2) from 'parking.10n'`,
+			query:    `select MAX(1 - Ticket / 2) from parking`,
 			rows:     1,
 			firstrow: `{"max": -551670557}`,
 		},
 		{
-			query:    `select MAX(Ticket % 1000) from 'parking.10n'`,
+			query:    `select MAX(Ticket % 1000) from parking`,
 			rows:     1,
 			firstrow: `{"max": 996}`,
 		},
 		{
-			query:    `select MAX(Ticket % 1000) from 'parking.10n'`,
+			query:    `select MAX(Ticket % 1000) from parking`,
 			rows:     1,
 			firstrow: `{"max": 996}`,
 		},
 		// Test arithmetic expressions with itself, special cases.
 		{
-			query:    `select MAX(PlateExpiry) from 'parking.10n'`,
+			query:    `select MAX(PlateExpiry) from parking`,
 			rows:     1,
 			firstrow: `{"max": 201905}`,
 		},
 		{
-			query:    `select MAX(PlateExpiry - PlateExpiry) from 'parking.10n'`,
+			query:    `select MAX(PlateExpiry - PlateExpiry) from parking`,
 			rows:     1,
 			firstrow: `{"max": 0}`,
 		},
 		{
-			query:    `select MAX(PlateExpiry + PlateExpiry) from 'parking.10n'`,
+			query:    `select MAX(PlateExpiry + PlateExpiry) from parking`,
 			rows:     1,
 			firstrow: `{"max": 403810}`,
 		},
 		{
-			query:    `select MAX(PlateExpiry * PlateExpiry) from 'parking.10n'`,
+			query:    `select MAX(PlateExpiry * PlateExpiry) from parking`,
 			rows:     1,
 			firstrow: `{"max": 40765629025}`,
 		},
 		{
-			query:    `select MAX(PlateExpiry / PlateExpiry) from 'parking.10n'`,
+			query:    `select MAX(PlateExpiry / PlateExpiry) from parking`,
 			rows:     1,
 			firstrow: `{"max": 1}`,
 		},
 		// Test arithmetic functions.
 		{
-			query:    `select MAX(LEAST(PlateExpiry, IssueTime)) from 'parking.10n'`,
+			query:    `select MAX(LEAST(PlateExpiry, IssueTime)) from parking`,
 			rows:     1,
 			firstrow: `{"max": 2355}`,
 		},
 		{
-			query:    `select MAX(SQRT(PlateExpiry + 60239)) from 'parking.10n'`,
+			query:    `select MAX(SQRT(PlateExpiry + 60239)) from parking`,
 			rows:     1,
 			firstrow: `{"max": 512}`,
 		},
 		{
-			query:    `select MAX(ABS(PlateExpiry - 100000)) from 'parking.10n'`,
+			query:    `select MAX(ABS(PlateExpiry - 100000)) from parking`,
 			rows:     1,
 			firstrow: `{"max": 101905}`,
 		},
 		{
-			query:    `select MAX(SIGN(Ticket)) from 'parking.10n'`,
+			query:    `select MAX(SIGN(Ticket)) from parking`,
 			rows:     1,
 			firstrow: `{"max": 1}`,
 		},
 		{
-			query:    `select MAX(SIGN(-Ticket)) from 'parking.10n'`,
+			query:    `select MAX(SIGN(-Ticket)) from parking`,
 			rows:     1,
 			firstrow: `{"max": -1}`,
 		},
 		// These are weird queries, SIGN(Ticket) always returns 1, so we use
 		// some arithmetic to prepare a value that will be used with rounding.
 		{
-			query:    `select MAX(ROUND(SIGN(Ticket) - 0.5)) from 'parking.10n'`,
+			query:    `select MAX(ROUND(SIGN(Ticket) - 0.5)) from parking`,
 			rows:     1,
 			firstrow: `{"max": 1}`,
 		},
 		{
-			query:    `select MAX(ROUND_EVEN(SIGN(Ticket) - 0.5)) from 'parking.10n'`,
+			query:    `select MAX(ROUND_EVEN(SIGN(Ticket) - 0.5)) from parking`,
 			rows:     1,
 			firstrow: `{"max": 0}`,
 		},
 		{
-			query:    `select MAX(TRUNC(SIGN(Ticket) + 0.5)) from 'parking.10n'`,
+			query:    `select MAX(TRUNC(SIGN(Ticket) + 0.5)) from parking`,
 			rows:     1,
 			firstrow: `{"max": 1}`,
 		},
 		{
-			query:    `select MAX(TRUNC(SIGN(-Ticket) - 0.5)) from 'parking.10n'`,
+			query:    `select MAX(TRUNC(SIGN(-Ticket) - 0.5)) from parking`,
 			rows:     1,
 			firstrow: `{"max": -1}`,
 		},
 		{
-			query:    `select MAX(FLOOR(SIGN(Ticket) + 0.5)) from 'parking.10n'`,
+			query:    `select MAX(FLOOR(SIGN(Ticket) + 0.5)) from parking`,
 			rows:     1,
 			firstrow: `{"max": 1}`,
 		},
 		{
-			query:    `select MAX(CEIL(SIGN(Ticket) + 0.5)) from 'parking.10n'`,
+			query:    `select MAX(CEIL(SIGN(Ticket) + 0.5)) from parking`,
 			rows:     1,
 			firstrow: `{"max": 2}`,
 		},
 		// Missing support.
 		{
-			query:    `select Ticket from 'parking.10n' where Make is missing and Fine is missing`,
+			query:    `select Ticket from parking where Make is missing and Fine is missing`,
 			rows:     1,
 			firstrow: `{"Ticket": 1112092391}`,
 		},
 		{
 			// test that a bare path expression in logical operator position
 			// yields the equivalent of <expr> IS TRUE
-			query:    `select count(*) from 'parking2.ion' where Fields[0]`,
+			query:    `select count(*) from parking2 where Fields[0]`,
 			rows:     1,
 			firstrow: countmsg(882),
 		},
 		{
-			query:    `select count(*) from 'parking2.ion' where Fields[0] is false`,
+			query:    `select count(*) from parking2 where Fields[0] is false`,
 			rows:     1,
 			firstrow: countmsg(1023 - 882),
 		},
 		{
-			query:    `select count(*) from 'parking2.ion' where Color is null`,
+			query:    `select count(*) from parking2 where Color is null`,
 			rows:     1,
 			firstrow: countmsg(7),
 		},
 		{
 			// select count(*)
-			// from 'nyc-taxi.block' t
+			// from nyc_taxi t
 			// where t.passenger_count>1 or t.trip_distance<1
 			//
 			// -> 4699
 			query: `
 select count(*)
-from 'nyc-taxi.block' t
+from nyc_taxi t
 where t.passenger_count>1 or t.trip_distance<1`,
 			rows:     1,
 			firstrow: countmsg(4699),
@@ -719,7 +690,7 @@ where t.passenger_count>1 or t.trip_distance<1`,
 		{
 			query: `
 select t.VendorID as vendor, t.fare_amount as fare, t.passenger_count as passengers
-from 'nyc-taxi.block' t
+from nyc_taxi t
 where t.passenger_count>1 or t.trip_distance<1`,
 			rows:     4699,
 			firstrow: `{"vendor": "VTS", "fare": 12.1, "passengers": 3}`,
@@ -727,7 +698,7 @@ where t.passenger_count>1 or t.trip_distance<1`,
 		{
 			query: `
 select out.Make as make, entry.Color as color
-from 'parking3.ion' as out, out.Entries as entry
+from parking3 as out, out.Entries as entry
 where entry.Color = 'BK'
 `,
 			rows:     221,
@@ -736,55 +707,55 @@ where entry.Color = 'BK'
 		{
 			query: `
 select out.Make as make, entry.Ticket as ticket, entry.Color as color
-from 'parking3.ion' as out, out.Entries as entry
+from parking3 as out, out.Entries as entry
 where out.Make = 'CHRY' and entry.BodyStyle = 'PA'
 `,
 			rows:     12,
 			firstrow: `{"make": "CHRY", "ticket": 1106506435, "color": "GO"}`,
 		},
 		{
-			query:    `select min(passenger_count), sum(fare_amount) as sum from 'nyc-taxi.block'`,
+			query:    `select min(passenger_count), sum(fare_amount) as sum from nyc_taxi`,
 			rows:     1,
 			firstrow: `{"min": 1, "sum": 81110.09937449993}`,
 		},
 		{
-			query:    `select fare_amount + 0.1, total_amount + 0.5, total_amount - 1 from 'nyc-taxi.block' limit 1`,
+			query:    `select fare_amount + 0.1, total_amount + 0.5, total_amount - 1 from nyc_taxi limit 1`,
 			rows:     1,
 			firstrow: `{"_1": 9, "_2": 9.9, "_3": 8.4}`,
 		},
 		{
-			query:    `select count(Make) from 'parking.10n'`,
+			query:    `select count(Make) from parking`,
 			rows:     1,
 			firstrow: countmsg(1019),
 		},
 		{
-			// NOTE: this only works because parking.10n
+			// NOTE: this only works because parking.zion
 			// is only one block; otherwise the output
 			// is indeterminate...
-			query:    `select Ticket as ticket from 'parking.10n' limit 1`,
+			query:    `select Ticket as ticket from parking limit 1`,
 			rows:     1,
 			firstrow: `{"ticket": 1103341116}`,
 		},
 		{
 			// see note above
-			query:    `select Make as make from 'parking.10n' where Color = 'BK' AND BodyStyle = 'PA' limit 1`,
+			query:    `select Make as make from parking where Color = 'BK' AND BodyStyle = 'PA' limit 1`,
 			rows:     1,
 			firstrow: `{"make": "NISS"}`,
 		},
 		{
-			query:    `select Make || ' - ' || BodyStyle from 'parking.10n' Where Color = 'BK' limit 1`,
+			query:    `select Make || ' - ' || BodyStyle from parking Where Color = 'BK' limit 1`,
 			rows:     1,
 			firstrow: `{"_1": "NISS - PA"}`,
 		},
 		{
 			// find the most common Make for parking tickets
-			query:    `select Make, COUNT(Make) as count from 'parking.10n' group by Make order by COUNT(Make) DESC limit 1`,
+			query:    `select Make, COUNT(Make) as count from parking group by Make order by COUNT(Make) DESC limit 1`,
 			rows:     1,
 			firstrow: `{"Make": "HOND", "count": 122}`,
 		},
 		{
 			// compute the same result as above using HAVING
-			query: `select Make, count(Make) as c from 'parking.10n' group by Make having count(Make) = 122`,
+			query: `select Make, count(Make) as c from parking group by Make having count(Make) = 122`,
 			expectedRows: []string{
 				`{"Make": "HOND", "c": 122}`,
 			},
@@ -792,14 +763,14 @@ where out.Make = 'CHRY' and entry.BodyStyle = 'PA'
 		{
 			// find the least common Make for parking tickets
 			// (breaking the tie on Make ordering)
-			query:    `select Make, COUNT(Make) as count from 'parking.10n' group by Make order by COUNT(Make), Make limit 1`,
+			query:    `select Make, COUNT(Make) as count from parking group by Make order by COUNT(Make), Make limit 1`,
 			rows:     1,
 			firstrow: `{"Make": "CHEC", "count": 1}`,
 		},
 		{
 			// really round-about way of computing count(Ticket) where Make is not missing;
 			// this exercises the SUM_INT() specialization for simple aggregates
-			query:    `select sum(c) from (select count(Ticket) as c, Make from 'parking.10n' group by Make)`,
+			query:    `select sum(c) from (select count(Ticket) as c, Make from parking group by Make)`,
 			rows:     1,
 			firstrow: `{"sum": 1019}`,
 			matchPlan: []string{
@@ -811,7 +782,7 @@ where out.Make = 'CHRY' and entry.BodyStyle = 'PA'
 			// this should yield a plan with SUM_INT()
 			// during hash aggregation
 			schema: partial("Fine", expr.IntegerType|expr.MissingType),
-			query:  `select sum(Fine), Make from 'parking.10n' group by Make order by sum(Fine) desc, Make`,
+			query:  `select sum(Fine), Make from parking group by Make order by sum(Fine) desc, Make`,
 			matchPlan: []string{
 				"HASH AGGREGATE.*SUM_INT",
 			},
@@ -879,20 +850,20 @@ where out.Make = 'CHRY' and entry.BodyStyle = 'PA'
 		},
 		{
 			// find the body style with the higest fine
-			query:    `select BodyStyle, max(Fine) as fine from 'parking.10n' group by BodyStyle order by fine desc limit 1`,
+			query:    `select BodyStyle, max(Fine) as fine from parking group by BodyStyle order by fine desc limit 1`,
 			rows:     1,
 			firstrow: `{"BodyStyle": "PA", "fine": 363}`,
 		},
 		{
 			// there is one entry with Fine=NULL; ensure that
 			// it doesn't pollute the output...
-			query:    `select BodyStyle, min(Fine), max(Fine) from 'parking.10n' group by BodyStyle order by min(Fine)`,
+			query:    `select BodyStyle, min(Fine), max(Fine) from parking group by BodyStyle order by min(Fine)`,
 			rows:     10,
 			firstrow: `{"BodyStyle": "PA", "min": 25, "max": 363}`,
 		},
 		{
 			// test projection of simple boolean expression
-			query:    `select Make, Ticket = 1103341116 as yes from 'parking.10n' limit 1`,
+			query:    `select Make, Ticket = 1103341116 as yes from parking limit 1`,
 			rows:     1,
 			firstrow: `{"Make": "HOND", "yes": true}`,
 		},
@@ -903,91 +874,91 @@ where out.Make = 'CHRY' and entry.BodyStyle = 'PA'
 			query: `select
 Make as make,
 (case when Ticket = 1103341116 then dne else NULL end) as nope
-from 'parking.10n' limit 1`,
+from parking limit 1`,
 			rows:     1,
 			firstrow: `{"make": "HOND"}`,
 		},
 		{
 			// test projection of expression yielding MISSING
-			query:    `select Make, does_not_exist < 3 as dne from 'parking.10n' limit 1`,
+			query:    `select Make, does_not_exist < 3 as dne from parking limit 1`,
 			rows:     1,
 			firstrow: `{"Make": "HOND"}`, // no 'dne column, since the expression yields MISSING'
 		},
 		{
 			// test (TRUE AND MISSING) -> MISSING
-			query:    `select Make, (Ticket = 1103341116 AND does_not_exist < 3) as e from 'parking.10n' limit 1`,
+			query:    `select Make, (Ticket = 1103341116 AND does_not_exist < 3) as e from parking limit 1`,
 			rows:     1,
 			firstrow: `{"Make": "HOND"}`,
 		},
 		{
 			// test (FALSE AND MISSING) -> FALSE
-			query:    `select Make, (Ticket <> 1103341116 AND does_not_exist < 3) as e from 'parking.10n' limit 1`,
+			query:    `select Make, (Ticket <> 1103341116 AND does_not_exist < 3) as e from parking limit 1`,
 			rows:     1,
 			firstrow: `{"Make": "HOND", "e": false}`,
 		},
 		{
 			// test (FALSE OR MISSING) -> MISSING
-			query:    `select Make, (Ticket <> 1103341116 OR does_not_exist < 3) as e from 'parking.10n' limit 1`,
+			query:    `select Make, (Ticket <> 1103341116 OR does_not_exist < 3) as e from parking limit 1`,
 			rows:     1,
 			firstrow: `{"Make": "HOND"}`,
 		},
 		{
 			// test (FALSE OR MISSING) IS TRUE -> FALSE
-			query:    `select Make, (Ticket <> 1103341116 OR does_not_exist < 3) IS TRUE as e from 'parking.10n' limit 1`,
+			query:    `select Make, (Ticket <> 1103341116 OR does_not_exist < 3) IS TRUE as e from parking limit 1`,
 			rows:     1,
 			firstrow: `{"Make": "HOND", "e": false}`,
 		},
 		{
 			// test (TRUE OR MISSING) IS FALSE -> FALSE
-			query:    `select Make, (Ticket = 1103341116 OR does_not_exist = 3) IS FALSE as e from 'parking.10n' limit 1`,
+			query:    `select Make, (Ticket = 1103341116 OR does_not_exist = 3) IS FALSE as e from parking limit 1`,
 			rows:     1,
 			firstrow: `{"Make": "HOND", "e": false}`,
 		},
 		{
 			// test (FALSE OR MISSING) IS FALSE -> FALSE
-			query:    `select Make, (Ticket <> 1103341116 OR does_not_exist = 3) IS FALSE as e from 'parking.10n' limit 1`,
+			query:    `select Make, (Ticket <> 1103341116 OR does_not_exist = 3) IS FALSE as e from parking limit 1`,
 			rows:     1,
 			firstrow: `{"Make": "HOND", "e": false}`,
 		},
 		{
 			// test (FALSE AND MISSING) IS FALSE -> TRUE
-			query:    `select Make, (Ticket <> 1103341116 AND does_not_exist = 3) IS FALSE as e from 'parking.10n' limit 1`,
+			query:    `select Make, (Ticket <> 1103341116 AND does_not_exist = 3) IS FALSE as e from parking limit 1`,
 			rows:     1,
 			firstrow: `{"Make": "HOND", "e": true}`,
 		},
 		{
 			// test (TRUE OR MISSING) -> TRUE
-			query:    `select Make, (Ticket = 1103341116 OR does_not_exist < 3) as e from 'parking.10n' limit 1`,
+			query:    `select Make, (Ticket = 1103341116 OR does_not_exist < 3) as e from parking limit 1`,
 			rows:     1,
 			firstrow: `{"Make": "HOND", "e": true}`,
 		},
 		{
 			// test emitting literals during projection
-			query:    `select Ticket, 'hello' as greeting, 3 as an_int from 'parking.10n' where Make = 'JAGU'`,
+			query:    `select Ticket, 'hello' as greeting, 3 as an_int from parking where Make = 'JAGU'`,
 			rows:     1,
 			firstrow: `{"Ticket": 4271686823, "greeting": "hello", "an_int": 3}`,
 		},
 		{
 			// test (logical_expr) = (logical_expr)
-			query:    `select count(*) from 'parking.10n' where (Ticket = 1103341116) = (Make = 'HOND')`,
+			query:    `select count(*) from parking where (Ticket = 1103341116) = (Make = 'HOND')`,
 			rows:     1,
 			firstrow: countmsg(898), // 897 + 1
 		},
 		{
 			// test SELECT DISTINCT where every row is identical
-			query:    `select distinct RatecodeID as id from 'nyc-taxi.block'`,
+			query:    `select distinct RatecodeID as id from nyc_taxi`,
 			rows:     1,
 			firstrow: `{"id": 0}`,
 		},
 		{
 			// test SELECT DISTINCT where every row is unique
-			query:    `select distinct Ticket from 'parking.10n'`,
+			query:    `select distinct Ticket from parking`,
 			rows:     1023,
 			firstrow: `{"Ticket": 1103341116}`,
 		},
 		{
 			// test SELECT DISTINCT on column with known cardinality
-			query: `select distinct Color from 'parking.10n' order by Color`,
+			query: `select distinct Color from parking order by Color`,
 			expectedRows: []string{
 				`{"Color": "BG"}`, `{"Color": "BK"}`, `{"Color": "BL"}`, `{"Color": "BN"}`,
 				`{"Color": "BR"}`, `{"Color": "BU"}`, `{"Color": "GN"}`, `{"Color": "GO"}`,
@@ -998,30 +969,30 @@ from 'parking.10n' limit 1`,
 			},
 		},
 		{
-			query:    `select count(distinct Color) from 'parking.10n'`,
+			query:    `select count(distinct Color) from parking`,
 			rows:     1,
 			firstrow: `{"count": 24}`,
 		},
 		{
 			// count the number of distinct colors occuring for each Make
-			query:    `select count(distinct Color), Make from 'parking.10n' group by Make order by count(distinct Color), Make desc`,
+			query:    `select count(distinct Color), Make from parking group by Make order by count(distinct Color), Make desc`,
 			rows:     59,
 			firstrow: `{"Make": "TSMR", "count": 1}`,
 		},
 		{
 			// same query result as above, computed differently
-			query:    `select count(*) from (select distinct Color from 'parking.10n' where Make = 'HOND')`,
+			query:    `select count(*) from (select distinct Color from parking where Make = 'HOND')`,
 			rows:     1,
 			firstrow: countmsg(16),
 		},
 		{
 			// test expressions containing aggregates
-			query:    `select MAX(Ticket + 1) + MAX(PlateExpiry) AS out from 'parking.10n'`,
+			query:    `select MAX(Ticket + 1) + MAX(PlateExpiry) AS out from parking`,
 			rows:     1,
 			firstrow: fmt.Sprintf(`{"out": %d}`, 4272473893+201905),
 		},
 		{
-			query: `select sum(total_amount)-sum(fare_amount) as diff, payment_type from 'nyc-taxi.block' group by payment_type order by diff desc`,
+			query: `select sum(total_amount)-sum(fare_amount) as diff, payment_type from nyc_taxi group by payment_type order by diff desc`,
 			expectedRows: []string{
 				`{"diff": 4993.759996700002, "payment_type": "Credit"}`,
 				`{"diff": 2475.2499420999957, "payment_type": "CASH"}`,
@@ -1034,7 +1005,7 @@ from 'parking.10n' limit 1`,
 		{
 			// semantically the same query as above;
 			// we should get the same results...
-			query: `select sum(total_amount-fare_amount) as diff, payment_type from 'nyc-taxi.block' group by payment_type order by diff desc`,
+			query: `select sum(total_amount-fare_amount) as diff, payment_type from nyc_taxi group by payment_type order by diff desc`,
 			rows:  6, // can confirm with 'select count(distinct payment_type) ...'
 			expectedRows: []string{
 				`{"payment_type": "Credit", "diff": 4993.759996700001}`,
@@ -1047,7 +1018,7 @@ from 'parking.10n' limit 1`,
 		},
 		{
 			// test simple ORDER BY clause (IssueTime forces order of rows Make="CHEV")
-			query: `select Ticket, IssueTime, Make from 'parking.10n'
+			query: `select Ticket, IssueTime, Make from parking
                        where ViolationCode like '80.69A+'
                        order by Make desc, IssueTime LIMIT 10`,
 			expectedRows: []string{
@@ -1060,15 +1031,15 @@ from 'parking.10n' limit 1`,
 		},
 		{
 			// simple scalar sub-query search
-			query:    `select PlateExpiry, Make, BodyStyle from 'parking.10n' where Ticket = (select max(Ticket) from 'parking.10n')`,
+			query:    `select PlateExpiry, Make, BodyStyle from parking where Ticket = (select max(Ticket) from parking)`,
 			rows:     1,
 			firstrow: `{"PlateExpiry": 201506, "Make": "NISS", "BodyStyle": "PU"}`,
 		},
 		{
 			// more complex sub-query search;
 			// equivalent to
-			// select sum(FINE) from 'parking.10n' where Make is not missing
-			query:    `select sum(Fine) from 'parking.10n' where Make in (select distinct Make from 'parking.10n')`,
+			// select sum(FINE) from parking where Make is not missing
+			query:    `select sum(Fine) from parking where Make in (select distinct Make from parking)`,
 			rows:     1,
 			firstrow: `{"sum": 71016}`,
 		},
@@ -1078,12 +1049,12 @@ from 'parking.10n' limit 1`,
 			// is one of the top 5 Makes by occurence
 			query: `
 select sum(Fine)
-from 'parking.10n'
+from parking
 where Make in (
   select Make
   from (
     select count(Make), Make
-    from 'parking.10n'
+    from parking
     group by Make
     order by count(Make) desc
     limit 5
@@ -1095,7 +1066,7 @@ where Make in (
 		},
 		{
 			// test ORDER BY an experession and field
-			query: `select Ticket, IssueTime, Make from 'parking.10n'
+			query: `select Ticket, IssueTime, Make from parking
                        where ViolationCode like '80.69A+'
                        order by Make desc, -1*IssueTime LIMIT 6`,
 			expectedRows: []string{
@@ -1108,7 +1079,7 @@ where Make in (
 		},
 		{
 			// test ORDER BY clause with LIMIT
-			query: `select Ticket, NULL as nil from 'parking.10n' order by Ticket limit 4`,
+			query: `select Ticket, NULL as nil from parking order by Ticket limit 4`,
 			expectedRows: []string{
 				`{"Ticket": 1103341116, "nil": null}`,
 				`{"Ticket": 1103700150, "nil": null}`,
@@ -1118,7 +1089,7 @@ where Make in (
 		},
 		{
 			// test ORDER BY clause with LIMIT and OFFSET
-			query: `select Ticket from 'parking.10n' order by Ticket limit 2 offset 2`,
+			query: `select Ticket from parking order by Ticket limit 2 offset 2`,
 			expectedRows: []string{
 				`{"Ticket": 1104803000}`,
 				`{"Ticket": 1104820732}`,
@@ -1127,7 +1098,7 @@ where Make in (
 		{
 			// test projection of a computed number
 			// that is sometimes an integer and sometimes a float
-			query: `select Ticket as t, Ticket/2 as half from 'parking.10n' order by Ticket limit 16`,
+			query: `select Ticket as t, Ticket/2 as half from parking order by Ticket limit 16`,
 			expectedRows: []string{
 				`{"t": 1103341116, "half": 551670558}`,
 				`{"t": 1103700150, "half": 551850075}`,
@@ -1151,7 +1122,7 @@ where Make in (
 			// test projection where some of the integers
 			// have eight significant bytes
 			// (and test that negation is performed correctly)
-			query: `select Ticket as t, Ticket*-1024*1024*512 as big from 'parking.10n' order by Ticket limit 16`,
+			query: `select Ticket as t, Ticket*-1024*1024*512 as big from parking order by Ticket limit 16`,
 			expectedRows: []string{
 				// note: some of these results are not precise
 				// due to the intermediate result being computed
@@ -1176,7 +1147,7 @@ where Make in (
 			},
 		},
 		{
-			query: `select Ticket as t from 'parking.10n' where 1 > 2`,
+			query: `select Ticket as t from parking where 1 > 2`,
 			rows:  0,
 			matchPlan: []string{
 				"NONE",
@@ -1185,24 +1156,24 @@ where Make in (
 		},
 		// Test aggregation with multiple GROUP BY fields.
 		{
-			query: `SELECT MAX(Ticket), Route FROM 'parking.10n' GROUP BY Route`,
+			query: `SELECT MAX(Ticket), Route FROM parking GROUP BY Route`,
 			rows:  138,
 		},
 		{
-			query: `SELECT MAX(Ticket), Route, RPState FROM 'parking.10n' GROUP BY Route, RPState`,
+			query: `SELECT MAX(Ticket), Route, RPState FROM parking GROUP BY Route, RPState`,
 			rows:  184,
 		},
 		{
-			query: `SELECT MAX(Ticket), Route, RPState, Location FROM 'parking.10n' GROUP BY Route, RPState, Location`,
+			query: `SELECT MAX(Ticket), Route, RPState, Location FROM parking GROUP BY Route, RPState, Location`,
 			rows:  861,
 		},
 		// Test aggregation with expressions in GROUP BY.
 		{
-			query: `SELECT MAX(Ticket), FLOOR(Fine / 10000) FROM 'parking.10n' GROUP BY FLOOR(Fine / 10000)`,
+			query: `SELECT MAX(Ticket), FLOOR(Fine / 10000) FROM parking GROUP BY FLOOR(Fine / 10000)`,
 			rows:  1,
 		},
 		{
-			query: `SELECT MAX(Ticket) FROM 'parking.10n' GROUP BY FLOOR(Fine / 10000)`,
+			query: `SELECT MAX(Ticket) FROM parking GROUP BY FLOOR(Fine / 10000)`,
 			rows:  1,
 		},
 		{
@@ -1212,7 +1183,7 @@ where Make in (
 			},
 		},
 		{
-			query: `select Ticket as t, Make as m, (select size(p3.Entries) from 'parking3.ion' p3 where p3.Make = m limit 1) as num from 'parking.10n' limit 10`,
+			query: `select Ticket as t, Make as m, (select size(p3.Entries) from parking3 p3 where p3.Make = m limit 1) as num from parking limit 10`,
 			expectedRows: []string{
 				`{"t": 1103341116, "m": "HOND", "num": 122}`,
 				`{"t": 1103700150, "m": "GMC", "num": 18}`,
@@ -1227,19 +1198,21 @@ where Make in (
 			},
 		},
 		{
-			query: `select * from 'parking.10n' ++ 'nyc-taxi.block'`,
-			rows:  9583,
+			query: `select count(*) from parking ++ nyc_taxi`,
+			expectedRows: []string{
+				`{"count": 9583}`,
+			},
 		},
 		{
-			query: `select earliest(foo), latest(foo) from 'parking.10n' ++ 'nyc-taxi.block'`,
+			query: `select earliest(foo), latest(foo) from parking ++ nyc_taxi`,
 			indexer: testindexer{
-				"parking.10n": testindex{
+				"parking": testindex{
 					"foo": dates(
 						"2000-01-01T00:00:00Z",
 						"2000-02-01T00:00:00Z",
 					),
 				},
-				"nyc-taxi.block": testindex{
+				"nyc_taxi": testindex{
 					"foo": dates(
 						"2000-02-01T00:00:00Z",
 						"2000-03-01T00:00:00Z",
@@ -1254,13 +1227,13 @@ where Make in (
 		{
 			query: `select earliest(foo), latest(foo) from table_glob("*a*")`,
 			indexer: testindexer{
-				"parking.10n": testindex{
+				"parking": testindex{
 					"foo": dates(
 						"2000-01-01T00:00:00Z",
 						"2000-02-01T00:00:00Z",
 					),
 				},
-				"nyc-taxi.block": testindex{
+				"nyc_taxi": testindex{
 					"foo": dates(
 						"2000-02-01T00:00:00Z",
 						"2000-03-01T00:00:00Z",
@@ -1277,36 +1250,36 @@ where Make in (
 			// should be merged into a single input,
 			// but inputs used as replacements should
 			// not be merged
-			query: `select a, (select b from 'parking.10n' limit 1), (select c from 'parking.10n' limit 1) from 'parking.10n' where d = (select IssueData from 'parking.10n' limit 1)`,
+			query: `select a, (select b from parking limit 1), (select c from parking limit 1) from parking where d = (select IssueData from parking limit 1)`,
 			matchPlan: []string{
 				`WITH REPLACEMENT\(0\) AS \(`,
-				`	'parking.10n'`,
+				`	parking`,
 				`	LIMIT 1`,
 				`	PROJECT b AS b`,
 				`\)`,
 				`WITH REPLACEMENT\(1\) AS \(`,
-				`	'parking.10n'`,
+				`	parking`,
 				`	LIMIT 1`,
 				`	PROJECT c AS c`,
 				`\)`,
 				`WITH REPLACEMENT\(2\) AS \(`,
-				`	'parking.10n'`,
+				`	parking`,
 				`	LIMIT 1`,
 				`	PROJECT IssueData AS IssueData`,
 				`\)`,
-				`'parking.10n'`,
+				`parking`,
 				`WHERE d = SCALAR_REPLACEMENT\(2\)`,
 				`PROJECT a AS a, SCALAR_REPLACEMENT\(0\) AS _2, SCALAR_REPLACEMENT\(1\) AS _3`,
 			},
 		},
 		{
-			query: `SELECT APPROX_COUNT_DISTINCT(Make) AS "count", APPROX_COUNT_DISTINCT(foo) AS "count2" FROM 'parking3.ion'`,
+			query: `SELECT APPROX_COUNT_DISTINCT(Make) AS "count", APPROX_COUNT_DISTINCT(foo) AS "count2" FROM parking3`,
 			expectedRows: []string{
 				`{"count": 59, "count2": 0}`,
 			},
 		},
 		{
-			query: `SELECT Color, APPROX_COUNT_DISTINCT(Make) FROM 'parking.10n' GROUP BY Color ORDER BY Color LIMIT 5`,
+			query: `SELECT Color, APPROX_COUNT_DISTINCT(Make) FROM parking GROUP BY Color ORDER BY Color LIMIT 5`,
 			expectedRows: []string{
 				`{"Color": "BG", "count": 2}`,
 				`{"Color": "BK", "count": 35}`,
@@ -1317,7 +1290,7 @@ where Make in (
 		},
 
 		{
-			query: `SELECT cols FROM UNPIVOT 'parking.10n' AT cols GROUP BY cols ORDER BY cols LIMIT 100`,
+			query: `SELECT cols FROM UNPIVOT parking AT cols GROUP BY cols ORDER BY cols LIMIT 100`,
 			expectedRows: []string{
 				`{"cols": "Agency"}`,
 				`{"cols": "BodyStyle"}`,
@@ -1340,20 +1313,20 @@ where Make in (
 			},
 		},
 		{
-			query: `EXPLAIN WITH main AS (SELECT * FROM 'table') SELECT COUNT(*) FROM main`,
+			query: `EXPLAIN WITH main AS (SELECT * FROM nyc_taxi) SELECT COUNT(*) FROM main`,
 			rows:  1,
 			matchPlan: []string{
 				"EXPLAIN QUERY",
 			},
 		},
 		{
-			query: `SELECT sneller_datashape(*) FROM 'parking.10n'`,
+			query: `SELECT sneller_datashape(*) FROM parking`,
 			expectedRows: []string{
 				`{"total": 1023, "fields": {"ViolationCode": {"string": 1023, "string-min-length": 3, "string-max-length": 8}, "Longitude": {"int": 1023, "int-min-value": 99999, "int-max-value": 99999}, "Fine": {"int": 1012, "int-min-value": 25, "int-max-value": 363}, "ViolationDescr": {"string": 1023, "string-min-length": 4, "string-max-length": 20}, "Agency": {"int": 1023, "int-min-value": 1, "int-max-value": 57}, "PlateExpiry": {"int": 956, "int-min-value": 1, "int-max-value": 201905}, "BodyStyle": {"string": 1015, "string-min-length": 2, "string-max-length": 2}, "Ticket": {"int": 1023, "int-min-value": 1103341116, "int-max-value": 4272473892}, "Location": {"string": 1022, "string-min-length": 7, "string-max-length": 31}, "Color": {"string": 1016, "string-min-length": 2, "string-max-length": 2}, "MeterId": {"string": 125, "string-min-length": 2, "string-max-length": 7}, "Route": {"string": 1001, "string-min-length": 2, "string-max-length": 5}, "IssueData": {"timestamp": 1023}, "MarkedTime": {"string": 7, "string-min-length": 4, "string-max-length": 4}, "Latitude": {"int": 1023, "int-min-value": 99999, "int-max-value": 99999}, "Make": {"string": 1019, "string-min-length": 2, "string-max-length": 4}, "RPState": {"string": 1023, "string-min-length": 2, "string-max-length": 2}, "IssueTime": {"int": 1022, "int-min-value": 18, "int-max-value": 2355}}}`,
 			},
 		},
 		{
-			query: `SELECT Make, Color, COUNT(*), ROW_NUMBER() OVER (PARTITION BY Make ORDER BY COUNT(*) DESC) FROM 'parking.10n' GROUP BY Make, Color ORDER BY Make, Color`,
+			query: `SELECT Make, Color, COUNT(*), ROW_NUMBER() OVER (PARTITION BY Make ORDER BY COUNT(*) DESC) FROM parking GROUP BY Make, Color ORDER BY Make, Color`,
 			expectedRows: []string{
 				`{"Make": "ACUR", "Color": "BK", "count": 3, "row_number": 3}`,
 				`{"Make": "ACUR", "Color": "GN", "count": 1, "row_number": 7}`,
@@ -1698,16 +1671,20 @@ where Make in (
 			}
 
 			t.Run("serialize-plan", func(t *testing.T) {
-				testPlanSerialize(t, tree, env)
+				testPlanSerialize(t, tree)
 			})
 
 			dst.Reset()
-			var stat ExecStats
 			vm.Errorf = t.Logf
 			defer func() {
 				vm.Errorf = nil
 			}()
-			err = Exec(tree, &dst, &stat)
+			ep := &ExecParams{
+				Plan:   tree,
+				Output: &dst,
+				Runner: env,
+			}
+			err = Exec(ep)
 			if err != nil {
 				t.Errorf("case %d: Exec: %s", i, err)
 				return
@@ -1715,13 +1692,13 @@ where Make in (
 			if got := rowcount(t, dst.Bytes()); got != tcs[i].rows {
 				t.Errorf("got %d rows instead of %d", got, tcs[i].rows)
 			}
-			if scanned != 0 && stat.BytesScanned != int64(scanned) {
-				t.Errorf("scanned %d bytes; expected %d", stat.BytesScanned, scanned)
+			if scanned != 0 && ep.Stats.BytesScanned != int64(scanned) {
+				t.Errorf("scanned %d bytes; expected %d", ep.Stats.BytesScanned, scanned)
 			}
 			// test that the remote equivalent of this plan
 			// produces exactly identical results
 			t.Run("remote", func(t *testing.T) {
-				testRemoteEquivalent(t, tree, env, dst.Bytes(), &stat)
+				testRemoteEquivalent(t, tree, env, dst.Bytes(), &ep.Stats)
 			})
 			t.Run("split", func(t *testing.T) {
 				vm.Errorf = t.Logf
@@ -1729,7 +1706,7 @@ where Make in (
 					vm.Errorf = nil
 				}()
 
-				testSplitEquivalent(t, text, env, tcs[i].expectedRows, &stat)
+				testSplitEquivalent(t, text, env, tcs[i].expectedRows, &ep.Stats)
 			})
 
 			// for the first row, parse the input
@@ -1769,8 +1746,8 @@ where Make in (
 func BenchmarkPlan(b *testing.B) {
 	env := &testenv{t: b}
 	queries := []string{
-		`select Make, (Ticket <> 1103341116 OR does_not_exist < 3) IS TRUE as e from 'parking.10n' limit 1`,
-		`select Ticket, IssueTime, Make from 'parking.10n'
+		`select Make, (Ticket <> 1103341116 OR does_not_exist < 3) IS TRUE as e from parking limit 1`,
+		`select Ticket, IssueTime, Make from parking
          where ViolationCode like '80.69A+'
          order by Make desc, IssueTime limit 15`,
 	}
@@ -1808,7 +1785,7 @@ func BenchmarkPlan(b *testing.B) {
 				if err != nil {
 					b.Fatal(err)
 				}
-				_, err = Decode(env, &st, buf.Bytes())
+				_, err = Decode(&st, buf.Bytes())
 				if err != nil {
 					b.Fatal(err)
 				}
@@ -1891,15 +1868,17 @@ func testRemoteEquivalent(t *testing.T, tree *Tree,
 
 	c := Client{Pipe: funkyPipe{local}}
 	ep := &ExecParams{
+		Plan:    tree,
 		Output:  &buf,
 		Context: context.Background(),
+		Runner:  env,
 	}
-	err := c.Exec(tree, ep)
+	err := c.Exec(ep)
 	if err != nil {
 		t.Errorf("local error: %s", err)
 	}
 	if !bytes.Equal(buf.Bytes(), got) {
-		t.Error("output not equivalent")
+		t.Error("output not equivalent", len(buf.Bytes()), len(got))
 	}
 	err = c.Close()
 	if err != nil {
@@ -1915,13 +1894,36 @@ func testRemoteEquivalent(t *testing.T, tree *Tree,
 	}
 }
 
+type splitEnv struct {
+	Env
+	geom *Geometry
+}
+
+func (e *splitEnv) ListTables(db string) ([]string, error) {
+	tl, ok := e.Env.(TableLister)
+	if !ok {
+		return nil, fmt.Errorf("listing not supported")
+	}
+	return tl.ListTables(db)
+}
+
+func (e *splitEnv) Geometry() *Geometry {
+	return e.geom
+}
+
 func testSplitEquivalent(t *testing.T, text string, e *testenv, expected []string, wantstat *ExecStats) {
 	s, err := partiql.Parse([]byte(text))
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	tree, err := NewSplit(s, e)
+	se := &splitEnv{
+		Env: e,
+		geom: &Geometry{
+			Peers: []Transport{&LocalTransport{}, &LocalTransport{}},
+		},
+	}
+	tree, err := NewSplit(s, se)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1935,7 +1937,7 @@ func testSplitEquivalent(t *testing.T, text string, e *testenv, expected []strin
 	if err != nil {
 		t.Fatal(err)
 	}
-	newtree, err := Decode(e, &st, ib.Bytes())
+	newtree, err := Decode(&st, ib.Bytes())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1954,8 +1956,12 @@ func testSplitEquivalent(t *testing.T, text string, e *testenv, expected []strin
 	tree = newtree
 	st.Reset()
 	var out bytes.Buffer
-	var stat ExecStats
-	err = Exec(tree, &out, &stat)
+	ep := &ExecParams{
+		Plan:   tree,
+		Output: &out,
+		Runner: e,
+	}
+	err = Exec(ep)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1996,13 +2002,13 @@ func testSplitEquivalent(t *testing.T, text string, e *testenv, expected []strin
 	// inputs across union maps, so stats for
 	// split queries are not expected to match the
 	// original query
-	if stat != *wantstat {
-		t.Logf("got stats %#v", &stat)
+	if ep.Stats != *wantstat {
+		t.Logf("got stats %#v", &ep.Stats)
 		t.Logf("wanted stats %#v", wantstat)
 	}
 }
 
-func testPlanSerialize(t *testing.T, tree *Tree, env Decoder) {
+func testPlanSerialize(t *testing.T, tree *Tree) {
 	var obuf ion.Buffer
 	var st ion.Symtab
 
@@ -2011,7 +2017,7 @@ func testPlanSerialize(t *testing.T, tree *Tree, env Decoder) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	tree2, err := Decode(env, &st, obuf.Bytes())
+	tree2, err := Decode(&st, obuf.Bytes())
 	if err != nil {
 		t.Logf("json: %s", buf2json(&st, &obuf))
 		t.Fatal(err)
@@ -2039,7 +2045,7 @@ func TestServerError(t *testing.T) {
 		serverr = Serve(remote, env)
 	}()
 
-	query := `select * from 'parking.10n' limit 1`
+	query := `select * from parking limit 1`
 	s, err := partiql.Parse([]byte(query))
 	if err != nil {
 		t.Fatal(err)
@@ -2055,8 +2061,12 @@ func TestServerError(t *testing.T) {
 
 	cl := Client{Pipe: local}
 	var out bytes.Buffer
-	ep := &ExecParams{Output: &out, Context: context.Background()}
-	err = cl.Exec(tree, ep)
+	ep := &ExecParams{
+		Plan:    tree,
+		Output:  &out,
+		Context: context.Background(),
+	}
+	err = cl.Exec(ep)
 	if err == nil {
 		t.Fatal("no failure message?")
 	}
@@ -2077,32 +2087,11 @@ func TestServerError(t *testing.T) {
 	}
 }
 
-type hangenv struct {
-	*testenv
-}
+type hangRunner struct{}
 
-type hangHandle struct {
-	env  *hangenv
-	real TableHandle
-}
-
-func (h *hangHandle) Size() int64 { return 0 }
-
-func (h *hangHandle) Open(ctx context.Context) (vm.Table, error) {
-	<-ctx.Done()
-	return nil, fmt.Errorf("hangHandle.Open")
-}
-
-func (h *hangHandle) Encode(dst *ion.Buffer, st *ion.Symtab) error {
-	panic("hangHandle.Encode")
-}
-
-func (h *hangenv) DecodeHandle(d ion.Datum) (TableHandle, error) {
-	real, err := h.testenv.DecodeHandle(d)
-	if err != nil {
-		return nil, err
-	}
-	return &hangHandle{h, real}, nil
+func (r hangRunner) Run(dst vm.QuerySink, src *Input, ep *ExecParams) error {
+	<-ep.Context.Done()
+	return ep.Context.Err()
 }
 
 type cancelOnRead struct {
@@ -2122,24 +2111,24 @@ func TestClientCancel(t *testing.T) {
 	remote, local := net.Pipe()
 	defer local.Close()
 	defer remote.Close()
-	env := &hangenv{testenv: &testenv{t: t}}
+	env := &testenv{t: t}
 
 	var serverr error
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {
-		// on the server side, use a bad env
-		// that will hang forever when TableHandle.Open() is called
+		// on the server side, use a bad runner
+		// that will hang forever when Runner.Run() is called
 		defer wg.Done()
-		serverr = Serve(remote, env)
+		serverr = Serve(remote, hangRunner{})
 	}()
 
-	query := `select * from 'parking.10n' limit 1`
+	query := `select * from parking limit 1`
 	s, err := partiql.Parse([]byte(query))
 	if err != nil {
 		t.Fatal(err)
 	}
-	tree, err := New(s, env.testenv)
+	tree, err := New(s, env)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2150,8 +2139,12 @@ func TestClientCancel(t *testing.T) {
 	// we are in the read loop before the cancellation
 	// happens:
 	cl := Client{Pipe: &cancelOnRead{local, cancel}}
-	ep := &ExecParams{Output: &out, Context: ctx}
-	err = cl.Exec(tree, ep)
+	ep := &ExecParams{
+		Plan:    tree,
+		Output:  &out,
+		Context: ctx,
+	}
+	err = cl.Exec(ep)
 	if err == nil {
 		t.Fatal("no failure message?")
 	}

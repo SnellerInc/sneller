@@ -21,76 +21,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"strings"
 	"sync"
 
-	"github.com/SnellerInc/sneller/expr"
 	"github.com/SnellerInc/sneller/ion"
 )
-
-// Subtables represents a list of subtables with an
-// opaque encoding and in-memory representation.
-type Subtables interface {
-	// Len returns the number of subtables.
-	Len() int
-	// Subtable copies the ith Subtable into sub.
-	// This may panic if i is out of range.
-	// Implementations must not retain sun.
-	Subtable(i int, sub *Subtable)
-	// Filter applies the given filter expression
-	// to every TableHandle in each subtables.
-	Filter(expr.Node)
-	// Append appends another subtable list to this
-	// one. Implementations may assume the argument
-	// is always one of the Subtables produced by
-	// the same Encoder that produced the receiver.
-	Append(Subtables) Subtables
-}
-
-// SubtableList is a basic implementation of Subtables.
-// This implementation is used if a Decoder does not
-// implement DecodeSubtables.
-type SubtableList []Subtable
-
-// Len returns the number of subtables.
-func (s SubtableList) Len() int {
-	return len(s)
-}
-
-// Subtable copies the ith Subtable into sub.
-func (s SubtableList) Subtable(i int, sub *Subtable) {
-	*sub = s[i]
-}
-
-// Filter applies the given filter expression to every
-// TableHandle in the list.
-func (s SubtableList) Filter(e expr.Node) {
-	for i := range s {
-		if fh, ok := s[i].Handle.(Filterable); ok {
-			s[i].Handle = fh.Filter(e)
-		}
-	}
-}
-
-// Append combines this list with another list. The
-// argument sub must have concrete type SubtableList.
-func (s SubtableList) Append(sub Subtables) Subtables {
-	return append(s, sub.(SubtableList)...)
-}
-
-// Subtable is a (Transport, Table) tuple
-// that is returned by Splitter.Split
-// to indicate how queries that access
-// particular tables should be split.
-//
-// See: Splitter.Split
-type Subtable struct {
-	// Transport is the transport
-	// over which the subquery should
-	// be executed.
-	Transport
-	Handle TableHandle
-}
 
 type frame uint32
 
@@ -131,9 +67,11 @@ func getframe(src []byte) frame {
 }
 
 type server struct {
+	run    Runner
+	initfs func(ion.Datum) (fs.FS, error)
+
 	pipe io.ReadWriteCloser
 	rd   *bufio.Reader
-	dec  Decoder
 
 	st  ion.Symtab
 	tmp []byte
@@ -148,25 +86,47 @@ var serverPool = sync.Pool{
 	},
 }
 
-// Serve serves queries from the given io.ReadWriter
-// using hfn to determine how to handle tables.
+// A Server can be used to serve queries.
+type Server struct {
+	// Runner is the local execution environment
+	// for the query. If Runner is nil, then query
+	// execution will fail.
+	Runner Runner
+	// InitFS is used to initialize a file system
+	// which will be used by the Runner to access
+	// input objects. The datum passed to InitFS
+	// is provided by the client to pass
+	// appropriate information necessary to access
+	// file system (e.g., credentials).
+	InitFS func(ion.Datum) (fs.FS, error)
+}
+
+// Serve serves queries from [rw] using [run] to
+// run queries.
+func Serve(rw io.ReadWriteCloser, run Runner) error {
+	s := Server{Runner: run}
+	return s.Serve(rw)
+}
+
+// Serve serves queries from [rw].
 //
 // Serve will run until rw.Read returns io.EOF,
 // at which point it will return with no error.
 // If it encounters an internal error, it will
 // close the pipe and return the error.
-func Serve(rw io.ReadWriteCloser, dec Decoder) error {
-	s := serverPool.Get().(*server)
-	s.pipe = rw
-	if s.rd == nil {
-		s.rd = bufio.NewReader(rw)
+func (s *Server) Serve(rw io.ReadWriteCloser) error {
+	sv := serverPool.Get().(*server)
+	sv.run = s.Runner
+	sv.initfs = s.InitFS
+	sv.pipe = rw
+	if sv.rd == nil {
+		sv.rd = bufio.NewReader(rw)
 	} else {
-		s.rd.Reset(rw)
+		sv.rd.Reset(rw)
 	}
-	s.dec = dec
-	s.st.Reset()
-	err := s.serve()
-	serverPool.Put(s)
+	sv.st.Reset()
+	err := sv.serve()
+	serverPool.Put(sv)
 	return err
 }
 
@@ -324,25 +284,31 @@ func (s *server) ctxerr(ctx context.Context, err error) error {
 func (s *server) runQuery(buf []byte, ctx context.Context, cancel func()) error {
 	defer cancel()
 	s.st.Reset()
-	var err error
-	var t *Tree
 
-	buf, err = s.st.Unmarshal(buf)
+	buf, err := s.st.Unmarshal(buf)
 	if err != nil {
 		s.senderr(err.Error())
 		return s.ctxerr(ctx, err)
 	}
-	t, err = Decode(s.dec, &s.st, buf)
+	t, err := Decode(&s.st, buf)
 	if err != nil {
 		s.senderr(err.Error())
 		return s.ctxerr(ctx, err)
 	}
 	lp := LocalTransport{}
 	ep := ExecParams{
+		Plan:    t,
 		Output:  s,
 		Context: ctx,
+		Runner:  s.run,
 	}
-	err = lp.Exec(t, &ep)
+	if s.initfs != nil && !t.Data.IsEmpty() {
+		ep.FS, err = s.initfs(t.Data)
+		if err != nil {
+			return err
+		}
+	}
+	err = lp.Exec(&ep)
 	if err != nil {
 		s.senderr(err.Error())
 		return s.ctxerr(ctx, err)
@@ -378,11 +344,6 @@ type Client struct {
 	valid int
 }
 
-// TableRewrite is a function
-// that accepts a table expression
-// and returns a new table expression.
-type TableRewrite func(*expr.Table, TableHandle) (*expr.Table, TableHandle)
-
 var _ Transport = &Client{}
 
 // Exec executes a query across the client connection.
@@ -390,11 +351,11 @@ var _ Transport = &Client{}
 //
 // Exec is *not* safe to call from multiple goroutines
 // simultaneously.
-func (c *Client) Exec(t *Tree, ep *ExecParams) error {
+func (c *Client) Exec(ep *ExecParams) error {
 	c.st.Reset()
 	c.iob.Reset()
 	c.valid = 0
-	err := c.send(t, ep)
+	err := c.send(ep)
 	if err != nil {
 		return err
 	}
@@ -406,8 +367,8 @@ func (c *Client) Close() error {
 	return c.Pipe.Close()
 }
 
-func (c *Client) send(t *Tree, ep *ExecParams) error {
-	err := t.encode(&c.iob, &c.st, ep)
+func (c *Client) send(ep *ExecParams) error {
+	err := ep.Plan.encode(&c.iob, &c.st, ep)
 	if err != nil {
 		return fmt.Errorf("plan.Client.Exec: encoding plan: %w", err)
 	}

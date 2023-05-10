@@ -18,99 +18,37 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/SnellerInc/sneller/expr"
 	"github.com/SnellerInc/sneller/ion"
 )
-
-// Decoder wraps environment specific methods used
-// during plan decoding. Implementations may also
-// implement interfaces such as SubtableDecoder and
-// UploadEnv to provide additional functionality.
-type Decoder interface {
-	// DecodeHandle is used to decode a TableHandle
-	// produced by TableHandle.Encode. If a list is
-	// encountered when decoding a TableHandle,
-	// this function will be called for each item
-	// in the list to produce a concatenated table.
-	DecodeHandle(ion.Datum) (TableHandle, error)
-}
-
-// UploaderDecoder can optionally be implemented by a
-// Decoder to handle decoding an UploadFS, which is
-// required to enable support for SELECT INTO.
-//
-// See also: UploadEnv
-type UploaderDecoder interface {
-	DecodeUploader(ion.Datum) (UploadFS, error)
-}
-
-// decodeHandle calls d.DecodeHandle with special
-// handling for lists.
-func decodeHandle(d Decoder, v ion.Datum) (TableHandle, error) {
-	if v.IsList() {
-		return decodeHandles(d, v)
-	}
-	return d.DecodeHandle(v)
-}
-
-// decode decodes an input structure.
-func (i *Input) decode(d Decoder, v ion.Datum) error {
-	err := v.UnpackStruct(func(f ion.Field) error {
-		switch f.Label {
-		case "table":
-			e, err := expr.Decode(f.Datum)
-			if err != nil {
-				return err
-			}
-			t, ok := e.(*expr.Table)
-			if !ok {
-				return fmt.Errorf("input expr %T not a table", e)
-			}
-			i.Table = t
-		case "handle":
-			th, err := decodeHandle(d, f.Datum)
-			if err != nil {
-				return err
-			}
-			i.Handle = th
-		default:
-			return errUnexpectedField
-		}
-		return nil
-	})
-	if err != nil {
-		return fmt.Errorf("plan.Decode: %w", err)
-	}
-	return err
-}
 
 // Decode decodes an ion-encoded tree
 // from the provided symbol table and buffer.
 // During decoding, each Leaf op in the Tree
 // will have its TableHandle populated with env.Stat.
 // See also: Plan.Encode, Plan.EncodePart.
-func Decode(d Decoder, st *ion.Symtab, buf []byte) (*Tree, error) {
+func Decode(st *ion.Symtab, buf []byte) (*Tree, error) {
 	v, _, err := ion.ReadDatum(st, buf)
 	if err != nil {
 		return nil, err
 	}
-	return DecodeDatum(d, v)
+	return DecodeDatum(v)
 }
 
-func DecodeDatum(d Decoder, v ion.Datum) (*Tree, error) {
+func DecodeDatum(v ion.Datum) (*Tree, error) {
 	t := &Tree{}
 	err := v.UnpackStruct(func(f ion.Field) error {
 		switch f.Label {
 		case "inputs":
 			return f.UnpackList(func(v ion.Datum) error {
-				t.Inputs = append(t.Inputs, Input{})
-				return t.Inputs[len(t.Inputs)-1].decode(d, v)
+				t.Inputs = append(t.Inputs, &Input{})
+				return t.Inputs[len(t.Inputs)-1].decode(v)
 			})
+		case "data":
+			t.Data = f.Datum.Clone()
 		case "root":
-			return t.Root.decode(d, f.Datum)
-		default:
-			return nil
+			return t.Root.decode(f.Datum)
 		}
+		return nil
 	})
 	if err != nil {
 		return nil, err
@@ -118,12 +56,12 @@ func DecodeDatum(d Decoder, v ion.Datum) (*Tree, error) {
 	return t, nil
 }
 
-func (n *Node) decode(d Decoder, v ion.Datum) error {
+func (n *Node) decode(v ion.Datum) error {
 	err := v.UnpackStruct(func(f ion.Field) error {
 		switch f.Label {
 		case "op":
 			var err error
-			n.Op, err = decodeOps(d, f.Datum)
+			n.Op, err = decodeOps(f.Datum)
 			return err
 		case "input":
 			v, err := f.Int()
@@ -144,15 +82,6 @@ func (n *Node) decode(d Decoder, v ion.Datum) error {
 	return nil
 }
 
-type decOp struct {
-	op Op
-	d  Decoder
-}
-
-func (d *decOp) SetField(f ion.Field) error {
-	return d.op.setfield(d.d, f)
-}
-
 // Decode decodes a query plan from 'buf'
 // using the ion symbol table 'st' and the
 // environment 'env.'
@@ -161,26 +90,19 @@ func (d *decOp) SetField(f ion.Field) error {
 //
 // During decoding, each *Leaf plan that references
 // a table has its TableHandle populated with env.Stat.
-func decodeOps(d Decoder, v ion.Datum) (Op, error) {
+func decodeOps(v ion.Datum) (Op, error) {
 	var top Op
 	i := 0
-	dec := decOp{d: d}
 	err := v.UnpackList(func(v ion.Datum) error {
-		_, err := ion.UnpackTyped(v, func(typ string) (*decOp, bool) {
-			dec.op = empty(typ)
-			if dec.op != nil {
-				return &dec, true
-			}
-			return nil, false
-		})
+		op, err := ion.UnpackTyped(v, empty)
 		if err != nil {
 			return err
 		}
 		if top == nil {
-			top = dec.op
+			top = op
 		} else {
-			dec.op.setinput(top)
-			top = dec.op
+			op.setinput(top)
+			top = op
 		}
 		i++
 		return nil
@@ -191,50 +113,53 @@ func decodeOps(d Decoder, v ion.Datum) (Op, error) {
 	return top, nil
 }
 
-func empty(name string) Op {
+func empty(name string) (Op, bool) {
+	var op Op
 	switch name {
 	case "agg":
-		return &SimpleAggregate{}
+		op = &SimpleAggregate{}
 	case "leaf":
-		return &Leaf{}
+		op = &Leaf{}
 	case "none":
-		return NoOutput{}
+		op = NoOutput{}
 	case "dummy":
-		return DummyOutput{}
+		op = DummyOutput{}
 	case "limit":
-		return &Limit{}
+		op = &Limit{}
 	case "count(*)":
-		return &CountStar{}
+		op = &CountStar{}
 	case "hashagg":
-		return &HashAggregate{}
+		op = &HashAggregate{}
 	case "order":
-		return &OrderBy{}
+		op = &OrderBy{}
 	case "distinct":
-		return &Distinct{}
+		op = &Distinct{}
 	case "project":
-		return &Project{}
+		op = &Project{}
 	case "filter":
-		return &Filter{}
+		op = &Filter{}
 	case "unnest":
-		return &Unnest{}
+		op = &Unnest{}
 	case "unionmap":
-		return &UnionMap{}
+		op = &UnionMap{}
 	case "union_partition":
-		return &UnionPartition{}
+		op = &UnionPartition{}
 	case "outpart":
-		return &OutputPart{}
+		op = &OutputPart{}
 	case "outidx":
-		return &OutputIndex{}
+		op = &OutputIndex{}
 	case "unpivot":
-		return &Unpivot{}
+		op = &Unpivot{}
 	case "unpivotatdistinct":
-		return &UnpivotAtDistinct{}
+		op = &UnpivotAtDistinct{}
 	case "explain":
-		return &Explain{}
+		op = &Explain{}
 	case "substitute":
-		return &Substitute{}
+		op = &Substitute{}
+	default:
+		return nil, false
 	}
-	return nil
+	return op, true
 }
 
 var (

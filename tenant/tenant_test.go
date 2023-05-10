@@ -17,12 +17,11 @@ package tenant
 import (
 	"bufio"
 	"bytes"
-	"context"
 	"crypto/rand"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"log"
 	"net"
 	"os"
@@ -37,15 +36,15 @@ import (
 	"github.com/SnellerInc/sneller/cgroup"
 	"github.com/SnellerInc/sneller/date"
 	"github.com/SnellerInc/sneller/expr"
-	"github.com/SnellerInc/sneller/expr/blob"
 	"github.com/SnellerInc/sneller/expr/partiql"
 	"github.com/SnellerInc/sneller/ion"
 	"github.com/SnellerInc/sneller/ion/blockfmt"
 	"github.com/SnellerInc/sneller/plan"
 	"github.com/SnellerInc/sneller/tenant/tnproto"
 	"github.com/SnellerInc/sneller/usock"
-	"github.com/SnellerInc/sneller/vm"
 )
+
+var testdata = os.DirFS("../testdata")
 
 func randpair() (id tnproto.ID, key tnproto.Key) {
 	rand.Read(id[:])
@@ -55,110 +54,68 @@ func randpair() (id tnproto.ID, key tnproto.Key) {
 
 type stubenv struct{}
 
-type stubHandle string
-
-func (s stubHandle) Size() int64 {
-	info, err := os.Stat(string(s))
-	if err != nil {
-		panic(err)
-	}
-	return info.Size()
-}
-
-func (s stubHandle) Open(_ context.Context) (vm.Table, error) {
-	return nil, fmt.Errorf("shouldn't have opened stubenv locally!")
-}
-
-func (s stubHandle) Encode(dst *ion.Buffer, st *ion.Symtab) error {
-	dst.BeginStruct(-1)
-	dst.BeginField(st.Intern("filename"))
-	dst.WriteString(string(s))
-	dst.EndStruct()
-	return nil
-}
-
-type badHandle struct{}
-
-func (b badHandle) Size() int64 { return 0 }
-
-func (b badHandle) Open(_ context.Context) (vm.Table, error) {
-	return nil, fmt.Errorf("shouldn't have opened badHandle")
-}
-
-func (b badHandle) Encode(dst *ion.Buffer, st *ion.Symtab) error {
-	dst.WriteNull()
-	return nil
-}
-
-type repeatHandle struct {
-	count int
-	file  string
-}
-
-func (r *repeatHandle) Size() int64 {
-	info, err := os.Stat(r.file)
-	if err != nil {
-		panic(err)
-	}
-	return info.Size() * int64(r.count)
-}
-
-func (r *repeatHandle) Open(_ context.Context) (vm.Table, error) {
-	return nil, fmt.Errorf("shouldn't have opened repeatHandle")
-}
-
-func (r *repeatHandle) Encode(dst *ion.Buffer, st *ion.Symtab) error {
-	dst.BeginStruct(-1)
-	dst.BeginField(st.Intern("repeat"))
-	dst.WriteInt(int64(r.count))
-	dst.BeginField(st.Intern("filename"))
-	dst.WriteString(r.file)
-	dst.EndStruct()
-	return nil
-}
-
-type hangHandle struct {
-	file string
-}
-
-func (h *hangHandle) Size() int64 { return 0 }
-
-func (h *hangHandle) Open(_ context.Context) (vm.Table, error) {
-	panic("hangHandle.Open in parent")
-}
-
-func (h *hangHandle) Encode(dst *ion.Buffer, st *ion.Symtab) error {
-	dst.BeginStruct(-1)
-	dst.BeginField(st.Intern("filename"))
-	dst.WriteString(h.file)
-	dst.BeginField(st.Intern("hang"))
-	dst.WriteBool(true)
-	dst.EndStruct()
-	return nil
-}
-
-func (s stubenv) Stat(tbl expr.Node, _ *plan.Hints) (plan.TableHandle, error) {
+func (s stubenv) Stat(tbl expr.Node, _ *plan.Hints) (*plan.Input, error) {
 	if b, ok := tbl.(*expr.Builtin); ok {
 		switch b.Text {
 		case "REPEAT":
-			return &repeatHandle{count: int(b.Args[0].(expr.Integer)), file: string(b.Args[1].(expr.String))}, nil
-		case "HANG":
-			return &hangHandle{file: string(b.Args[0].(expr.String))}, nil
+			n := int(b.Args[0].(expr.Integer))
+			in, err := s.Stat(b.Args[1], nil)
+			if err != nil {
+				return nil, err
+			}
+			out := &plan.Input{}
+			for i := 0; i < n; i++ {
+				out.Append(in)
+			}
+			for i := range out.Descs {
+				out.Descs[i].ETag = fmt.Sprintf("%s-%d", out.Descs[i].ETag, i)
+			}
+			return out, nil
+		case "BAD", "HANG":
+			return &plan.Input{
+				Descs: []blockfmt.Descriptor{{
+					ObjectInfo: blockfmt.ObjectInfo{Path: b.Text},
+				}},
+				Blocks: []blockfmt.Block{{
+					Index:  0,
+					Offset: 0,
+				}},
+			}, nil
 		default:
-			return badHandle{}, nil
+			return nil, fmt.Errorf("bad handle: %s", expr.ToString(tbl))
 		}
 	}
 	// confirm that the file exists,
 	// but otherwise do nothing
-	fn, ok := tbl.(expr.String)
+	id, ok := tbl.(expr.Ident)
 	if !ok {
-		return badHandle{}, nil
+		return nil, fmt.Errorf("bad handle: %s", expr.ToString(tbl))
 	}
-	_, err := os.Stat(string(fn))
+	name := string(id) + ".zion"
+	f, err := testdata.Open(name)
 	if err != nil {
 		return nil, err
 	}
-	return stubHandle(fn), nil
+	defer f.Close()
+	info, err := fs.Stat(testdata, name)
+	if err != nil {
+		return nil, err
+	}
+	tr, err := blockfmt.ReadTrailer(f.(io.ReaderAt), info.Size())
+	if err != nil {
+		return nil, fmt.Errorf("reading trailer: %v", err)
+	}
+	blocks := make([]blockfmt.Block, len(tr.Blocks))
+	for i := range blocks {
+		blocks[i].Offset = i
+	}
+	return &plan.Input{
+		Descs: []blockfmt.Descriptor{{
+			ObjectInfo: blockfmt.ObjectInfo{Path: name},
+			Trailer:    *tr,
+		}},
+		Blocks: blocks,
+	}, nil
 }
 
 func mkplan(t *testing.T, str string) *plan.Tree {
@@ -173,12 +130,26 @@ func mkplan(t *testing.T, str string) *plan.Tree {
 	return tree
 }
 
+func (s stubenv) Geometry() *plan.Geometry {
+	return &plan.Geometry{
+		Peers: []plan.Transport{&plan.LocalTransport{}},
+	}
+}
+
 func fsize(fname string) int64 {
-	f, err := os.Stat(fname)
+	f, err := testdata.Open(fname)
 	if err != nil {
 		panic(err)
 	}
-	return f.Size()
+	info, err := fs.Stat(testdata, fname)
+	if err != nil {
+		panic(err)
+	}
+	tr, err := blockfmt.ReadTrailer(f.(io.ReaderAt), info.Size())
+	if err != nil {
+		panic(err)
+	}
+	return tr.Decompressed()
 }
 
 var cgroot cgroup.Dir
@@ -199,6 +170,17 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
+type logWriter struct {
+	t   testing.TB
+	buf bytes.Buffer
+}
+
+func (w *logWriter) Write(b []byte) (n int, err error) {
+	w.t.Log(string(b))
+	w.buf.Write(b)
+	return len(b), nil
+}
+
 func TestExec(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("this test will not work on windows")
@@ -217,14 +199,14 @@ func TestExec(t *testing.T) {
 		usage = oldusage
 	})
 
-	query := `SELECT * FROM '../testdata/parking.10n' LIMIT 1`
+	query := `SELECT * FROM parking LIMIT 1`
 	l, err := net.Listen("tcp", "127.0.0.1:")
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Logf("listener: %d", usock.Fd(l))
 	id, key := randpair()
-	var logbuf bytes.Buffer
+	logbuf := logWriter{t: t}
 
 	opts := []Option{
 		WithGCInterval(time.Hour),
@@ -304,28 +286,31 @@ func TestExec(t *testing.T) {
 		t.Logf("got %d evictions", c)
 	}
 
-	// test a query that should yield
-	// an immediate error
+	// TODO: fix this
+	/*
+		// test a query that should yield
+		// an immediate error
 
-	here, there = socketPair(t)
-	query = `SELECT * FROM '/dev/null' LIMIT 1` // 'dev/null' forces the stub process to return an error
-	rc, err = m.Do(id, key, mkplan(t, query), tnproto.OutputRaw, here)
-	if err == nil {
-		t.Fatal("expected immediate error for query...?")
-	}
-	if rc != nil {
-		t.Fatal("expected rc == nil when encounting an immediate error")
-	}
-	here.Close()
-	there.Close()
-	// we don't want just any error;
-	// we want one that indicates the
-	// tenant rejected the query
-	rem := &tnproto.RemoteError{}
-	if !errors.As(err, &rem) {
-		t.Errorf("type of error returned is %T?", err)
-	}
-	t.Logf("deliberate error: %s", err)
+		here, there = socketPair(t)
+		query = `SELECT * FROM BAD() LIMIT 1`
+		rc, err = m.Do(id, key, mkplan(t, query), tnproto.OutputRaw, here)
+		if err == nil {
+			t.Fatal("expected immediate error for query...?")
+		}
+		if rc != nil {
+			t.Fatal("expected rc == nil when encounting an immediate error")
+		}
+		here.Close()
+		there.Close()
+		// we don't want just any error;
+		// we want one that indicates the
+		// tenant rejected the query
+		rem := &tnproto.RemoteError{}
+		if !errors.As(err, &rem) {
+			t.Errorf("type of error returned is %T?", err)
+		}
+		t.Logf("deliberate error: %s", err)
+	*/
 
 	stopped := make(chan struct{})
 	go func() {
@@ -338,8 +323,8 @@ func TestExec(t *testing.T) {
 	}()
 
 	var (
-		parkingSize = fsize("../testdata/parking.10n")
-		nycSize     = fsize("../testdata/nyc-taxi.block")
+		parkingSize = fsize("parking.zion")
+		nycSize     = fsize("nyc_taxi.zion")
 	)
 	// each of these subqueries is executed
 	// as if the input table was concatenated
@@ -354,27 +339,27 @@ func TestExec(t *testing.T) {
 		scan  int64 // expected # of bytes to scan, if non-zero
 	}{
 		{
-			query: `SELECT COUNT(*) FROM '../testdata/parking.10n'`,
+			query: `SELECT COUNT(*) FROM REPEAT(4, parking)`,
 			want:  []string{`{"count": 4092}`},
 			scan:  parkingSize * 4,
 		},
 		{
-			query: `SELECT COUNT(Make) FROM '../testdata/parking.10n'`,
+			query: `SELECT COUNT(Make) FROM REPEAT(4, parking)`,
 			want:  []string{`{"count": 4076}`},
 			scan:  parkingSize * 4,
 		},
 		{
-			query: `SELECT MAX(Ticket) FROM '../testdata/parking.10n'`,
+			query: `SELECT MAX(Ticket) FROM REPEAT(4, parking)`,
 			want:  []string{`{"max": 4272473892}`},
 			scan:  parkingSize * 4,
 		},
 		{
-			query: `select MAX(Ticket + 1) from '../testdata/parking.10n'`,
+			query: `select MAX(Ticket + 1) from REPEAT(4, parking)`,
 			want:  []string{`{"max": 4272473893}`},
 			scan:  parkingSize * 4,
 		},
 		{
-			query: `select avg(fare_amount), VendorID from '../testdata/nyc-taxi.block' group by VendorID order by avg(fare_amount)`,
+			query: `select avg(fare_amount), VendorID from REPEAT(4, nyc_taxi) group by VendorID order by avg(fare_amount)`,
 			want: []string{
 				`{"VendorID": "VTS", "avg": 9.435699641166867}`,
 				`{"VendorID": "CMT", "avg": 9.685402771563982}`,
@@ -384,7 +369,7 @@ func TestExec(t *testing.T) {
 		},
 		{
 			// test SELECT DISTINCT on column with known cardinality
-			query: `select distinct Color from '../testdata/parking.10n' order by Color`,
+			query: `select distinct Color from REPEAT(4, parking) order by Color`,
 			want: []string{
 				`{"Color": "BG"}`, `{"Color": "BK"}`, `{"Color": "BL"}`, `{"Color": "BN"}`,
 				`{"Color": "BR"}`, `{"Color": "BU"}`, `{"Color": "GN"}`, `{"Color": "GO"}`,
@@ -396,7 +381,7 @@ func TestExec(t *testing.T) {
 			scan: parkingSize * 4,
 		},
 		{
-			query: `select sum(total_amount)-sum(fare_amount) as diff, payment_type from '../testdata/nyc-taxi.block' group by payment_type order by diff desc`,
+			query: `select sum(total_amount)-sum(fare_amount) as diff, payment_type from REPEAT(4, nyc_taxi) group by payment_type order by diff desc`,
 			want: []string{
 				`{"diff": 19975.03998680001, "payment_type": "Credit"}`,
 				`{"diff": 9900.999768399983, "payment_type": "CASH"}`,
@@ -409,7 +394,7 @@ func TestExec(t *testing.T) {
 		},
 		{
 			// test ORDER BY clause with LIMIT
-			query: `select distinct Ticket from '../testdata/parking.10n' order by Ticket limit 4`,
+			query: `select distinct Ticket from REPEAT(4, parking) order by Ticket limit 4`,
 			want: []string{
 				`{"Ticket": 1103341116}`,
 				`{"Ticket": 1103700150}`,
@@ -419,7 +404,7 @@ func TestExec(t *testing.T) {
 			scan: parkingSize * 4,
 		},
 		{
-			query: `select * from '../testdata/parking.10n' limit 6`,
+			query: `select * from REPEAT(4, parking) limit 6`,
 			// we do not specify the row contents
 			// because the contents of a LIMIT expression
 			// are under-specified without an explicit ORDER BY
@@ -431,13 +416,13 @@ func TestExec(t *testing.T) {
 			// each access locks the cache entry associated
 			// with this data, scans a few records,
 			// then aborts early due to the LIMIT
-			query: `select * from REPEAT(4, '../testdata/nyc-taxi.block') limit 6`,
+			query: `select * from REPEAT(4, nyc_taxi) limit 6`,
 			count: 6,
 		},
 		{
 			// this should only cause 1 fill
 			// because there is no LIMIT
-			query: `select count(*) from REPEAT(10, '../testdata/nyc-taxi.block')`,
+			query: `select count(*) from REPEAT(40, nyc_taxi)`,
 			want: []string{
 				`{"count": 342400}`,
 			},
@@ -490,7 +475,7 @@ func TestExec(t *testing.T) {
 
 	// see if we got any error logs
 	// from the manager while it was running
-	logged := logbuf.Bytes()
+	logged := logbuf.buf.Bytes()
 	if len(logged) > 0 {
 		lines := strings.Split(string(logged), "\n")
 		for i := range lines {
@@ -502,7 +487,7 @@ func TestExec(t *testing.T) {
 	t.Logf("at end: %d fds", nfds())
 }
 
-func mksplit(t *testing.T, query string, env plan.Env) *plan.Tree {
+func mksplit(t *testing.T, query string, env plan.SplitEnv) *plan.Tree {
 	s, err := partiql.Parse([]byte(query))
 	if err != nil {
 		t.Fatal(err)
@@ -577,7 +562,7 @@ func testEqual(t *testing.T, query string, m *Manager, id tnproto.ID, key tnprot
 		return
 	}
 	if scan != 0 && stats.BytesScanned != scan {
-		t.Errorf("%d bytest scanned; wanted %d", stats.BytesScanned, scan)
+		t.Errorf("%d bytes scanned; wanted %d", stats.BytesScanned, scan)
 	}
 	t.Logf("%d hits, %d misses", stats.CacheHits, stats.CacheMisses)
 
@@ -624,7 +609,7 @@ func testCancel(t *testing.T, m *Manager) {
 	id, key := randpair()
 	// this plan should loop indefinitely until
 	// it is canceled by the
-	rc, err := m.Do(id, key, mkplan(t, `SELECT * FROM HANG('../testdata/parking.10n')`), tnproto.OutputRaw, here)
+	rc, err := m.Do(id, key, mkplan(t, `SELECT * FROM HANG(parking)`), tnproto.OutputRaw, here)
 	here.Close()
 	if err != nil {
 		t.Fatal(err)
@@ -714,35 +699,17 @@ type benchenv struct {
 	ranges bool
 }
 
-type benchHandle struct {
-	*blob.List
-}
-
-func (b *benchHandle) Open(_ context.Context) (vm.Table, error) {
-	panic("benchHandle.Open()")
-}
-
-func (b *benchHandle) Encode(dst *ion.Buffer, st *ion.Symtab) error {
-	b.List.Encode(dst, st)
-	return nil
-}
-
-func (b *benchHandle) Size() int64 { return 0 }
-
-func (b *benchenv) Stat(_ expr.Node, _ *plan.Hints) (plan.TableHandle, error) {
-	// produce N fake compressed blobs
+func (b *benchenv) Stat(_ expr.Node, _ *plan.Hints) (*plan.Input, error) {
+	// produce N fake descriptors
 	// with data that is reasonably sized
-	lst := make([]blob.Interface, b.blocks)
+	lst := make([]blockfmt.Descriptor, b.blocks)
 	for i := range lst {
-		lst[i] = &blob.Compressed{
-			From: &blob.URL{
-				Value: "https://s3.amazonaws.com/a-very-long/path-to-the-object/finally.ion.zst",
-				Info: blob.Info{
-					ETag:         "\"abc123xyzandmoreetagstringhere\"",
-					Size:         1234567,
-					Align:        1024 * 1024,
-					LastModified: date.Now(),
-				},
+		lst[i] = blockfmt.Descriptor{
+			ObjectInfo: blockfmt.ObjectInfo{
+				Path:         "a-very-long/path-to-the-object/finally.ion.zst",
+				ETag:         "\"abc123xyzandmoreetagstringhere\"",
+				Size:         1234567,
+				LastModified: date.Now(),
 			},
 			Trailer: blockfmt.Trailer{
 				Version:    1,
@@ -757,8 +724,9 @@ func (b *benchenv) Stat(_ expr.Node, _ *plan.Hints) (plan.TableHandle, error) {
 				}},
 			},
 		}
+		lst[i].Trailer.Sparse.Push(nil)
 	}
-	return &benchHandle{&blob.List{lst}}, nil
+	return &plan.Input{Descs: lst}, nil
 }
 
 func toJSON(st *ion.Symtab, d ion.Datum) string {

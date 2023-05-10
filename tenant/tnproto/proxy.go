@@ -285,9 +285,11 @@ func (b *Buffer) DirectExec(ctl *net.UnixConn, conn net.Conn) (io.ReadCloser, er
 	return nil, fmt.Errorf("unexpected tenant response %q", b.pre[:])
 }
 
+type Server plan.Server
+
 // Serve responds to ProxyExec and DirectExec requests
 // over the given control socket.
-func Serve(ctl *net.UnixConn, dec plan.Decoder) error {
+func (s *Server) Serve(ctl *net.UnixConn) error {
 	var msgbuf [8]byte
 	var st ion.Symtab
 	var tmp []byte
@@ -313,7 +315,7 @@ func Serve(ctl *net.UnixConn, dec plan.Decoder) error {
 		}
 		if bytes.Equal(msgbuf[:], proxymsg) {
 			// proxy request
-			go serveProxy(dec, conn)
+			go s.serveProxy(conn)
 		} else if bytes.Equal(msgbuf[:3], directmsg[:3]) {
 			// need to read the plan
 			// and then execute it directly
@@ -338,7 +340,7 @@ func Serve(ctl *net.UnixConn, dec plan.Decoder) error {
 			if err != nil {
 				return fmt.Errorf("tnproto.Serve: decoding symbol table: %w", err)
 			}
-			t, err := plan.Decode(dec, &st, tmp)
+			t, err := plan.Decode(&st, tmp)
 			if err != nil {
 				err = errnow(ctl, err, tmp)
 				if err != nil {
@@ -349,7 +351,7 @@ func Serve(ctl *net.UnixConn, dec plan.Decoder) error {
 				if err != nil {
 					return err
 				}
-				go serveDirect(t, ofmt.writer(conn), errorWriter)
+				go s.serveDirect(t, ofmt.writer(conn), errorWriter)
 			}
 		} else {
 			if conn != nil {
@@ -360,9 +362,9 @@ func Serve(ctl *net.UnixConn, dec plan.Decoder) error {
 	}
 }
 
-func serveProxy(dec plan.Decoder, conn net.Conn) {
+func (s *Server) serveProxy(conn net.Conn) {
 	defer conn.Close()
-	plan.Serve(conn, dec)
+	(*plan.Server)(s).Serve(conn)
 }
 
 // pipectx returns a context.Context that is canceled
@@ -404,7 +406,7 @@ func sendError(conn io.WriteCloser, err error) {
 	conn.Write(buf.Bytes())
 }
 
-func serveDirect(t *plan.Tree, conn io.WriteCloser, errpipe net.Conn) {
+func (s *Server) serveDirect(t *plan.Tree, conn io.WriteCloser, errpipe net.Conn) {
 	defer errpipe.Close() // cancels ctx
 	ctx := pipectx(errpipe)
 
@@ -426,10 +428,20 @@ func serveDirect(t *plan.Tree, conn io.WriteCloser, errpipe net.Conn) {
 	}()
 	pl := plan.LocalTransport{}
 	ep := plan.ExecParams{
+		Plan:    t,
 		Output:  conn,
 		Context: ctx,
+		Runner:  s.Runner,
 	}
-	err := pl.Exec(t, &ep)
+	if s.InitFS != nil && !t.Data.IsEmpty() {
+		fs, err := s.InitFS(t.Data)
+		if err != nil {
+			sendError(conn, err)
+			return
+		}
+		ep.FS = fs
+	}
+	err := pl.Exec(&ep)
 	if err != nil {
 		sendError(conn, err)
 	}

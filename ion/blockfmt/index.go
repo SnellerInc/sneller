@@ -93,6 +93,13 @@ type Descriptor struct {
 	Trailer Trailer
 }
 
+// Block is a reference to a block
+// within a list of [blockfmt.Descriptor]s.
+// See [plan.Input.Blocks] and [plan.Input.Descs].
+type Block struct {
+	Index, Offset int
+}
+
 // Quarantined is an item that
 // is queued for GC but has not
 // yet been deleted.
@@ -285,7 +292,7 @@ func Sign(key *Key, idx *Index) ([]byte, error) {
 	if len(idx.Inline) == 0 {
 		// Do nothing...
 	} else if idx.Algo != "" {
-		writeContents(&ibuf, &st, idx.Inline)
+		WriteDescriptors(&ibuf, &st, idx.Inline)
 		comp := compr.Compression(idx.Algo)
 		cbuf := comp.Compress(ibuf.Bytes(), malloc(ibuf.Size())[:0])
 		buf.BeginField(algo)
@@ -297,7 +304,7 @@ func Sign(key *Key, idx *Index) ([]byte, error) {
 		free(cbuf)
 	} else {
 		buf.BeginField(contents)
-		writeContents(&buf, &st, idx.Inline)
+		WriteDescriptors(&buf, &st, idx.Inline)
 	}
 
 	// encode indirect references
@@ -365,23 +372,29 @@ func WriteDescriptor(buf *ion.Buffer, st *ion.Symtab, desc *Descriptor) {
 	buf.EndStruct()
 }
 
-// ReadDescriptor reads a single descriptor from buf
-// using the provided symbol table.
-func ReadDescriptor(mem []byte, st *ion.Symtab) (*Descriptor, []byte, error) {
-	d, rest, err := ion.ReadDatum(st, mem)
-	if err != nil {
-		return nil, mem, err
-	}
+// ReadDescriptor reads a descriptor from an ion datum.
+func ReadDescriptor(d ion.Datum) (*Descriptor, error) {
 	var td TrailerDecoder
 	ret := new(Descriptor)
-	err = ret.decode(&td, d, 0)
+	err := ret.decode(&td, d, 0)
 	if err != nil {
-		return nil, mem, err
+		return nil, err
 	}
-	return ret, rest, nil
+	return ret, nil
 }
 
-func writeContents(buf *ion.Buffer, st *ion.Symtab, contents []Descriptor) {
+// ReadDescriptors reads a list of descriptors from an ion datum.
+func ReadDescriptors(d ion.Datum) ([]Descriptor, error) {
+	var td TrailerDecoder
+	var ret []Descriptor
+	err := d.UnpackList(func(item ion.Datum) error {
+		ret = append(ret, Descriptor{})
+		return ret[len(ret)-1].decode(&td, item, 0)
+	})
+	return ret, err
+}
+
+func WriteDescriptors(buf *ion.Buffer, st *ion.Symtab, contents []Descriptor) {
 	var (
 		path         = st.Intern("path")
 		etag         = st.Intern("etag")
@@ -787,4 +800,60 @@ func (idx *Index) TimeRange(path []string) (min, max date.Time, ok bool) {
 // that are pointed to by this Index.
 func (idx *Index) Objects() int {
 	return idx.Indirect.OrigObjects() + len(idx.Inline)
+}
+
+// Descs collects the list of objects from an
+// index and returns them as a list of
+// descriptors against which queries can be run
+// along with the number of (decompressed) bytes
+// that comprise the returned objects.
+//
+// If [keep] is non-nil, then blocks which are
+// known to not contain any rows matching [keep]
+// will be excluded from the returned slices.
+//
+// Note that the returned slices may be empty if
+// the index has no contents.
+func (idx *Index) Descs(src InputFS, keep *Filter) ([]Descriptor, []Block, int64, error) {
+	var out []Descriptor
+	var blocks []Block
+	var size int64
+	add := func(b Descriptor) {
+		any := false
+		visit := func(start, end int) {
+			if start == end {
+				return
+			}
+			any = true
+			for i := start; i < end; i++ {
+				size += int64(b.Trailer.Blocks[i].Chunks << b.Trailer.BlockShift)
+				blocks = append(blocks, Block{
+					Index:  len(out),
+					Offset: i,
+				})
+			}
+		}
+		if keep == nil {
+			visit(0, len(b.Trailer.Blocks))
+		} else {
+			keep.Visit(&b.Trailer.Sparse, visit)
+		}
+		if any {
+			out = append(out, b)
+		}
+	}
+	for i := range idx.Inline {
+		if idx.Inline[i].Format != Version {
+			return nil, nil, 0, fmt.Errorf("don't know how to convert format %q into a blob", idx.Inline[i].Format)
+		}
+		add(idx.Inline[i])
+	}
+	descs, err := idx.Indirect.Search(src, keep)
+	if err != nil {
+		return out, blocks, size, err
+	}
+	for i := range descs {
+		add(descs[i])
+	}
+	return out, blocks, size, nil
 }

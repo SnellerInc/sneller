@@ -32,6 +32,10 @@ import (
 // and without deduplication)
 type UnionMap struct {
 	Nonterminal
+
+	// Geometry determines how table handle inputs
+	// are distributed onto the constituent partials
+	Geometry *Geometry
 }
 
 var (
@@ -108,44 +112,11 @@ func (l *LocalTransport) SetField(f ion.Field) error {
 	return nil
 }
 
-func doSplit(th TableHandle) (Subtables, error) {
-	if sp, ok := th.(SplitHandle); ok {
-		return sp.Split()
+func (u *UnionMap) exec(dst vm.QuerySink, src *Input, ep *ExecParams) error {
+	if u.Geometry == nil {
+		return fmt.Errorf("plan.UnionMap: Geometry is nil")
 	}
-	hs, ok := th.(tableHandles)
-	if !ok {
-		return SubtableList{{
-			Transport: &LocalTransport{},
-			Handle:    th,
-		}}, nil
-	}
-	var out Subtables
-	for i := range hs {
-		sub, err := doSplit(hs[i])
-		if err != nil {
-			return nil, err
-		}
-		if out == nil {
-			out = sub
-		} else {
-			out = out.Append(sub)
-		}
-	}
-	return out, nil
-}
-
-func (u *UnionMap) exec(dst vm.QuerySink, src TableHandle, ep *ExecParams) error {
-	tbls, err := doSplit(src)
-	if err != nil {
-		return err
-	}
-	if tbls.Len() == 0 {
-		// write no data
-		var b ion.Buffer
-		var st ion.Symtab
-		st.Marshal(&b, true)
-		return writeIon(&b, dst)
-	}
+	in := src.HashSplit(len(u.Geometry.Peers))
 	w, err := dst.Open()
 	if err != nil {
 		return err
@@ -157,31 +128,32 @@ func (u *UnionMap) exec(dst vm.QuerySink, src TableHandle, ep *ExecParams) error
 	// does not benefit substantially from having
 	// parallelism, so we union all the output bytes
 	// into a single thread here
-	errors := make([]error, tbls.Len())
+	errors := make([]error, len(in))
 	var wg sync.WaitGroup
-	wg.Add(tbls.Len())
-	for i := 0; i < tbls.Len(); i++ {
+	for i := range in {
+		if in[i] == nil {
+			continue
+		}
+		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			var sub Subtable
-			tbls.Subtable(i, &sub)
+			tp := u.Geometry.Peers[i]
 			// wrap the rest of the query in a Tree;
 			// this makes it look to the Transport
 			// like we are executing a sub-query, which
 			// is approximately true
-			stub := &Tree{
-				Inputs: []Input{{
-					Handle: sub.Handle,
-				}},
+			subep := ep.clone()
+			subep.Plan = &Tree{
+				Inputs: in[i : i+1],
+				Data:   ep.Plan.Data,
 				Root: Node{
 					Op:    u.From,
 					Input: 0,
 				},
 			}
-			subep := ep.clone()
 			subep.Output = s
 			// subep.get will be clobbered by Exec here:
-			errors[i] = sub.Exec(stub, subep)
+			errors[i] = tp.Exec(subep)
 			ep.Stats.atomicAdd(&subep.Stats)
 		}(i)
 	}
@@ -206,12 +178,28 @@ func (u *UnionMap) exec(dst vm.QuerySink, src TableHandle, ep *ExecParams) error
 func (u *UnionMap) encode(dst *ion.Buffer, st *ion.Symtab, ep *ExecParams) error {
 	dst.BeginStruct(-1)
 	settype("unionmap", dst, st)
+	if u.Geometry != nil {
+		dst.BeginField(st.Intern("geometry"))
+		if err := u.Geometry.encode(dst, st); err != nil {
+			return err
+		}
+	}
 	dst.EndStruct()
 	return nil
 }
 
-func (u *UnionMap) setfield(d Decoder, f ion.Field) error {
-	return errUnexpectedField
+func (u *UnionMap) SetField(f ion.Field) error {
+	switch f.Label {
+	case "geometry":
+		g, err := decodeGeometry(f.Datum)
+		if err != nil {
+			return err
+		}
+		u.Geometry = g
+	default:
+		return errUnexpectedField
+	}
+	return nil
 }
 
 func (u *UnionMap) String() string { return "UNION MAP" }
@@ -234,7 +222,7 @@ func (u *UnionPartition) encode(dst *ion.Buffer, st *ion.Symtab, ep *ExecParams)
 	return nil
 }
 
-func (u *UnionPartition) setfield(d Decoder, f ion.Field) error {
+func (u *UnionPartition) SetField(f ion.Field) error {
 	switch f.Label {
 	case "by":
 		return f.UnpackList(func(d ion.Datum) error {
@@ -250,68 +238,64 @@ func (u *UnionPartition) setfield(d Decoder, f ion.Field) error {
 	}
 }
 
-// TablePart represents part of a table
+// tablePart represents part of a table
 // split on a particular set of partitions.
 //
-// TablePart implements expr.Rewriter in order
+// tablePart implements expr.Rewriter in order
 // to rewrite PARTITION_VALUE() expresions into
 // the corresponding Parts constants.
-type TablePart struct {
-	Handle TableHandle
-	Parts  []ion.Datum
+type tablePart struct {
+	contents *Input
+	parts    []ion.Datum
 }
 
-func (t *TablePart) Walk(e expr.Node) expr.Rewriter {
+func (t *tablePart) Walk(e expr.Node) expr.Rewriter {
 	return t
 }
 
-func (t *TablePart) Rewrite(e expr.Node) expr.Node {
+func (t *tablePart) Rewrite(e expr.Node) expr.Node {
 	b, ok := e.(*expr.Builtin)
 	if !ok || b.Func != expr.PartitionValue {
 		return e
 	}
 	id := int(b.Args[0].(expr.Integer))
-	return mustConst(t.Parts[id])
+	return mustConst(t.parts[id])
 }
 
-// PartitionHandle is an optional interface implemented
-// by TableHandle for partitions.
-type PartitionHandle interface {
-	// SplitBy should split the table on the given partition(s)
-	// and return one TablePart for each unique partition tuple.
-	// Each TablePart[*].Parts datum should correspond to
-	// the list of parts provided to SplitBy.
-	// The returned slice of TableParts should have at least one element.
-	SplitBy(parts []string) ([]TablePart, error)
-
-	// SplitOn should return the TableHandle corresponding
-	// to the parts of the table for which the partitions
-	// given by parts are equal to the corresponding datums.
-	SplitOn(parts []string, equal []ion.Datum) (TableHandle, error)
+func (t *tablePart) size() int64 {
+	n := int64(0)
+	for i := range t.contents.Descs {
+		n += t.contents.Descs[i].Size
+	}
+	return n
 }
 
 func (u *UnionPartition) String() string {
 	return fmt.Sprintf("UNION PARTITION %v", u.By)
 }
 
-func (u *UnionPartition) exec(dst vm.QuerySink, src TableHandle, ep *ExecParams) error {
+func (u *UnionPartition) exec(dst vm.QuerySink, src *Input, ep *ExecParams) error {
 	if len(u.By) == 0 {
 		return fmt.Errorf("plan: UnionPartition: 0 partitions to split?")
 	}
-	ph, ok := src.(PartitionHandle)
+	groups, ok := src.Partition(u.By)
 	if !ok {
-		return fmt.Errorf("plan: UnionPartition: handle %T cannot be partitioned", src)
+		return fmt.Errorf("plan: UnionPartition: input cannot be partitioned")
 	}
-	parts, err := ph.SplitBy(u.By)
-	if err != nil {
-		return err
-	}
-	if len(parts) == 0 {
+	if groups.Groups() == 0 {
 		// we can get 0 parts if a predicate
 		// removes all the blocks
 		nop := NoOutput{}
 		return nop.exec(dst, src, ep)
 	}
+	var parts []tablePart
+	groups.Each(func(lst []ion.Datum, i *Input) {
+		parts = append(parts, tablePart{
+			contents: i,
+			parts:    lst,
+		})
+	})
+
 	var wg sync.WaitGroup
 	errs := make([]error, len(parts))
 	parallel := distribute(parts, ep.Parallel)
@@ -331,12 +315,13 @@ func (u *UnionPartition) exec(dst vm.QuerySink, src TableHandle, ep *ExecParams)
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			err := u.From.exec(mw, parts[i].Handle, subep)
+			err := u.From.exec(mw, parts[i].contents, subep)
 			errs[i] = err
 			ep.Stats.atomicAdd(&subep.Stats)
 		}(i)
 	}
 	wg.Wait()
+	var err error
 	for i := range errs {
 		if errs[i] != nil && !errors.Is(errs[i], io.EOF) {
 			err = errs[i]
@@ -352,12 +337,12 @@ func (u *UnionPartition) exec(dst vm.QuerySink, src TableHandle, ep *ExecParams)
 
 // produce a histogram with a sum equal to value
 // with each element proportional to h[i]
-func distribute(h []TablePart, value int) []int {
+func distribute(h []tablePart, value int) []int {
 	hist := make([]int64, len(h))
 	out := make([]int, len(h))
 	sum := int64(0)
 	for i := range h {
-		sz := h[i].Handle.Size()
+		sz := h[i].size()
 		if sz == 0 {
 			sz = 1
 		}

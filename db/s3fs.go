@@ -17,7 +17,6 @@ package db
 import (
 	"context"
 	"fmt"
-	"io/fs"
 	"net/http"
 	"strings"
 
@@ -34,7 +33,7 @@ type S3FS struct {
 }
 
 // URL implements db.URL
-func (s *S3FS) URL(name string, info fs.FileInfo, etag string) (string, error) {
+func (s *S3FS) URL(name, etag string) (string, error) {
 	return s3.URL(s.Key, s.Bucket, name)
 }
 

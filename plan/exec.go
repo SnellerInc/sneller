@@ -19,17 +19,20 @@ import (
 )
 
 func (t *Tree) exec(dst vm.QuerySink, ep *ExecParams) error {
-	ep.get = func(i int) TableHandle {
-		return t.Inputs[i].Handle
+	ep.get = func(i int) *Input {
+		if t.Inputs[i] == nil {
+			panic("nil input?")
+		}
+		return t.Inputs[i]
 	}
 	return t.Root.exec(dst, ep)
 }
 
 func (n *Node) exec(dst vm.QuerySink, ep *ExecParams) error {
 	i := n.Input
-	var h TableHandle
+	var src *Input
 	if i >= 0 {
-		h = ep.get(i)
+		src = ep.get(i)
 	}
-	return n.Op.exec(dst, h, ep)
+	return n.Op.exec(dst, src, ep)
 }

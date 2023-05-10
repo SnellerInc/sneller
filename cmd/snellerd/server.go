@@ -50,10 +50,6 @@ type server struct {
 	// listing peers, we fall back to
 	// this list (assuming it is non-nil)
 
-	// split size used to configure the splitter,
-	// can be left 0 to use the default
-	splitSize int64
-
 	// when started, the http server
 	srv http.Server
 	// when started, the address of the http listener
@@ -134,7 +130,6 @@ func (s *server) Serve(httpsock, tenantsock net.Listener) error {
 
 func (s *server) newSplitter(id tnproto.ID, key tnproto.Key, peers []*net.TCPAddr) *sneller.Splitter {
 	split := &sneller.Splitter{
-		SplitSize: s.splitSize,
 		WorkerID:  id,
 		WorkerKey: key,
 		Peers:     peers,

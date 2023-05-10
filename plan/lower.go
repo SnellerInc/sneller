@@ -21,7 +21,6 @@ import (
 	"golang.org/x/exp/slices"
 
 	"github.com/SnellerInc/sneller/expr"
-	"github.com/SnellerInc/sneller/ion"
 	"github.com/SnellerInc/sneller/ion/blockfmt"
 	"github.com/SnellerInc/sneller/plan/pir"
 	"github.com/SnellerInc/sneller/vm"
@@ -278,8 +277,15 @@ func (w *walker) lowerUnionMap(in *pir.UnionMap, env Env) (Op, error) {
 			By:          in.PartitionBy,
 		}, nil
 	}
+	var geom *Geometry
+	if split, ok := env.(SplitEnv); ok {
+		geom = split.Geometry()
+	} else {
+		geom = &Geometry{Peers: []Transport{&LocalTransport{}}}
+	}
 	return &UnionMap{
 		Nonterminal: Nonterminal{From: sub},
+		Geometry:    geom,
 	}, nil
 }
 
@@ -287,87 +293,57 @@ func (w *walker) lowerUnionMap(in *pir.UnionMap, env Env) (Op, error) {
 // as part of a query plan.
 type UploadFS interface {
 	blockfmt.UploadFS
-	// Encode encodes the UploadFS into the
-	// provided buffer.
-	Encode(dst *ion.Buffer, st *ion.Symtab) error
 }
 
 // UploadEnv is an Env that supports uploading objects
 // which enables support for SELECT INTO.
 type UploadEnv interface {
-	// Uploader returns an UploadFS to use to
-	// upload generated objects. This may return
-	// nil if the envionment does not support
-	// uploading despite implementing the
-	// interface.
-	Uploader() UploadFS
 	// Key returns the key that should be used to
 	// sign the index.
 	Key() *blockfmt.Key
 }
 
-func lowerOutputPart(n *pir.OutputPart, env Env, input Op) (Op, error) {
-	if e, ok := env.(UploadEnv); ok {
-		if up := e.Uploader(); up != nil {
-			op := &OutputPart{
-				Basename: n.Basename,
-				Store:    up,
-			}
-			op.From = input
-			return op, nil
-		}
-	}
-	return nil, fmt.Errorf("cannot handle INTO with Env that doesn't support UploadEnv")
-}
-
-func lowerOutputIndex(n *pir.OutputIndex, env Env, input Op) (Op, error) {
-	if e, ok := env.(UploadEnv); ok {
-		if up := e.Uploader(); up != nil {
-			parts, ok := expr.FlatPath(n.Table)
-			if !ok || len(parts) != 2 {
-				return nil, fmt.Errorf("invalid table expression %s", expr.ToString(n.Table))
-			}
-			op := &OutputIndex{
-				DB:       parts[0],
-				Table:    parts[1],
-				Basename: n.Basename,
-				Store:    up,
-				Key:      e.Key(),
-			}
-			op.From = input
-			return op, nil
-		}
-	}
-	return nil, fmt.Errorf("cannot handle INTO with Env that doesn't support UploadEnv")
-}
-
-type input struct {
-	table  *expr.Table
-	hints  Hints
-	handle TableHandle // if already statted
-}
-
-func (i *input) finish(env Env) (Input, error) {
-	th, err := i.stat(env)
-	if err != nil {
-		return Input{}, err
-	}
-	return Input{
-		Table:  i.table,
-		Handle: th,
+func lowerOutputPart(n *pir.OutputPart, input Op) (Op, error) {
+	return &OutputPart{
+		Nonterminal: Nonterminal{From: input},
+		Basename:    n.Basename,
 	}, nil
 }
 
-func (i *input) stat(env Env) (TableHandle, error) {
-	if i.handle != nil {
-		return i.handle, nil
+func lowerOutputIndex(n *pir.OutputIndex, env Env, input Op) (Op, error) {
+	e, ok := env.(UploadEnv)
+	if !ok {
+		return nil, fmt.Errorf("cannot handle INTO with Env that doesn't support UploadEnv")
 	}
-	th, err := stat(env, i.table.Expr, &i.hints)
+	parts, ok := expr.FlatPath(n.Table)
+	if !ok || len(parts) != 2 {
+		return nil, fmt.Errorf("invalid table expression %s", expr.ToString(n.Table))
+	}
+	return &OutputIndex{
+		Nonterminal: Nonterminal{From: input},
+		DB:          parts[0],
+		Table:       parts[1],
+		Basename:    n.Basename,
+		Key:         e.Key(),
+	}, nil
+}
+
+type input struct {
+	table    *expr.Table
+	hints    Hints
+	contents *Input
+}
+
+func (i *input) finish(env Env) error {
+	if i.contents != nil {
+		return nil
+	}
+	input, err := stat(env, i.table.Expr, &i.hints)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	i.handle = th
-	return th, nil
+	i.contents = input
+	return nil
 }
 
 // conjunctions returns the list of top-level
@@ -477,7 +453,7 @@ func (i *input) merge(in *input) bool {
 	if !mergeFilterHint(i, in) {
 		return false
 	}
-	i.handle = nil
+	i.contents = nil
 	if i.hints.AllFields {
 		return true
 	}
@@ -580,7 +556,7 @@ func (w *walker) walkBuild(in pir.Step, env Env) (Op, error) {
 	case *pir.OutputIndex:
 		return lowerOutputIndex(n, env, input)
 	case *pir.OutputPart:
-		return lowerOutputPart(n, env, input)
+		return lowerOutputPart(n, input)
 	case *pir.Unpivot:
 		return lowerUnpivot(n, input)
 	case *pir.UnpivotAtDistinct:
@@ -590,17 +566,17 @@ func (w *walker) walkBuild(in pir.Step, env Env) (Op, error) {
 	}
 }
 
-func (w *walker) finish(env Env) ([]Input, error) {
+func (w *walker) finish(env Env) ([]*Input, error) {
 	if w.inputs == nil {
 		return nil, nil
 	}
-	inputs := make([]Input, len(w.inputs))
+	inputs := make([]*Input, len(w.inputs))
 	for i := range w.inputs {
-		in, err := w.inputs[i].finish(env)
+		err := w.inputs[i].finish(env)
 		if err != nil {
 			return nil, err
 		}
-		inputs[i] = in
+		inputs[i] = w.inputs[i].contents
 	}
 	return inputs, nil
 }
@@ -704,7 +680,7 @@ func New(q *expr.Query, env Env) (*Tree, error) {
 }
 
 // NewSplit creates a new Tree from raw query AST.
-func NewSplit(q *expr.Query, env Env) (*Tree, error) {
+func NewSplit(q *expr.Query, env SplitEnv) (*Tree, error) {
 	return newTree(q, env, true)
 }
 

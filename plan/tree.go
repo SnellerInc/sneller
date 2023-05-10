@@ -25,30 +25,12 @@ import (
 	"github.com/SnellerInc/sneller/vm"
 )
 
-type Input struct {
+type Table struct {
 	// TODO: we should encode the underlying table
 	// expr only so different bindings don't cause
 	// the same table to be scanned multiple times
-	Table  *expr.Table
-	Handle TableHandle
-}
-
-func (i *Input) encode(dst *ion.Buffer, st *ion.Symtab) error {
-	dst.BeginStruct(-1)
-	tbl, handle := i.Table, i.Handle
-	if tbl != nil {
-		dst.BeginField(st.Intern("table"))
-		tbl.Encode(dst, st)
-	}
-	if handle != nil {
-		dst.BeginField(st.Intern("handle"))
-		err := handle.Encode(dst, st)
-		if err != nil {
-			return err
-		}
-	}
-	dst.EndStruct()
-	return nil
+	Table    *expr.Table
+	Contents *Input
 }
 
 // A Tree is the root an executable query plan
@@ -63,7 +45,10 @@ type Tree struct {
 	//
 	// (These are stored globally so that the same table
 	// referenced multiple times does not consume extra space.)
-	Inputs []Input
+	Inputs []*Input
+	// Data is arbitrary data that can be included
+	// along with the tree during serialization.
+	Data ion.Datum
 	// Root is the root node of the plan tree.
 	Root Node
 
@@ -120,7 +105,7 @@ func (t *Tree) MaxScanned() int64 {
 	walk = func(n *Node) {
 		i := n.Input
 		if i >= 0 && i < len(t.Inputs) {
-			ret += t.Inputs[i].Handle.Size()
+			ret += t.Inputs[i].Size()
 		}
 		for op := n.Op; op != nil; op = op.input() {
 			if s, ok := op.(*Substitute); ok {
@@ -147,7 +132,7 @@ type Substitute struct {
 	Inner []*Node
 }
 
-func (s *Substitute) exec(dst vm.QuerySink, src TableHandle, ep *ExecParams) error {
+func (s *Substitute) exec(dst vm.QuerySink, src *Input, ep *ExecParams) error {
 	rp := make([]replacement, len(s.Inner))
 	var wg sync.WaitGroup
 	wg.Add(len(s.Inner))
@@ -184,12 +169,12 @@ func (s *Substitute) encode(dst *ion.Buffer, st *ion.Symtab, ep *ExecParams) err
 	return nil
 }
 
-func (s *Substitute) setfield(d Decoder, f ion.Field) error {
+func (s *Substitute) SetField(f ion.Field) error {
 	switch f.Label {
 	case "inner":
 		return f.UnpackList(func(v ion.Datum) error {
 			nn := &Node{}
-			err := nn.decode(d, v)
+			err := nn.decode(v)
 			if err != nil {
 				return err
 			}

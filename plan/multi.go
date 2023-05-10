@@ -15,89 +15,17 @@
 package plan
 
 import (
-	"context"
 	"errors"
 	"fmt"
-	"io"
 	"io/fs"
 	"path"
 	"regexp"
 	"strings"
-	"sync/atomic"
 
 	"github.com/SnellerInc/sneller/date"
 	"github.com/SnellerInc/sneller/expr"
 	"github.com/SnellerInc/sneller/fsutil"
-	"github.com/SnellerInc/sneller/ion"
-	"github.com/SnellerInc/sneller/vm"
 )
-
-type tableHandles []TableHandle
-
-var _ PartitionHandle = tableHandles(nil)
-
-func (h tableHandles) Size() int64 {
-	n := int64(0)
-	for i := range h {
-		n += h[i].Size()
-	}
-	return n
-}
-
-func (h tableHandles) SplitBy(parts []string) ([]TablePart, error) {
-	var out []TablePart
-	for i := range h {
-		ph, ok := h[i].(PartitionHandle)
-		if !ok {
-			return nil, fmt.Errorf("tableHandles: %T is not a PartitionHandle", h[i])
-		}
-		lst, err := ph.SplitBy(parts)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, lst...)
-	}
-	return out, nil
-}
-
-func (h tableHandles) SplitOn(parts []string, equal []ion.Datum) (TableHandle, error) {
-	var out []TableHandle
-	for i := range h {
-		ph, ok := h[i].(PartitionHandle)
-		if !ok {
-			return nil, fmt.Errorf("tableHandles: %T is not a PartitionHandle", h[i])
-		}
-		handle, err := ph.SplitOn(parts, equal)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, handle)
-	}
-	return tableHandles(out), nil
-}
-
-func (h tableHandles) Open(ctx context.Context) (vm.Table, error) {
-	ts := make(tables, len(h))
-	for i := range h {
-		t, err := h[i].Open(ctx)
-		if err != nil {
-			return nil, err
-		}
-		ts[i] = t
-	}
-	return ts, nil
-}
-
-func (h tableHandles) Encode(dst *ion.Buffer, st *ion.Symtab) error {
-	dst.BeginList(-1)
-	for i := range h {
-		if err := h[i].Encode(dst, st); err != nil {
-			return err
-		}
-	}
-	dst.EndList()
-	return nil
-}
 
 type multiIndex []Index
 
@@ -132,129 +60,6 @@ func (m multiIndex) HasPartition(x string) bool {
 	return true
 }
 
-func decodeHandles(d Decoder, v ion.Datum) (TableHandle, error) {
-	var ths tableHandles
-	v.UnpackList(func(v ion.Datum) error {
-		th, err := decodeHandle(d, v)
-		if err != nil {
-			return err
-		}
-		ths = append(ths, th)
-		return nil
-	})
-	return ths, nil
-}
-
-type tables []vm.Table
-
-var _ CachedTable = tables(nil)
-
-func sum(t tables, fn func(ct CachedTable) int64) int64 {
-	h := int64(0)
-	for i := range t {
-		if ct, ok := t[i].(CachedTable); ok {
-			h += fn(ct)
-		}
-	}
-	return h
-}
-
-func (t tables) Hits() int64   { return sum(t, CachedTable.Hits) }
-func (t tables) Misses() int64 { return sum(t, CachedTable.Misses) }
-func (t tables) Bytes() int64  { return sum(t, CachedTable.Bytes) }
-
-func (t tables) WriteChunks(dst vm.QuerySink, parallel int) error {
-	sink, err := newMultiSink(dst, parallel)
-	if err != nil {
-		return err
-	}
-	for i := range t {
-		err := t[i].WriteChunks(sink, parallel)
-		if err != nil && !errors.Is(err, io.EOF) {
-			sink.closeAll()
-			return err
-		}
-		sink.reset()
-	}
-	return sink.closeAll()
-}
-
-type multiSink struct {
-	dst io.Closer
-	mw  []multiWriter
-	idx int64
-}
-
-func newMultiSink(dst vm.QuerySink, parallel int) (*multiSink, error) {
-	s := &multiSink{dst: dst}
-	if parallel < 1 {
-		parallel = 1
-	}
-	s.mw = make([]multiWriter, 0, parallel)
-	for i := 0; i < parallel; i++ {
-		wc, err := dst.Open()
-		if err != nil {
-			s.closeAll()
-			return nil, err
-		}
-		esw, _ := wc.(vm.EndSegmentWriter)
-		s.mw = append(s.mw, multiWriter{wc: wc, esw: esw})
-	}
-	return s, nil
-}
-
-func (s *multiSink) Open() (io.WriteCloser, error) {
-	i := int(atomic.AddInt64(&s.idx, 1)) - 1
-	if i >= len(s.mw) {
-		return nil, fmt.Errorf("too many calls to Open (max %d)", len(s.mw))
-	}
-	return &s.mw[i], nil
-}
-
-func (s *multiSink) Close() error {
-	return s.dst.Close()
-}
-
-func (s *multiSink) reset() {
-	atomic.StoreInt64(&s.idx, 0)
-}
-
-func (s *multiSink) closeAll() error {
-	var err error
-	for i := range s.mw {
-		e := s.mw[i].reallyClose()
-		if e != nil && err == nil {
-			err = e
-		}
-	}
-	return err
-}
-
-type multiWriter struct {
-	wc io.WriteCloser
-
-	// cached assertion of w to vm.EndSegmentWriter
-	esw vm.EndSegmentWriter
-}
-
-func (w *multiWriter) Write(b []byte) (n int, err error) {
-	return w.wc.Write(b)
-}
-
-func (w *multiWriter) reallyClose() error {
-	return w.wc.Close()
-}
-
-func (w *multiWriter) EndSegment() {
-	if w.esw != nil {
-		w.esw.EndSegment()
-	}
-}
-
-func (w *multiWriter) Close() error {
-	return nil
-}
-
 // TableLister is an interface an Env or Index can
 // optionally implement to support TABLE_GLOB and
 // TABLE_PATTERN expressions.
@@ -265,7 +70,7 @@ type TableLister interface {
 	ListTables(db string) ([]string, error)
 }
 
-func statGlob(tl TableLister, env Env, e *expr.Builtin, h *Hints) (TableHandle, error) {
+func statGlob(tl TableLister, env Env, e *expr.Builtin, h *Hints) (*Input, error) {
 	db, m, err := compileGlob(e)
 	if err != nil {
 		return nil, err
@@ -277,27 +82,25 @@ func statGlob(tl TableLister, env Env, e *expr.Builtin, h *Hints) (TableHandle, 
 	if err != nil {
 		return nil, err
 	}
-	ts := make(tableHandles, 0, len(list))
+	ret := new(Input)
+	matches := 0
 	for i := range list {
 		if !m.MatchString(list[i]) {
 			continue
 		}
-		th, err := env.Stat(mkpath(db, list[i]), h)
+		in, err := env.Stat(mkpath(db, list[i]), h)
 		if errors.Is(err, fs.ErrNotExist) {
 			continue
 		} else if err != nil {
 			return nil, err
 		}
-		ts = append(ts, th)
+		matches++
+		ret.Append(in)
 	}
-	switch len(ts) {
-	case 0:
+	if matches == 0 {
 		return nil, fs.ErrNotExist
-	case 1:
-		return ts[0], nil
-	default:
-		return ts, nil
 	}
+	return ret, nil
 }
 
 func indexGlob(tl TableLister, idx Indexer, e *expr.Builtin) (Index, error) {

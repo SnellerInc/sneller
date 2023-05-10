@@ -413,7 +413,7 @@ func (c *IndexConfig) append(idx *Index, ofs UploadFS, basedir string, lst []Des
 	var st ion.Symtab
 	buf.BeginStruct(-1)
 	buf.BeginField(st.Intern("contents"))
-	writeContents(&buf, &st, all)
+	WriteDescriptors(&buf, &st, all)
 	buf.EndStruct()
 
 	split := buf.Size()

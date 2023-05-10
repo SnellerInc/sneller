@@ -22,7 +22,7 @@ import (
 )
 
 // NewLocalTenant creates a tenant that uses given FS as backend
-func NewLocalTenant(fs FS) Tenant {
+func NewLocalTenant(fs InputFS) Tenant {
 	return &localTenant{fs: fs}
 }
 
@@ -33,7 +33,7 @@ func NewLocalTenantFromPath(path string) Tenant {
 
 // localTenant implements Tenant backed by DirFS
 type localTenant struct {
-	fs FS
+	fs InputFS
 }
 
 func (t *localTenant) ID() string {

@@ -118,7 +118,7 @@ var clientPool = sync.Pool{
 // plan.Client.Exec.
 //
 // See also: Attach
-func (r *Remote) Exec(t *plan.Tree, ep *plan.ExecParams) error {
+func (r *Remote) Exec(ep *plan.ExecParams) error {
 	dl := net.Dialer{Timeout: r.Timeout}
 	conn, err := dl.DialContext(ep.Context, r.Net, r.Addr)
 	if err != nil {
@@ -140,5 +140,5 @@ func (r *Remote) Exec(t *plan.Tree, ep *plan.ExecParams) error {
 		cl.Pipe = nil
 		clientPool.Put(cl)
 	}()
-	return cl.Exec(t, ep)
+	return cl.Exec(ep)
 }

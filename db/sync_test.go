@@ -31,7 +31,6 @@ import (
 
 	"github.com/SnellerInc/sneller/compr"
 	"github.com/SnellerInc/sneller/date"
-	"github.com/SnellerInc/sneller/expr/blob"
 	"github.com/SnellerInc/sneller/ion"
 	"github.com/SnellerInc/sneller/ion/blockfmt"
 	"golang.org/x/exp/slices"
@@ -404,14 +403,17 @@ func TestSync(t *testing.T) {
 		t.Fatal(err)
 	}
 	owner.ro = false
-	blobs, _, err := Blobs(dfs, idx1, nil)
+	blobs, blocks, _, err := idx1.Descs(dfs, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(blobs.Contents) == 0 {
+	if len(blobs) == 0 {
 		t.Fatal("no blobs?")
 	}
-	tr := blobs.Contents[0].(*blob.CompressedPart).Parent.Trailer
+	if len(blocks) == 0 {
+		t.Fatal("no blocks?")
+	}
+	tr := blobs[0].Trailer
 	ranges := tr.Sparse.Fields()
 	if ranges == 0 {
 		// the parking2.json file

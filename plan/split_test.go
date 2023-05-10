@@ -29,8 +29,8 @@ import (
 
 type emptyenv struct{}
 
-func (e emptyenv) Stat(_ expr.Node, _ *Hints) (TableHandle, error) {
-	return e, nil
+func (e emptyenv) Stat(_ expr.Node, _ *Hints) (*Input, error) {
+	return &Input{}, nil
 }
 
 func (e emptyenv) Open(_ context.Context) (vm.Table, error) {
@@ -48,26 +48,10 @@ type twosplit struct {
 	Env
 }
 
-type twohandle struct {
-	TableHandle
-	table expr.Node
-}
-
-func (t *twohandle) Size() int64 { return 2 * t.TableHandle.Size() }
-
-func (t *twohandle) Split() (Subtables, error) {
-	return SubtableList{
-		{Transport: &LocalTransport{}, Handle: t.TableHandle},
-		{Transport: &LocalTransport{}, Handle: t.TableHandle},
-	}, nil
-}
-
-func (t *twosplit) Stat(e expr.Node, h *Hints) (TableHandle, error) {
-	handle, err := t.Env.Stat(e, h)
-	if err != nil {
-		return nil, err
+func (twosplit) Geometry() *Geometry {
+	return &Geometry{
+		Peers: []Transport{&LocalTransport{}, &LocalTransport{}},
 	}
-	return &twohandle{TableHandle: handle, table: e}, nil
 }
 
 func TestSplit(t *testing.T) {

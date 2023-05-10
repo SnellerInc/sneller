@@ -21,26 +21,22 @@
 package main
 
 import (
-	"context"
-	"crypto/sha256"
-	"encoding/base64"
 	"encoding/binary"
 	"errors"
 	"flag"
 	"fmt"
-	"io"
 	"net"
 	"os"
-	"strconv"
+	"time"
 
 	"github.com/SnellerInc/sneller/cgroup"
-	"github.com/SnellerInc/sneller/db"
-	"github.com/SnellerInc/sneller/ion"
 	"github.com/SnellerInc/sneller/plan"
 	"github.com/SnellerInc/sneller/tenant/dcache"
 	"github.com/SnellerInc/sneller/tenant/tnproto"
 	"github.com/SnellerInc/sneller/vm"
 )
+
+var testdata = os.DirFS("../testdata")
 
 type Env struct {
 	cache   *dcache.Cache
@@ -53,178 +49,29 @@ func (e *Env) post() {
 	e.eventfd.Write(e.evbuf[:])
 }
 
-var _ plan.UploaderDecoder = (*Env)(nil)
-
-func (e *Env) DecodeUploader(d ion.Datum) (plan.UploadFS, error) {
-	return db.DecodeDirFS(d)
-}
-
-// handle implements plan.Handle and cache.Segment
-type Handle struct {
-	filename string
-	size     int64
-	env      *Env
-	repeat   int
-	ctx      context.Context
-	hang     bool
-}
-
-func (h *Handle) Merge(other dcache.Segment) {
-	h2 := other.(*Handle)
-	if h.ETag() != h2.ETag() {
-		panic("merging bad etags")
-	}
-}
-
-func (h *Handle) Align() int { return 1024 * 1024 }
-
-func (h *Handle) Size() int64 { return h.size * int64(h.repeat) }
-
-func (h *Handle) ETag() string {
-	w := sha256.New()
-	io.WriteString(w, h.filename)
-	io.WriteString(w, strconv.Itoa(h.repeat))
-	return base64.URLEncoding.EncodeToString(w.Sum(nil))
-}
-
-func (h *Handle) Ephemeral() bool { return false }
-
-type repeatReader struct {
-	ctx   context.Context
-	file  *os.File
-	count int
-}
-
-func (r *repeatReader) Read(dst []byte) (int, error) {
-	for {
-		if r.count <= 0 {
-			return 0, io.EOF
-		}
-		n, err := r.file.Read(dst)
-		if n > 0 || err != io.EOF {
-			return n, err
-		}
-		r.count--
-		r.file.Seek(0, io.SeekStart)
-	}
-}
-
-func (r *repeatReader) Close() error { return r.file.Close() }
-
-func (h *Handle) Open() (io.ReadCloser, error) {
-	f, err := os.Open(h.filename)
-	if err != nil {
-		return nil, err
-	}
-	return &repeatReader{
-		ctx:   h.ctx,
-		file:  f,
-		count: h.repeat,
-	}, nil
-}
-
-func (h *Handle) Decode(dst io.Writer, src []byte) error {
-	if h.Align() > vm.PageSize {
-		return fmt.Errorf("align %d > vm.PageSize %d", h.Align(), vm.PageSize)
-	}
-	if h.hang {
-		<-h.ctx.Done()
-		return h.ctx.Err()
-	}
-	buf := vm.Malloc()
-	defer vm.Free(buf)
-	for off := int64(0); off < h.Size(); off += int64(h.Align()) {
-		mem := src[off:]
-		if len(mem) > h.Align() {
-			mem = mem[:h.Align()]
-		}
-		_, err := dst.Write(buf[:copy(buf, mem)])
-		if err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-type tableHandle struct {
-	Handle
-}
-
-func (t *tableHandle) Open(ctx context.Context) (vm.Table, error) {
-	o := t.Handle
-	o.ctx = ctx
-	return t.env.cache.Table(&o, 0), nil
-}
-
-func (t *tableHandle) Encode(dst *ion.Buffer, st *ion.Symtab) error {
-	dst.BeginStruct(-1)
-	dst.BeginField(st.Intern("repeat"))
-	dst.WriteInt(int64(t.repeat))
-	dst.BeginField(st.Intern("filename"))
-	dst.WriteString(t.filename)
-	dst.BeginField(st.Intern("hang"))
-	dst.WriteBool(t.hang)
-	dst.EndStruct()
-	return nil
-}
-
 // the calling code expects splitting to duplicate the data 4x
-func (t *tableHandle) Split() (plan.Subtables, error) {
-	ret := make(plan.SubtableList, 4)
+func (e *Env) Geometry() *plan.Geometry {
+	peers := make([]plan.Transport, 4)
 	for i := 0; i < 4; i++ {
-		ret[i].Handle = t
-		ret[i].Transport = &plan.LocalTransport{}
+		peers[i] = &plan.LocalTransport{}
 	}
-	return ret, nil
+	return &plan.Geometry{
+		Peers: peers,
+	}
 }
 
-func (e *Env) DecodeHandle(d ion.Datum) (plan.TableHandle, error) {
-	if d.IsEmpty() {
-		return nil, fmt.Errorf("no TableHandle present")
-	}
-	th := &tableHandle{
-		Handle: Handle{
-			env:    e,
-			repeat: 1,
-		},
-	}
-	err := d.UnpackStruct(func(f ion.Field) error {
-		switch f.Label {
-		case "repeat":
-			n, err := f.Int()
-			if err != nil {
-				return err
-			}
-			th.repeat = int(n)
-		case "filename":
-			str, err := f.String()
-			if err != nil {
-				return err
-			}
-			if str == "/dev/null" {
-				return fmt.Errorf("%q cannot be source of data", str)
-			}
-			fi, err := os.Stat(str)
-			if err != nil {
-				return err
-			}
-			th.filename = str
-			th.size = fi.Size()
+func (e *Env) Run(dst vm.QuerySink, src *plan.Input, ep *plan.ExecParams) error {
+	if len(src.Descs) == 1 {
+		switch src.Descs[0].Path {
+		case "bad":
+			return fmt.Errorf("deliberate error")
 		case "hang":
-			hang, err := f.Bool()
-			if err != nil {
-				return err
-			}
-			th.hang = hang
-		default:
-			return fmt.Errorf("unrecognized field %q", f.Label)
+			time.Sleep(time.Hour)
+			return fmt.Errorf("hang timeout")
 		}
-		return nil
-	})
-	if err != nil {
-		return nil, err
 	}
-	return th, nil
+	r := plan.FSRunner{FS: testdata}
+	return r.Run(dst, src, ep)
 }
 
 func die(err error) {
@@ -294,7 +141,8 @@ func main() {
 	defer uc.Close()
 	env := Env{eventfd: evfd}
 	env.cache = dcache.New(cachedir, env.post)
-	err = tnproto.Serve(uc, &env)
+	srv := tnproto.Server{Runner: &env}
+	err = srv.Serve(uc)
 	if err != nil {
 		die(err)
 	}

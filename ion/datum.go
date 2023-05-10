@@ -246,6 +246,9 @@ func (d Datum) JSON() string {
 }
 
 func (d Datum) Encode(dst *Buffer, st *Symtab) {
+	if d.IsEmpty() {
+		panic("ion: encoding empty datum")
+	}
 	// fast path: no need to resymbolize
 	if len(d.st) == 0 || st.contains(d.st) {
 		dst.UnsafeAppend(d.buf)
