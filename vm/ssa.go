@@ -2983,7 +2983,7 @@ func (p *prog) writeToDot(w io.Writer, name string) (int64, error) {
 	var nn int64
 	values := p.values
 	nodeID := make(map[string]int)
-	n, _ := io.WriteString(w, fmt.Sprintf("digraph a {\n\tnode [shape=\"rectangle\"];\n\trankdir=TD;\n\tlabelloc=\"t\";\n\tlabel=\"%v\";\n", name))
+	n, _ := fmt.Fprintf(w, "digraph a {\n\tnode [shape=\"rectangle\"];\n\trankdir=TD;\n\tlabelloc=\"t\";\n\tlabel=\"%v\";\n", name)
 	nn += int64(n)
 
 	for idCurr, v := range values {
@@ -2991,11 +2991,11 @@ func (p *prog) writeToDot(w io.Writer, name string) (int64, error) {
 			nodeID[id] = idCurr
 		}
 		args := getArgs(v)
-		n, _ := io.WriteString(w, fmt.Sprintf("\ts%v [label=\"%v\"];\n", idCurr, v.String()))
+		n, _ := fmt.Fprintf(w, "\ts%v [label=\"%v\"];\n", idCurr, v.String())
 		nn += int64(n)
 
 		for _, id := range args {
-			n, _ := io.WriteString(w, fmt.Sprintf("\ts%v -> s%v [label=\"%v\"];\n", nodeID[id], idCurr, id))
+			n, _ := fmt.Fprintf(w, "\ts%v -> s%v [label=\"%v\"];\n", nodeID[id], idCurr, id)
 			nn += int64(n)
 		}
 	}

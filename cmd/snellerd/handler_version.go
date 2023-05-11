@@ -16,7 +16,6 @@ package main
 
 import (
 	"fmt"
-	"io"
 	"net/http"
 )
 
@@ -24,5 +23,5 @@ func (s *server) versionHandler(w http.ResponseWriter, r *http.Request) {
 	endPoints := s.peers.Get()
 	w.Header().Add("Content-Type", "text/plain")
 	w.WriteHeader(http.StatusOK)
-	io.WriteString(w, fmt.Sprintf("Sneller daemon %s (cluster size: %d nodes)", version, len(endPoints)))
+	fmt.Fprintf(w, "Sneller daemon %s (cluster size: %d nodes)", version, len(endPoints))
 }
