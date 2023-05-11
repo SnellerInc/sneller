@@ -1155,6 +1155,33 @@ func (p Pattern) String() string {
 	return sb.String()
 }
 
+// LiteralPrefix returns the unicode substring that can be matched with a faster substring matcher.
+// Similar to regexp.LiteralPrefix()
+// TODO the proper prefix and necessary substring should be deduced from the DFA, which is
+// much harder but will also allow to find the substring "abc" in regex "(abc|abcde)fgh"
+func LiteralPrefix(regex string, escape rune) string {
+	result := strings.Builder{}
+	previousCharEscape := false
+	for _, r := range regex {
+		if r == escape {
+			if previousCharEscape {
+				result.WriteRune(escape)
+				previousCharEscape = false
+			} else {
+				previousCharEscape = true
+			}
+		} else {
+			switch r {
+			case '^', '$', '*', '?', '+', '.', '(', ')', '|', '{', '}', '[', ']':
+				return result.String()
+			default:
+				result.WriteRune(r)
+			}
+		}
+	}
+	return result.String()
+}
+
 // LikeSegment is a number of character skips followed by a Pattern.
 // The number of skips is defined by a minimum and maximum count.
 // Eg, {SkipMin:1, SkipMax:1, Pattern:"abc"} states that the segment

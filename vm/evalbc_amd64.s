@@ -11401,8 +11401,10 @@ next:
 // k[0] = dfa_tiny6(slice[1], dict[2]).k[3]
 TEXT bcDfaT6(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_SLOT_DICT_SLOT(BC_SLOT_SIZE*1, OUT(BX), OUT(R14), OUT(R8))
-  BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
   BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
+  KTESTW        K1,  K1                   //;39066704 any lane alive?                 ;K1=lane_active;
+  JZ            next                      //;47931531 no, exit; jump if zero (ZF = 1) ;
+  BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
 
   MOVQ          (R14),R14                 //;D2647DF0 load needle_ptr                 ;R14=needle_ptr; R14=needle_slice;
 //; load parameters
@@ -11501,8 +11503,10 @@ skip_wildcard:
 // k[0] = dfa_tiny7(slice[1], dict[2]).k[3]
 TEXT bcDfaT7(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_SLOT_DICT_SLOT(BC_SLOT_SIZE*1, OUT(BX), OUT(R14), OUT(R8))
-  BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
   BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
+  KTESTW        K1,  K1                   //;39066704 any lane alive?                 ;K1=lane_active;
+  JZ            next                      //;47931531 no, exit; jump if zero (ZF = 1) ;
+  BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
 
   MOVQ          (R14),R14                 //;D2647DF0 load needle_ptr                 ;R14=needle_ptr; R14=needle_slice;
 //; load parameters
@@ -11602,8 +11606,10 @@ skip_wildcard:
 // k[0] = dfa_tiny8(slice[1], dict[2]).k[3]
 TEXT bcDfaT8(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_SLOT_DICT_SLOT(BC_SLOT_SIZE*1, OUT(BX), OUT(R14), OUT(R8))
-  BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
   BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
+  KTESTW        K1,  K1                   //;39066704 any lane alive?                 ;K1=lane_active;
+  JZ            next                      //;47931531 no, exit; jump if zero (ZF = 1) ;
+  BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
 
   MOVQ          (R14),R14                 //;D2647DF0 load needle_ptr                 ;R14=needle_ptr; R14=needle_slice;
 //; load parameters
@@ -11726,8 +11732,10 @@ skip_wildcard:
 // k[0] = dfa_tiny6Z(slice[1], dict[2]).k[3]
 TEXT bcDfaT6Z(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_SLOT_DICT_SLOT(BC_SLOT_SIZE*1, OUT(BX), OUT(R14), OUT(R8))
-  BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
   BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
+  KTESTW        K1,  K1                   //;39066704 any lane alive?                 ;K1=lane_active;
+  JZ            next                      //;47931531 no, exit; jump if zero (ZF = 1) ;
+  BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
 
   MOVQ          (R14),R14                 //;D2647DF0 load needle_ptr                 ;R14=needle_ptr; R14=needle_slice;
 //; load parameters
@@ -11843,8 +11851,10 @@ skip_wildcard:
 // k[0] = dfa_tiny7Z(slice[1], dict[2]).k[3]
 TEXT bcDfaT7Z(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_SLOT_DICT_SLOT(BC_SLOT_SIZE*1, OUT(BX), OUT(R14), OUT(R8))
-  BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
   BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
+  KTESTW        K1,  K1                   //;39066704 any lane alive?                 ;K1=lane_active;
+  JZ            next                      //;47931531 no, exit; jump if zero (ZF = 1) ;
+  BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
 
   MOVQ          (R14),R14                 //;D2647DF0 load needle_ptr                 ;R14=needle_ptr; R14=needle_slice;
 //; load parameters
@@ -11961,8 +11971,10 @@ skip_wildcard:
 // k[0] = dfa_tiny8Z(slice[1], dict[2]).k[3]
 TEXT bcDfaT8Z(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_SLOT_DICT_SLOT(BC_SLOT_SIZE*1, OUT(BX), OUT(R14), OUT(R8))
-  BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
   BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
+  KTESTW        K1,  K1                   //;39066704 any lane alive?                 ;K1=lane_active;
+  JZ            next                      //;47931531 no, exit; jump if zero (ZF = 1) ;
+  BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
 
   MOVQ          (R14),R14                 //;D2647DF0 load needle_ptr                 ;R14=needle_ptr; R14=needle_slice;
 //; load parameters

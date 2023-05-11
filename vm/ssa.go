@@ -1604,10 +1604,10 @@ func (p *prog) like(str *value, expr string, escape rune, caseSensitive bool) *v
 }
 
 // RegexMatch matches 'str' as a string against regex
-func (p *prog) regexMatch(str *value, store *regexp2.DFAStore) (*value, error) {
+func (p *prog) regexMatch(str *value, store *regexp2.DFAStore, mask *value) (*value, error) {
 	if trivial, accepting := store.IsTrivial(); trivial {
 		if accepting {
-			return p.mask(str), nil
+			return mask, nil
 		}
 		return p.ssa0(skfalse), nil
 	}
@@ -1617,27 +1617,27 @@ func (p *prog) regexMatch(str *value, store *regexp2.DFAStore) (*value, error) {
 		if dsTiny, err := regexp2.NewDsTiny(store); err == nil {
 			if ds, valid := dsTiny.Data(6, hasWildcard, wildcardRange); valid {
 				if hasRLZA {
-					return p.ssa2imm(sDfaT6Z, str, p.mask(str), p.constant(string(ds)).imm), nil
+					return p.ssa2imm(sDfaT6Z, str, mask, p.constant(string(ds)).imm), nil
 				}
-				return p.ssa2imm(sDfaT6, str, p.mask(str), p.constant(string(ds)).imm), nil
+				return p.ssa2imm(sDfaT6, str, mask, p.constant(string(ds)).imm), nil
 			}
 			if ds, valid := dsTiny.Data(7, hasWildcard, wildcardRange); valid {
 				if hasRLZA {
-					return p.ssa2imm(sDfaT7Z, str, p.mask(str), p.constant(string(ds)).imm), nil
+					return p.ssa2imm(sDfaT7Z, str, mask, p.constant(string(ds)).imm), nil
 				}
-				return p.ssa2imm(sDfaT7, str, p.mask(str), p.constant(string(ds)).imm), nil
+				return p.ssa2imm(sDfaT7, str, mask, p.constant(string(ds)).imm), nil
 			}
 			if ds, valid := dsTiny.Data(8, hasWildcard, wildcardRange); valid {
 				if hasRLZA {
-					return p.ssa2imm(sDfaT8Z, str, p.mask(str), p.constant(string(ds)).imm), nil
+					return p.ssa2imm(sDfaT8Z, str, mask, p.constant(string(ds)).imm), nil
 				}
-				return p.ssa2imm(sDfaT8, str, p.mask(str), p.constant(string(ds)).imm), nil
+				return p.ssa2imm(sDfaT8, str, mask, p.constant(string(ds)).imm), nil
 			}
 		}
 	}
 	// NOTE: when you end up here, the DFA could not be handled with Tiny implementation. Continue to try Large.
 	if dsLarge, err := regexp2.NewDsLarge(store); err == nil {
-		return p.ssa2imm(sDfaLZ, str, p.mask(str), p.constant(string(dsLarge.Data())).imm), nil
+		return p.ssa2imm(sDfaLZ, str, mask, p.constant(string(dsLarge.Data())).imm), nil
 	}
 	return nil, fmt.Errorf("internal error: generation of data-structure for Large failed")
 }

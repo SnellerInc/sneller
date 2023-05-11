@@ -166,7 +166,13 @@ func compile(p *prog, e expr.Node) (*value, error) {
 			if err != nil {
 				return nil, fmt.Errorf("Error: %v; construction of DFA from regex %v failed", err, regex)
 			}
-			return p.regexMatch(left, dfaStore)
+
+			const escRune = '\\' // backslash is the only used escape-char
+			if regexPrefixStr := stringext.LiteralPrefix(regexStr, escRune); regexPrefixStr != "" {
+				contains := p.contains(left, stringext.Needle(regexPrefixStr), true)
+				return p.regexMatch(left, dfaStore, p.mask(contains))
+			}
+			return p.regexMatch(left, dfaStore, p.mask(left))
 		}
 		return nil, fmt.Errorf("unimplemented StringMatch operation")
 	case *expr.UnaryArith:
