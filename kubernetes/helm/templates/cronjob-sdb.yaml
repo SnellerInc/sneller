@@ -1,10 +1,12 @@
+{{- if .Values.sdb.cronJob }}
 apiVersion: batch/v1
 kind: CronJob
 metadata:
   name: {{ template "helpers.sdbName" . }}
   namespace: {{ .Release.Namespace | quote }}
 spec:
-  schedule: "* * * * *"
+  schedule: "{{ .Values.sdb.cronJob }}"
+  concurrencyPolicy: Forbid
   jobTemplate:
     spec:
       template:
@@ -23,8 +25,16 @@ spec:
               imagePullPolicy: {{ .Values.sdb.pullPolicy }}
               args: 
                 - "sync"
-                - "sf1"
+                - "-m"
+                - "{{ .Values.sdb.batchSize }}"
+                - "{{ .Values.sdb.database }}"
+                - "{{ .Values.sdb.tablePattern }}"
               env:
+                - name: AWS_REGION
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ template "helpers.s3SecretName" . }}
+                      key: awsRegion
                 - name: AWS_ACCESS_KEY_ID
                   valueFrom:
                     secretKeyRef:
@@ -56,3 +66,4 @@ spec:
                       name: {{ template "helpers.tokenSecretName" . }}
                       key: snellerToken
           restartPolicy: Never
+{{- end}}

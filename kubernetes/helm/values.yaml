@@ -39,6 +39,10 @@ sdb:
   repository: snellerinc/sdb
   tag: latest
   pullPolicy: IfNotPresent
+  cronJob: "* * * * *"
+  database: sf1
+  tablePattern: "*"
+  batchSize: "1073741824"
 
 ingress:
   enabled: false
@@ -55,6 +59,7 @@ secrets:
     useExistingSecret: false
     #secretName: sneller-aws
     values:
+      awsRegion: us-east-1
       awsAccessKeyId: minio
       awsSecretAccessKey: minio123
   token:

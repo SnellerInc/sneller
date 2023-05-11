@@ -461,6 +461,7 @@ func (f *File) Seek(offset int64, whence int) (int64, error) {
 	// if the position has changed
 	if newpos != f.pos && f.body != nil {
 		f.body.Close()
+		f.body = nil
 	}
 	f.pos = newpos
 	return f.pos, nil

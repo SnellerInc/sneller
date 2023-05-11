@@ -57,18 +57,23 @@ func uploadReader(dst Uploader, startpart int64, src io.Reader, size int64) (int
 	// fast-path for the real world: just use S3 server-side copy
 	if f, ok := src.(*s3.File); ok {
 		if up, ok := dst.(*s3.Uploader); ok {
-			start, _ := f.Seek(0, io.SeekCurrent)
-			err := up.CopyFrom(startpart, &f.Reader, start, size)
-			if err != nil {
-				return startpart, err
+			// GCS has an S3 interoperability layer, but it doesn't
+			// support the `x-amz-copy-source-range` header. See also
+			// https://cloud.google.com/storage/docs/migrating#custommeta
+			if up.Host != "storage.googleapis.com" {
+				start, _ := f.Seek(0, io.SeekCurrent)
+				err := up.CopyFrom(startpart, &f.Reader, start, size)
+				if err != nil {
+					return startpart, err
+				}
+				// adjust the reader so that any subequent
+				// bytes are read from the right place
+				_, err = f.Seek(size, io.SeekCurrent)
+				if err != nil {
+					return startpart, err
+				}
+				return startpart + 1, nil
 			}
-			// adjust the reader so that any subequent
-			// bytes are read from the right place
-			_, err = f.Seek(size, io.SeekCurrent)
-			if err != nil {
-				return startpart, err
-			}
-			return startpart + 1, nil
 		}
 	}
 	var buffer []byte

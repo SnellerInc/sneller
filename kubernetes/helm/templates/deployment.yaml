@@ -60,6 +60,11 @@ spec:
           env:
             - name: CACHEDIR
               value: /var/cache/sneller
+            - name: AWS_REGION
+              valueFrom:
+                secretKeyRef:
+                  name: {{ template "helpers.s3SecretName" . }}
+                  key: awsRegion
             - name: AWS_ACCESS_KEY_ID
               valueFrom:
                 secretKeyRef:

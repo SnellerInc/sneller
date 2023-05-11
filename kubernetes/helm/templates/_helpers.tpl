@@ -59,8 +59,8 @@ Create chart name and version as used by the chart label.
 {{- end -}}
 
 {{- define "helpers.s3SecretName" -}}
-{{- if .Values.s3SecretName -}}
-{{- .Values.s3SecretName }}
+{{- if .Values.secrets.s3.secretName -}}
+{{- .Values.secrets.s3.secretName }}
 {{- else -}}
 {{- printf "%s-s3" (include "helpers.fullname" .) -}}
 {{- end -}}
