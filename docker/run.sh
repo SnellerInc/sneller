@@ -51,7 +51,7 @@ fi
 
 # Download the Github archive data
 mkdir data
-wget -c -P data/ https://data.gharchive.org/2021-08-{01..31}-{0..23}.json.gz
+wget -c -P data/ https://data.gharchive.org/2021-08-01-0.json.gz
 
 # Copy the data to the test bucket
 if docker run \
@@ -66,7 +66,7 @@ fi
 
 # Create table definition in Minio bucket
 TEMPFILE=$(mktemp)
-echo '{"name": "gharchive", "input": [{"pattern": "s3://test/gha/*.json.gz","format": "json.gz"}]}' > $TEMPFILE
+echo '{"input": [{"pattern": "s3://test/gha/*.json.gz","format": "json.gz"}]}' > $TEMPFILE
 if docker run \
     --rm --net sneller-network --env-file .env -v "$TEMPFILE:/data/definition.json" \
     amazon/aws-cli --endpoint http://minio:9100 \
