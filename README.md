@@ -11,7 +11,7 @@ Here are a couple major differentiators between Sneller and other SQL solutions:
    Medium-sized compute clusters provide throughput in excess of **terabytes per second**.
  - Sneller is [completely schemaless](https://sneller.io/blog/why-schemaless/).
    No more ETL-ing your data! Heterogeneous JSON data can be ingested directly.
- - Sneller uses a [hybrid approach between columnar and row-oriented data layouts](https://sneller-dev.io/blog/zion-format/)
+ - Sneller uses a [hybrid approach between columnar and row-oriented data layouts](https://sneller.io/blog/zion-format/)
    to provide lightweight ingest, low storage footprint, and super fast scanning speeds.
 
 [Sneller Cloud](https://console.sneller.io/register) gives you access to a hosted version of the Sneller SQL engine
