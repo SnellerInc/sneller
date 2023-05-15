@@ -52,6 +52,7 @@ var (
 	dashg2       bool
 	dashg3       bool
 	dashbc       bool
+	dashssa      bool
 	dasho        string
 	dashr        string
 	dashtoken    string
@@ -81,7 +82,8 @@ func init() {
 	flag.BoolVar(&dashg, "g", false, "just dump the query plan graphviz; do not execute")
 	flag.BoolVar(&dashg2, "g2", false, "just dump DFA of first regex graphviz; do not execute")
 	flag.BoolVar(&dashg3, "g3", false, "just dump data-structure of first regex; do not execute")
-	flag.BoolVar(&dashbc, "bc", false, "print compiled bytecode on stderr")
+	flag.BoolVar(&dashbc, "bc", false, "print compiled bytecode (bc) on stderr")
+	flag.BoolVar(&dashssa, "ssa", false, "print static single assignment form (ssa) on stderr")
 	flag.BoolVar(&dashj, "j", false, "write output as JSON instead of ion")
 	flag.BoolVar(&dashN, "N", false, "interpret input as NDJSON")
 	flag.StringVar(&dasho, "o", "", "file for output (default is stdout)")
@@ -361,6 +363,14 @@ func do(arg string) {
 
 	if dashbc {
 		vm.Trace(os.Stderr, vm.TraceBytecodeText)
+	}
+
+	if dashssa {
+		if dashg {
+			vm.Trace(os.Stderr, vm.TraceSSADot)
+		} else {
+			vm.Trace(os.Stderr, vm.TraceSSAText)
+		}
 	}
 
 	var stat plan.ExecStats
