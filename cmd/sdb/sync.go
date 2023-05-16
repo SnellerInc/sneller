@@ -34,8 +34,8 @@ func sync(args []string) {
 		flags.Usage()
 		return
 	}
-	dbname := args[0]
-	tblpat := args[1]
+	dbname := args[0] // database name
+	tblpat := args[1] // table pattern
 
 	var err error
 	for {
@@ -48,6 +48,7 @@ func sync(args []string) {
 		}
 		if dashv {
 			c.Logf = logf
+			c.Verbose = true
 		}
 		err = c.Sync(creds(), dbname, tblpat)
 		if !errors.Is(err, db.ErrBuildAgain) {

@@ -168,6 +168,8 @@ type Config struct {
 	// safe to call from multiple goroutines
 	// simultaneously.
 	Logf func(f string, args ...interface{})
+
+	Verbose bool
 }
 
 func (c *Config) minMergeSize() int64 {
@@ -534,6 +536,10 @@ func (c *Config) Sync(who Tenant, db, tblpat string) error {
 		if err != nil {
 			return err
 		}
+		if c.Verbose {
+			c.Logf("opened db %q with table %q, tenantID %q", db, table, who.ID())
+		}
+
 		fresh := false
 		gc := false
 		idx, err := st.index(context.Background())
@@ -853,6 +859,9 @@ func (st *tableState) writeIndex(idx *blockfmt.Index) error {
 	}
 	if len(buf) > MaxIndexSize {
 		return fmt.Errorf("index would be %d bytes; greater than max %d", len(buf), MaxIndexSize)
+	}
+	if st.conf.Verbose {
+		st.conf.Logf("writing %v bytes to index path %q", len(buf), idp)
 	}
 	etag, err := st.ofs.WriteFile(idp, buf)
 	if err == nil {

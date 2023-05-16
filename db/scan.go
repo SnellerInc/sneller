@@ -261,5 +261,8 @@ func (st *tableState) scan(idx *blockfmt.Index, flushOnComplete bool) (int, erro
 		st.invalidate()
 		return 0, err
 	}
+	if st.conf.Verbose {
+		st.conf.Logf("successfully scanned %v bytes (max %v)", size, maxSize)
+	}
 	return total, nil
 }
