@@ -415,6 +415,73 @@ func (f *File) Read(p []byte) (int, error) {
 	return n, err
 }
 
+type inputParquet struct {
+	XMLName xml.Name `xml:"Parquet"`
+}
+
+type s3select struct {
+	XMLName    xml.Name `xml:"SelectObjectContentRequest"`
+	NS         string   `xml:"xmlns,attr"`
+	Expression string   `xml:"Expression"`
+	Type       string   `xml:"ExpressionType"`
+	Input      struct {
+		Kind any
+	} `xml:"InputSerialization"`
+	Output struct {
+		JSON struct {
+			Delimiter string `xml:"RecordDelimiter"`
+		} `xml:"JSON"`
+	} `xml:"OutputSerialization"`
+}
+
+// SelectJSON runs [query] on [f] and returns the response
+// as a JSON stream.
+func (f *File) SelectJSON(query, infmt string) (io.ReadCloser, error) {
+	if infmt != "parquet" {
+		return nil, fmt.Errorf("s3 SELECT input format %q not supported", infmt)
+	}
+	body := s3select{}
+	body.NS = "http://s3.amazonaws.com/doc/2006-03-01/"
+	body.Expression = query
+	body.Type = "SQL"
+	body.Input.Kind = &inputParquet{}
+	body.Output.JSON.Delimiter = "\n"
+	buf, err := xml.Marshal(&body)
+	if err != nil {
+		return nil, err // ... possible?
+	}
+	buf = append([]byte("<?xml version=\"1.0\" encoding=\"UTF-8\"?>"), buf...)
+	if !ValidBucket(f.Bucket) {
+		return nil, fmt.Errorf("invalid S3 bucket %q", f.Bucket)
+	}
+	req, err := http.NewRequest("POST", uri(f.Key, f.Bucket, f.Reader.Path), nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("If-Not-Modified", f.ETag)
+	req.URL.RawQuery += "select=&select-type=2"
+	f.Key.SignV4(req, buf)
+	c := f.Client
+	if c == nil {
+		c = &DefaultClient
+	}
+	res, err := flakyDo(c, req)
+	if err != nil {
+		return nil, err
+	}
+	switch res.StatusCode {
+	case 200:
+		return &s3SelectReader{src: res.Body}, nil
+	case 404:
+		res.Body.Close()
+		return nil, fs.ErrNotExist
+	default:
+		msg, _ := io.ReadAll(res.Body)
+		res.Body.Close()
+		return nil, fmt.Errorf("s3 select: %s", msg)
+	}
+}
+
 // Info implements fs.DirEntry.Info
 //
 // Info returns exactly the same thing as f.Stat

@@ -20,9 +20,15 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"strings"
 	"testing"
 )
+
+func haveParquet2JSON() bool {
+	_, err := exec.LookPath("parquet2json")
+	return err == nil
+}
 
 func testConvertMulti(t *testing.T, algo string, meta int) {
 	var inputs []Input
@@ -50,6 +56,16 @@ func testConvertMulti(t *testing.T, algo string, meta int) {
 		R: f,
 		F: MustSuffixToFormat(".json"),
 	})
+	if haveParquet2JSON() {
+		f, err = os.Open("../../testdata/userdata1.parquet")
+		if err != nil {
+			t.Fatal(err)
+		}
+		inputs = append(inputs, Input{
+			R: f,
+			F: MustSuffixToFormat(".parquet"),
+		})
+	}
 
 	var out BufferUploader
 	align := 4096

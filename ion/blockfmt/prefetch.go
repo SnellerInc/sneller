@@ -89,6 +89,10 @@ func (p *prefetcher) work(outputs, inputs chan *Input) {
 	defer p.wg.Done()
 loop:
 	for in := range inputs {
+		if !in.canPrefetch() {
+			outputs <- in
+			continue
+		}
 		w := &wrappedInput{
 			inner:  in.R,
 			size:   in.Size,

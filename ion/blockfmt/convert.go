@@ -15,12 +15,15 @@
 package blockfmt
 
 import (
+	"bytes"
 	"compress/flate"
 	"compress/gzip"
 	"errors"
 	"fmt"
 	"io"
 	"io/fs"
+	"os"
+	"os/exec"
 	"runtime"
 	"strings"
 
@@ -76,6 +79,15 @@ type Input struct {
 	Err error
 }
 
+// canPrefetch returns true of i.R is worth prefetching
+//
+// (there is no point in prefetching parquet contents
+// because we ask S3 to do the conversion for us;
+// the actual data bits are not of interest to us)
+func (i *Input) canPrefetch() bool {
+	return i.F.Name() != "parquet"
+}
+
 type jsonConverter struct {
 	name         string
 	decomp       func(r io.Reader) (io.Reader, error)
@@ -114,6 +126,53 @@ func (j *jsonConverter) Convert(r io.Reader, dst *ion.Chunker, cons []ion.Field)
 		err = err2
 	}
 	return err
+}
+
+func parquetReader(r io.Reader) (io.Reader, error) {
+	if f, ok := r.(*s3.File); ok {
+		return f.SelectJSON("SELECT * FROM S3Object", "parquet")
+	}
+	f, err := os.CreateTemp("", "tmp.*.parquet")
+	if err != nil {
+		return nil, err
+	}
+	_, err = io.Copy(f, r)
+	f.Close()
+	if err != nil {
+		os.Remove(f.Name())
+		return nil, err
+	}
+	cmd := exec.Command("parquet2json", f.Name(), "cat")
+	var stderr bytes.Buffer
+	piper, pipew := io.Pipe()
+	cmd.Stdin = r
+	cmd.Stdout = pipew
+	cmd.Stderr = &stderr
+	go func() {
+		err := cmd.Run()
+		if err != nil {
+			pipew.CloseWithError(fmt.Errorf("%s: %s", err, stderr.String()))
+		} else {
+			pipew.Close()
+		}
+		os.Remove(f.Name())
+	}()
+	return piper, nil
+}
+
+type parquetConverter struct {
+	hints *jsonrl.Hint
+}
+
+func (p *parquetConverter) Name() string { return "parquet" }
+
+func (p *parquetConverter) Convert(r io.Reader, dst *ion.Chunker, cons []ion.Field) error {
+	pr, err := parquetReader(r)
+	if err != nil {
+		return fmt.Errorf("cannot read parquet: %s", err)
+	}
+	jc := jsonConverter{hints: p.hints}
+	return jc.Convert(pr, dst, cons)
 }
 
 type xsvConverter struct {
@@ -306,6 +365,18 @@ func init() {
 				},
 			}, nil
 		}
+	}
+
+	SuffixToFormat[".parquet"] = func(h []byte) (RowFormat, error) {
+		var hints *jsonrl.Hint
+		if h != nil {
+			var err error
+			hints, err = jsonrl.ParseHint(h)
+			if err != nil {
+				return nil, err
+			}
+		}
+		return &parquetConverter{hints: hints}, nil
 	}
 }
 
@@ -561,17 +632,19 @@ func (c *Converter) runSingle() error {
 		}
 		// start readahead on inputs that we will need
 		for !c.DisablePrefetch && inflight < DefaultMaxBytesInFlight && (next-i) < c.prefetch() && next < len(c.Inputs) {
-			if saved != nil {
-				ready[next] = saved
-				saved = nil
-			} else {
-				ready[next] = make(chan struct{}, 1)
+			if c.Inputs[next].canPrefetch() {
+				if saved != nil {
+					ready[next] = saved
+					saved = nil
+				} else {
+					ready[next] = make(chan struct{}, 1)
+				}
+				go func(r io.Reader, done chan struct{}) {
+					r.Read([]byte{})
+					done <- struct{}{}
+				}(c.Inputs[next].R, ready[next])
+				inflight += c.Inputs[next].Size
 			}
-			go func(r io.Reader, done chan struct{}) {
-				r.Read([]byte{})
-				done <- struct{}{}
-			}(c.Inputs[next].R, ready[next])
-			inflight += c.Inputs[next].Size
 			next++
 		}
 
