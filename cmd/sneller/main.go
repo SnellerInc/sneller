@@ -341,7 +341,7 @@ func do(arg string) {
 		exitf("making query plan: %s", err)
 	}
 
-	if dashg && !dashbc {
+	if dashg && !dashbc && !dashssa {
 		// -g -> just Graphviz
 		if err = plan.Graphviz(tree, dst); err != nil {
 			exit(err)
@@ -398,6 +398,7 @@ func printHelp() {
 		"o",
 		"S",
 		"bc",
+		"ssa",
 		"Output format",
 		"j",
 		"g",
