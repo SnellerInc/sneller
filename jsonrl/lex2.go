@@ -608,8 +608,14 @@ func (t *parser) lexField(b *reader) error {
 				t.output.parseInt(i)
 				goto ret
 			}
+//line lex2.rl:115
+
+			t.output.beginField(field, fieldesc)
+			atof(t.output, curi, dc, neg)
+			goto ret
+
 			goto st57
-		tr59:
+		tr60:
 //line lex2.rl:97
 			t.auxtok = tokRBrace
 //line lex2.rl:120
@@ -622,8 +628,14 @@ func (t *parser) lexField(b *reader) error {
 				t.output.parseInt(i)
 				goto ret
 			}
+//line lex2.rl:115
+
+			t.output.beginField(field, fieldesc)
+			atof(t.output, curi, dc, neg)
+			goto ret
+
 			goto st57
-		tr61:
+		tr62:
 //line lex2.rl:96
 			t.auxtok = tokComma
 //line lex2.rl:115
@@ -742,7 +754,7 @@ func (t *parser) lexField(b *reader) error {
 				goto _test_eof57
 			}
 		st_case_57:
-//line lex2.go:745
+//line lex2.go:757
 			goto st0
 		tr22:
 //line lex2.rl:28
@@ -786,7 +798,7 @@ func (t *parser) lexField(b *reader) error {
 				goto _test_eof9
 			}
 		st_case_9:
-//line lex2.go:789
+//line lex2.go:801
 			switch data[p] {
 			case 34:
 				goto st7
@@ -916,7 +928,7 @@ func (t *parser) lexField(b *reader) error {
 				goto _test_eof14
 			}
 		st_case_14:
-//line lex2.go:919
+//line lex2.go:931
 			if 128 <= data[p] && data[p] <= 191 {
 				goto st15
 			}
@@ -928,7 +940,7 @@ func (t *parser) lexField(b *reader) error {
 		st_case_15:
 //line lex2.rl:59
 			send = p
-//line lex2.go:931
+//line lex2.go:943
 			switch data[p] {
 			case 34:
 				goto tr34
@@ -990,7 +1002,7 @@ func (t *parser) lexField(b *reader) error {
 				goto _test_eof16
 			}
 		st_case_16:
-//line lex2.go:993
+//line lex2.go:1005
 			if 128 <= data[p] && data[p] <= 191 {
 				goto st17
 			}
@@ -1011,7 +1023,7 @@ func (t *parser) lexField(b *reader) error {
 		st_case_18:
 //line lex2.rl:59
 			send = p
-//line lex2.go:1014
+//line lex2.go:1026
 			switch data[p] {
 			case 34:
 				goto tr42
@@ -1073,7 +1085,7 @@ func (t *parser) lexField(b *reader) error {
 				goto _test_eof19
 			}
 		st_case_19:
-//line lex2.go:1076
+//line lex2.go:1088
 			if 128 <= data[p] && data[p] <= 191 {
 				goto st20
 			}
@@ -1103,7 +1115,7 @@ func (t *parser) lexField(b *reader) error {
 		st_case_22:
 //line lex2.rl:59
 			send = p
-//line lex2.go:1106
+//line lex2.go:1118
 			switch data[p] {
 			case 34:
 				goto tr51
@@ -1144,7 +1156,7 @@ func (t *parser) lexField(b *reader) error {
 				goto _test_eof23
 			}
 		st_case_23:
-//line lex2.go:1147
+//line lex2.go:1159
 			if 48 <= data[p] && data[p] <= 57 {
 				goto tr14
 			}
@@ -1159,7 +1171,7 @@ func (t *parser) lexField(b *reader) error {
 				goto _test_eof24
 			}
 		st_case_24:
-//line lex2.go:1161
+//line lex2.go:1173
 			switch data[p] {
 			case 32:
 				goto st25
@@ -1167,8 +1179,12 @@ func (t *parser) lexField(b *reader) error {
 				goto tr57
 			case 46:
 				goto st26
+			case 69:
+				goto st28
+			case 101:
+				goto st28
 			case 125:
-				goto tr59
+				goto tr60
 			}
 			switch {
 			case data[p] > 13:
@@ -1190,13 +1206,13 @@ func (t *parser) lexField(b *reader) error {
 			case 44:
 				goto tr57
 			case 125:
-				goto tr59
+				goto tr60
 			}
 			if 9 <= data[p] && data[p] <= 13 {
 				goto st25
 			}
 			goto st0
-		tr62:
+		tr63:
 //line lex2.rl:65
 			curi *= 10
 			curi += uint64(data[p] - '0')
@@ -1207,12 +1223,12 @@ func (t *parser) lexField(b *reader) error {
 				goto _test_eof26
 			}
 		st_case_26:
-//line lex2.go:1207
+//line lex2.go:1223
 			switch data[p] {
 			case 32:
 				goto st27
 			case 44:
-				goto tr61
+				goto tr62
 			case 69:
 				goto st28
 			case 101:
@@ -1223,7 +1239,7 @@ func (t *parser) lexField(b *reader) error {
 			switch {
 			case data[p] > 13:
 				if 48 <= data[p] && data[p] <= 57 {
-					goto tr62
+					goto tr63
 				}
 			case data[p] >= 9:
 				goto st27
@@ -1243,12 +1259,12 @@ func (t *parser) lexField(b *reader) error {
 				goto _test_eof27
 			}
 		st_case_27:
-//line lex2.go:1243
+//line lex2.go:1259
 			switch data[p] {
 			case 32:
 				goto st27
 			case 44:
-				goto tr61
+				goto tr62
 			case 125:
 				goto tr64
 			}
@@ -1296,7 +1312,7 @@ func (t *parser) lexField(b *reader) error {
 				goto _test_eof29
 			}
 		st_case_29:
-//line lex2.go:1295
+//line lex2.go:1311
 			switch data[p] {
 			case 32:
 				goto tr65
@@ -1497,7 +1513,7 @@ func (t *parser) lexField(b *reader) error {
 				goto _test_eof43
 			}
 		st_case_43:
-//line lex2.go:1496
+//line lex2.go:1512
 			switch data[p] {
 			case 34:
 				goto st3
@@ -1627,7 +1643,7 @@ func (t *parser) lexField(b *reader) error {
 				goto _test_eof48
 			}
 		st_case_48:
-//line lex2.go:1626
+//line lex2.go:1642
 			if 128 <= data[p] && data[p] <= 191 {
 				goto st49
 			}
@@ -1639,7 +1655,7 @@ func (t *parser) lexField(b *reader) error {
 		st_case_49:
 //line lex2.rl:59
 			send = p
-//line lex2.go:1638
+//line lex2.go:1654
 			switch data[p] {
 			case 34:
 				goto tr93
@@ -1701,7 +1717,7 @@ func (t *parser) lexField(b *reader) error {
 				goto _test_eof50
 			}
 		st_case_50:
-//line lex2.go:1700
+//line lex2.go:1716
 			if 128 <= data[p] && data[p] <= 191 {
 				goto st51
 			}
@@ -1722,7 +1738,7 @@ func (t *parser) lexField(b *reader) error {
 		st_case_52:
 //line lex2.rl:59
 			send = p
-//line lex2.go:1721
+//line lex2.go:1737
 			switch data[p] {
 			case 34:
 				goto tr101
@@ -1784,7 +1800,7 @@ func (t *parser) lexField(b *reader) error {
 				goto _test_eof53
 			}
 		st_case_53:
-//line lex2.go:1783
+//line lex2.go:1799
 			if 128 <= data[p] && data[p] <= 191 {
 				goto st54
 			}
@@ -1814,7 +1830,7 @@ func (t *parser) lexField(b *reader) error {
 		st_case_56:
 //line lex2.rl:59
 			send = p
-//line lex2.go:1813
+//line lex2.go:1829
 			switch data[p] {
 			case 34:
 				goto tr110
@@ -2061,7 +2077,7 @@ func (t *parser) lexField(b *reader) error {
 	return b.err
 }
 
-//line lex2.go:1943
+//line lex2.go:1959
 const struct_cont_start int = 1
 const struct_cont_first_final int = 2
 const struct_cont_error int = 0
@@ -2082,12 +2098,12 @@ func (t *parser) lexMoreStruct(b *reader) error {
 		cs, p, pe, eof := 0, 0, len(data), len(data)
 		_ = eof
 
-//line lex2.go:1966
+//line lex2.go:1982
 		{
 			cs = struct_cont_start
 		}
 
-//line lex2.go:1971
+//line lex2.go:1987
 		{
 			if p == pe {
 				goto _test_eof
@@ -2141,7 +2157,7 @@ func (t *parser) lexMoreStruct(b *reader) error {
 				goto _test_eof2
 			}
 		st_case_2:
-//line lex2.go:2023
+//line lex2.go:2039
 			goto st0
 		st_out:
 		_test_eof1:
@@ -2175,7 +2191,7 @@ func (t *parser) lexMoreStruct(b *reader) error {
 	return b.err
 }
 
-//line lex2.go:2050
+//line lex2.go:2066
 const list_field_start int = 1
 const list_field_first_final int = 39
 const list_field_error int = 0
@@ -2202,12 +2218,12 @@ func (t *parser) lexListField(b *reader, multi bool) error {
 		cs, p, pe, eof := 0, 0, len(data), len(data)
 		_ = eof
 
-//line lex2.go:2079
+//line lex2.go:2095
 		{
 			cs = list_field_start
 		}
 
-//line lex2.go:2084
+//line lex2.go:2100
 		{
 			if p == pe {
 				goto _test_eof
@@ -2343,7 +2359,7 @@ func (t *parser) lexListField(b *reader, multi bool) error {
 			sbegin = p
 //line lex2.rl:59
 			send = p
-//line lex2.go:2219
+//line lex2.go:2235
 			switch data[p] {
 			case 34:
 				goto st4
@@ -2407,7 +2423,7 @@ func (t *parser) lexListField(b *reader, multi bool) error {
 		st_case_3:
 //line lex2.rl:59
 			send = p
-//line lex2.go:2283
+//line lex2.go:2299
 			switch data[p] {
 			case 34:
 				goto st4
@@ -2469,7 +2485,7 @@ func (t *parser) lexListField(b *reader, multi bool) error {
 				goto _test_eof4
 			}
 		st_case_4:
-//line lex2.go:2345
+//line lex2.go:2361
 			switch data[p] {
 			case 32:
 				goto st4
@@ -2530,8 +2546,13 @@ func (t *parser) lexListField(b *reader, multi bool) error {
 				t.output.parseInt(i)
 				goto ret
 			}
+//line lex2.rl:260
+
+			atof(t.output, curi, dc, neg)
+			goto ret
+
 			goto st39
-		tr50:
+		tr51:
 //line lex2.rl:245
 			t.auxtok = tokRBrack
 //line lex2.rl:264
@@ -2543,8 +2564,13 @@ func (t *parser) lexListField(b *reader, multi bool) error {
 				t.output.parseInt(i)
 				goto ret
 			}
+//line lex2.rl:260
+
+			atof(t.output, curi, dc, neg)
+			goto ret
+
 			goto st39
-		tr52:
+		tr53:
 //line lex2.rl:244
 			t.auxtok = tokComma
 //line lex2.rl:260
@@ -2653,7 +2679,7 @@ func (t *parser) lexListField(b *reader, multi bool) error {
 				goto _test_eof39
 			}
 		st_case_39:
-//line lex2.go:2523
+//line lex2.go:2549
 			goto st0
 		tr13:
 //line lex2.rl:28
@@ -2697,7 +2723,7 @@ func (t *parser) lexListField(b *reader, multi bool) error {
 				goto _test_eof5
 			}
 		st_case_5:
-//line lex2.go:2567
+//line lex2.go:2593
 			switch data[p] {
 			case 34:
 				goto st3
@@ -2827,7 +2853,7 @@ func (t *parser) lexListField(b *reader, multi bool) error {
 				goto _test_eof10
 			}
 		st_case_10:
-//line lex2.go:2697
+//line lex2.go:2723
 			if 128 <= data[p] && data[p] <= 191 {
 				goto st11
 			}
@@ -2839,7 +2865,7 @@ func (t *parser) lexListField(b *reader, multi bool) error {
 		st_case_11:
 //line lex2.rl:59
 			send = p
-//line lex2.go:2709
+//line lex2.go:2735
 			switch data[p] {
 			case 34:
 				goto tr25
@@ -2901,7 +2927,7 @@ func (t *parser) lexListField(b *reader, multi bool) error {
 				goto _test_eof12
 			}
 		st_case_12:
-//line lex2.go:2771
+//line lex2.go:2797
 			if 128 <= data[p] && data[p] <= 191 {
 				goto st13
 			}
@@ -2922,7 +2948,7 @@ func (t *parser) lexListField(b *reader, multi bool) error {
 		st_case_14:
 //line lex2.rl:59
 			send = p
-//line lex2.go:2792
+//line lex2.go:2818
 			switch data[p] {
 			case 34:
 				goto tr33
@@ -2984,7 +3010,7 @@ func (t *parser) lexListField(b *reader, multi bool) error {
 				goto _test_eof15
 			}
 		st_case_15:
-//line lex2.go:2854
+//line lex2.go:2880
 			if 128 <= data[p] && data[p] <= 191 {
 				goto st16
 			}
@@ -3014,7 +3040,7 @@ func (t *parser) lexListField(b *reader, multi bool) error {
 		st_case_18:
 //line lex2.rl:59
 			send = p
-//line lex2.go:2884
+//line lex2.go:2910
 			switch data[p] {
 			case 34:
 				goto tr42
@@ -3055,7 +3081,7 @@ func (t *parser) lexListField(b *reader, multi bool) error {
 				goto _test_eof19
 			}
 		st_case_19:
-//line lex2.go:2925
+//line lex2.go:2951
 			if 48 <= data[p] && data[p] <= 57 {
 				goto tr4
 			}
@@ -3070,7 +3096,7 @@ func (t *parser) lexListField(b *reader, multi bool) error {
 				goto _test_eof20
 			}
 		st_case_20:
-//line lex2.go:2939
+//line lex2.go:2965
 			switch data[p] {
 			case 32:
 				goto st21
@@ -3078,8 +3104,12 @@ func (t *parser) lexListField(b *reader, multi bool) error {
 				goto tr48
 			case 46:
 				goto st22
+			case 69:
+				goto st24
 			case 93:
-				goto tr50
+				goto tr51
+			case 101:
+				goto st24
 			}
 			switch {
 			case data[p] > 13:
@@ -3101,13 +3131,13 @@ func (t *parser) lexListField(b *reader, multi bool) error {
 			case 44:
 				goto tr48
 			case 93:
-				goto tr50
+				goto tr51
 			}
 			if 9 <= data[p] && data[p] <= 13 {
 				goto st21
 			}
 			goto st0
-		tr53:
+		tr54:
 //line lex2.rl:65
 			curi *= 10
 			curi += uint64(data[p] - '0')
@@ -3118,12 +3148,12 @@ func (t *parser) lexListField(b *reader, multi bool) error {
 				goto _test_eof22
 			}
 		st_case_22:
-//line lex2.go:2985
+//line lex2.go:3015
 			switch data[p] {
 			case 32:
 				goto st23
 			case 44:
-				goto tr52
+				goto tr53
 			case 69:
 				goto st24
 			case 93:
@@ -3134,7 +3164,7 @@ func (t *parser) lexListField(b *reader, multi bool) error {
 			switch {
 			case data[p] > 13:
 				if 48 <= data[p] && data[p] <= 57 {
-					goto tr53
+					goto tr54
 				}
 			case data[p] >= 9:
 				goto st23
@@ -3154,12 +3184,12 @@ func (t *parser) lexListField(b *reader, multi bool) error {
 				goto _test_eof23
 			}
 		st_case_23:
-//line lex2.go:3021
+//line lex2.go:3051
 			switch data[p] {
 			case 32:
 				goto st23
 			case 44:
-				goto tr52
+				goto tr53
 			case 93:
 				goto tr55
 			}
@@ -3207,7 +3237,7 @@ func (t *parser) lexListField(b *reader, multi bool) error {
 				goto _test_eof25
 			}
 		st_case_25:
-//line lex2.go:3073
+//line lex2.go:3103
 			switch data[p] {
 			case 32:
 				goto tr56
@@ -3529,7 +3559,7 @@ func (t *parser) lexListField(b *reader, multi bool) error {
 	return b.err
 }
 
-//line lex2.go:3314
+//line lex2.go:3344
 const list_cont_start int = 1
 const list_cont_first_final int = 2
 const list_cont_error int = 0
@@ -3552,12 +3582,12 @@ func (t *parser) lexMoreList(b *reader) error {
 		cs, p, pe, eof := 0, 0, len(data), len(data)
 		_ = eof
 
-//line lex2.go:3339
+//line lex2.go:3369
 		{
 			cs = list_cont_start
 		}
 
-//line lex2.go:3344
+//line lex2.go:3374
 		{
 			if p == pe {
 				goto _test_eof
@@ -3611,7 +3641,7 @@ func (t *parser) lexMoreList(b *reader) error {
 				goto _test_eof2
 			}
 		st_case_2:
-//line lex2.go:3396
+//line lex2.go:3426
 			goto st0
 		st_out:
 		_test_eof1:
@@ -3645,7 +3675,7 @@ func (t *parser) lexMoreList(b *reader) error {
 	return b.err
 }
 
-//line lex2.go:3423
+//line lex2.go:3453
 const toplevel_start int = 1
 const toplevel_first_final int = 2
 const toplevel_error int = 0
@@ -3665,12 +3695,12 @@ func (t *parser) lexToplevel(b *reader) error {
 		cs, p, pe, eof := 0, 0, len(data), len(data)
 		_ = eof
 
-//line lex2.go:3445
+//line lex2.go:3475
 		{
 			cs = toplevel_start
 		}
 
-//line lex2.go:3450
+//line lex2.go:3480
 		{
 			if p == pe {
 				goto _test_eof
@@ -3724,7 +3754,7 @@ func (t *parser) lexToplevel(b *reader) error {
 				goto _test_eof2
 			}
 		st_case_2:
-//line lex2.go:3502
+//line lex2.go:3532
 			goto st0
 		st_out:
 		_test_eof1:

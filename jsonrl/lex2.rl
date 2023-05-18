@@ -74,7 +74,7 @@ import (
     # that it could have overflowed the mantissa or exponent,
     # we should fall back to parsing the text using more precision
     # (for example, parsing "1.00000000000000011102230246251565404236316680908203126")
-    dectext = (('-' @{neg = true})? unsigned) '.' decpart ([eE] epart)?;
+    dectext = (('-' @{neg = true})? unsigned) ('.' decpart)? ([eE] epart)?;
 
     # we cannot determine end-of-token
     # for e.g. integers until we see
