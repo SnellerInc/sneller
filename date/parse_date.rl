@@ -47,7 +47,7 @@ package date
         fracdig /= 10
     }};
     # offset: ±HH:MM
-    offset = ('+' | '-') (('0' digit) | ('1' digit) | ('2' [0-3])) ':' [0-5] digit @{{
+    offset = space? ('+' | '-') (('0' digit) | ('1' digit) | ('2' [0-3])) ':' [0-5] digit @{{
         hoff := int(data[p-4]-'0')*10 + int(data[p-3]-'0')
         moff := int(data[p-1]-'0')*10 + int(data[p]-'0')
         if data[p-5] == '-' {
