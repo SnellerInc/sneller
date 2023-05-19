@@ -55,6 +55,11 @@ func (s *server) tablesHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if r.Method == http.MethodHead {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
 	out := make([]string, 0)
 	for i := range tables {
 		if pattern == "" || matchPattern(tables[i], pattern) {

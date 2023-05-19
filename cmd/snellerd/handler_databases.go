@@ -44,6 +44,11 @@ func (s *server) databasesHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if r.Method == http.MethodHead {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
 	out := make([]database, 0)
 	for i := range res {
 		if pattern == "" || matchPattern(res[i], pattern) {

@@ -19,7 +19,9 @@ import (
 	"net/http"
 )
 
-func (s *server) pingHandler(w http.ResponseWriter, _ *http.Request) {
+func (s *server) pingHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
-	io.WriteString(w, "pong")
+	if r.Method == http.MethodGet {
+		io.WriteString(w, "pong")
+	}
 }

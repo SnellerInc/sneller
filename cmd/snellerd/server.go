@@ -81,12 +81,12 @@ func (s *server) Shutdown(ctx context.Context) error {
 
 func (s *server) handler() *http.ServeMux {
 	r := http.NewServeMux()
-	r.HandleFunc("/", s.handle(s.versionHandler, http.MethodGet))
-	r.HandleFunc("/ping", s.handle(s.pingHandler, http.MethodGet))
+	r.HandleFunc("/", s.handle(s.versionHandler, http.MethodHead, http.MethodGet))
+	r.HandleFunc("/ping", s.handle(s.pingHandler, http.MethodHead, http.MethodGet))
 	r.HandleFunc("/query", s.handle(s.queryHandler, http.MethodHead, http.MethodGet, http.MethodPost))
-	r.HandleFunc("/databases", s.handle(s.databasesHandler, http.MethodGet))
-	r.HandleFunc("/tables", s.handle(s.tablesHandler, http.MethodGet))
-	r.HandleFunc("/inputs", s.handle(s.inputsHandler, http.MethodGet))
+	r.HandleFunc("/databases", s.handle(s.databasesHandler, http.MethodHead, http.MethodGet))
+	r.HandleFunc("/tables", s.handle(s.tablesHandler, http.MethodHead, http.MethodGet))
+	r.HandleFunc("/inputs", s.handle(s.inputsHandler, http.MethodHead, http.MethodGet))
 	// deprecated endpoints
 	r.HandleFunc("/executeQuery", s.handle(s.queryHandler, http.MethodHead, http.MethodGet, http.MethodPost))
 	return r

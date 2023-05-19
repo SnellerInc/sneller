@@ -98,6 +98,8 @@ func (s *server) queryHandler(w http.ResponseWriter, r *http.Request) {
 	authElapsed := time.Since(start)
 	tenantID := creds.ID()
 
+	isHeadRequest := r.Method == http.MethodHead
+
 	var query []byte
 	switch r.Method {
 	case http.MethodGet, http.MethodHead:
@@ -116,6 +118,7 @@ func (s *server) queryHandler(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "cannot read query", http.StatusBadRequest)
 			return
 		}
+		isHeadRequest = r.URL.Query().Has("dry")
 	}
 
 	// Determine the output format
@@ -255,7 +258,7 @@ func (s *server) queryHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Add("Content-Type", acceptHeader)
-	if r.Method == http.MethodHead {
+	if isHeadRequest {
 		w.WriteHeader(http.StatusOK)
 		return
 	}
