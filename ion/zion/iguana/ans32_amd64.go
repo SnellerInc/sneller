@@ -30,9 +30,11 @@ func init() {
 		panic("The growth factor must be strictly greater than 1")
 	}
 
-	ansCompress = ansCompressAVX512Generic
-	ansDecompress = ansDecompressAVX512Generic
-	ansDecodeTable = ansDecodeTableAVX512Generic
+	if cpu.X86.HasAVX512 {
+		ansCompress = ansCompressAVX512Generic
+		ansDecompress = ansDecompressAVX512Generic
+		ansDecodeTable = ansDecodeTableAVX512Generic
+	}
 
 	if cpu.X86.HasAVX512VBMI {
 		ansDecompress = ansDecompressAVX512VBMI
