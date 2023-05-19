@@ -256,9 +256,6 @@ func (t *teeSplitter) symbolize(st *symtab, aux *auxbindings) error {
 func (t *teeSplitter) writeRows(delims []vmref, params *rowParams) error {
 	multi := len(t.state) > 1
 	for i := 0; i < len(t.state); i++ {
-		if len(params.auxbound) != len(t.state[i].aux.bound) {
-			panic("bad params passed to teeSplitter.writeRows")
-		}
 		// callees are allowed to clobber these,
 		// so we need to clone them if there
 		// is more than one callee
