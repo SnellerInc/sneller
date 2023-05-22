@@ -31,11 +31,13 @@ const (
 )
 
 type HashAggregate struct {
-	children int64
-	prog     prog
-	agg      Aggregation
-	by       Selection
-	dst      QuerySink
+	children  int64
+	rowcount  int64 // updated on aggtable.Close
+	prog      prog
+	agg       Aggregation
+	by        Selection
+	dst       QuerySink
+	skipEmpty bool
 
 	aggregateOps []AggregateOp
 	initialData  []byte
@@ -175,6 +177,14 @@ func (h *HashAggregate) OrderByWindow(n int, ordering SortOrdering) error {
 	}
 	h.order = append(h.order, h.windowOrder(n, ordering))
 	return nil
+}
+
+// SetSkipEmpty configures whether or not the HashAggregate
+// flushes any data to its output [QuerySink] when [Close]
+// is called if zero rows have been written.
+// The default behavior is to flush the "zero value" of the rows (typically [NULL]).
+func (h *HashAggregate) SetSkipEmpty(skip bool) {
+	h.skipEmpty = skip
 }
 
 func NewHashAggregate(agg, windows Aggregation, by Selection, dst QuerySink) (*HashAggregate, error) {
@@ -435,6 +445,9 @@ func (h *HashAggregate) Close() error {
 	if h.final == nil {
 		return fmt.Errorf("HashAggregate.final == nil, didn't compute any aggregates?")
 	}
+	if h.skipEmpty && h.rowcount == 0 {
+		return flushEmpty(h.dst)
+	}
 
 	var outst ion.Symtab
 	var outbuf ion.Buffer
@@ -486,30 +499,21 @@ func (h *HashAggregate) Close() error {
 	if h.limit > 0 && len(order) > h.limit {
 		order = order[:h.limit]
 	}
-	pairs := h.final.pairs
-
-	// for each of the pairs,
-	// emit the records;
-	// we take special care to
-	// emit the fields in an order that
-	// guarantees that the symbol IDs are sorted
-	aggregateOps := h.aggregateOps
 
 	// turn the i'th 'agg' output
 	// into an offset
-	offset := func(i int) int {
-		off := 0
-		for _, op := range h.aggregateOps[:i] {
-			if op.mergestate() {
-				off += aggregateOpMergeBufferSize
-			}
-			off += op.dataSize()
+	offset := make([]int, len(h.aggregateOps))
+	off := 0
+	for i, op := range h.aggregateOps {
+		offset[i] = off
+		if op.mergestate() {
+			off += aggregateOpMergeBufferSize
 		}
-		return off
+		off += op.dataSize()
 	}
 
 	for _, n := range order {
-		p := &pairs[n]
+		p := &h.final.pairs[n]
 		outbuf.BeginStruct(-1)
 		valmem := h.final.valueof(p)
 		for j, sym := range bysyms {
@@ -518,7 +522,7 @@ func (h *HashAggregate) Close() error {
 		}
 		for j, sym := range aggsyms {
 			outbuf.BeginField(sym)
-			writeAggregatedValue(&outbuf, valmem[offset(j):], aggregateOps[j])
+			writeAggregatedValue(&outbuf, valmem[offset[j]:], h.aggregateOps[j])
 		}
 		for j, sym := range windowsyms {
 			outbuf.BeginField(sym)
@@ -549,6 +553,30 @@ func (h *HashAggregate) Close() error {
 	// *and* the destination query sink
 	err = dst.Close()
 	err2 := h.dst.Close()
+	if err == nil {
+		err = err2
+	}
+	return err
+}
+
+// open a stream on dst, write 0 rows into it, and then close it
+func flushEmpty(dst QuerySink) error {
+	var b ion.Buffer
+	var st ion.Symtab
+	st.Marshal(&b, true)
+	w, err := dst.Open()
+	if err != nil {
+		return err
+	}
+	// these things need to happen
+	// in this order regardless of errors:
+	_, err = w.Write(b.Bytes())
+	err1 := w.Close()
+	err2 := dst.Close()
+
+	if err == nil {
+		err = err1
+	}
 	if err == nil {
 		err = err2
 	}

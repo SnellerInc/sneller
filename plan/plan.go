@@ -231,7 +231,8 @@ func index(idx Indexer, tbl expr.Node) (Index, error) {
 // for a list of fields
 type SimpleAggregate struct {
 	Nonterminal
-	Outputs vm.Aggregation
+	Outputs  vm.Aggregation
+	NonEmpty bool
 }
 
 func encodeBindings(lst []expr.Binding, dst *ion.Buffer, st *ion.Symtab, ep *ExecParams) {
@@ -294,7 +295,11 @@ func decodeAggregation(dst *vm.Aggregation, d ion.Datum) error {
 }
 
 func (s *SimpleAggregate) String() string {
-	return "AGGREGATE " + s.Outputs.String()
+	str := "AGGREGATE " + s.Outputs.String()
+	if s.NonEmpty {
+		str += " NONEMPTY"
+	}
+	return str
 }
 
 func (s *SimpleAggregate) exec(dst vm.QuerySink, src TableHandle, ep *ExecParams) error {
@@ -333,6 +338,7 @@ func (s *SimpleAggregate) exec(dst vm.QuerySink, src TableHandle, ep *ExecParams
 	if err != nil {
 		return err
 	}
+	a.SetSkipEmpty(s.NonEmpty)
 	return s.From.exec(a, src, ep)
 }
 
@@ -346,12 +352,18 @@ func (s *SimpleAggregate) encode(dst *ion.Buffer, st *ion.Symtab, ep *ExecParams
 	settype("agg", dst, st)
 	dst.BeginField(st.Intern("agg"))
 	encodeAggregation(s.Outputs, dst, st, ep)
+	dst.BeginField(st.Intern("nonempty"))
+	dst.WriteBool(s.NonEmpty)
 	dst.EndStruct()
 	return nil
 }
 
 func (s *SimpleAggregate) setfield(d Decoder, f ion.Field) error {
 	switch f.Label {
+	case "nonempty":
+		var err error
+		s.NonEmpty, err = f.Bool()
+		return err
 	case "agg":
 		return decodeAggregation(&s.Outputs, f.Datum)
 	}
@@ -632,7 +644,8 @@ func (l *Limit) setfield(d Decoder, f ion.Field) error {
 // CountStar implements COUNT(*)
 type CountStar struct {
 	Nonterminal
-	As string // output count name
+	As       string // output count name
+	NonEmpty bool   // don't output count=0
 }
 
 func (c *CountStar) name() string {
@@ -643,18 +656,22 @@ func (c *CountStar) name() string {
 }
 
 func (c *CountStar) String() string {
+	if c.NonEmpty {
+		return "NONEMPTY COUNT(*) AS " + c.name()
+	}
 	return "COUNT(*) AS " + c.name()
 }
 
 func (c *CountStar) exec(dst vm.QuerySink, src TableHandle, ep *ExecParams) error {
-	qs := countSink{dst: dst, as: c.name()}
+	qs := countSink{dst: dst, as: c.name(), nonempty: c.NonEmpty}
 	return c.From.exec(&qs, src, ep)
 }
 
 type countSink struct {
-	dst vm.QuerySink
-	c   vm.Count
-	as  string
+	dst      vm.QuerySink
+	c        vm.Count
+	as       string
+	nonempty bool
 }
 
 func (c *countSink) Open() (io.WriteCloser, error) {
@@ -670,6 +687,10 @@ func (c *countSink) Close() error {
 
 	field := st.Intern(c.as)
 	st.Marshal(&b, true)
+	if c.nonempty && c.c.Value() == 0 {
+		return writeIon(&b, c.dst)
+	}
+
 	b.BeginStruct(-1)
 	b.BeginField(field)
 	b.WriteInt(c.c.Value())
@@ -697,12 +718,18 @@ func (c *CountStar) encode(dst *ion.Buffer, st *ion.Symtab, ep *ExecParams) erro
 	settype("count(*)", dst, st)
 	dst.BeginField(st.Intern("as"))
 	dst.WriteString(c.As)
+	dst.BeginField(st.Intern("nonempty"))
+	dst.WriteBool(c.NonEmpty)
 	dst.EndStruct()
 	return nil
 }
 
 func (c *CountStar) setfield(d Decoder, f ion.Field) error {
 	switch f.Label {
+	case "nonempty":
+		var err error
+		c.NonEmpty, err = f.Bool()
+		return err
 	case "as":
 		n, err := f.String()
 		if err != nil {
@@ -717,11 +744,12 @@ func (c *CountStar) setfield(d Decoder, f ion.Field) error {
 
 type HashAggregate struct {
 	Nonterminal
-	Agg     vm.Aggregation
-	By      vm.Selection
-	Windows vm.Aggregation
-	Limit   int
-	OrderBy []HashOrder
+	Agg      vm.Aggregation
+	By       vm.Selection
+	Windows  vm.Aggregation
+	Limit    int
+	OrderBy  []HashOrder
+	NonEmpty bool
 }
 
 type HashOrder struct {
@@ -754,6 +782,9 @@ func (h *HashAggregate) String() string {
 	if h.Limit > 0 {
 		fmt.Fprintf(b, " LIMIT %d", h.Limit)
 	}
+	if h.NonEmpty {
+		b.WriteString(" NONEMPTY")
+	}
 	return b.String()
 }
 
@@ -784,6 +815,8 @@ func (h *HashAggregate) encode(dst *ion.Buffer, st *ion.Symtab, ep *ExecParams) 
 		dst.BeginField(st.Intern("windows"))
 		encodeAggregation(h.Windows, dst, st, ep)
 	}
+	dst.BeginField(st.Intern("nonempty"))
+	dst.WriteBool(h.NonEmpty)
 	dst.EndStruct()
 	return nil
 }
@@ -842,6 +875,10 @@ func (h *HashAggregate) setfield(d Decoder, f ion.Field) error {
 			h.OrderBy = append(h.OrderBy, o)
 			return nil
 		})
+	case "nonempty":
+		var err error
+		h.NonEmpty, err = f.Bool()
+		return err
 	default:
 		return errUnexpectedField
 	}
@@ -856,6 +893,7 @@ func (h *HashAggregate) exec(dst vm.QuerySink, src TableHandle, ep *ExecParams) 
 	if h.Limit > 0 {
 		ha.Limit(h.Limit)
 	}
+	ha.SetSkipEmpty(h.NonEmpty)
 	for i := range h.OrderBy {
 		col := h.OrderBy[i].Column
 		ordering := h.OrderBy[i].Ordering

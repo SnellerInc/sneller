@@ -321,6 +321,9 @@ type aggtable struct {
 	prog prog
 	bc   bytecode
 
+	// total row count added
+	rows int64
+
 	// Kinds of aggregate operations - required to be able to reserve
 	// the correct number of bytes for each kind, and to be able to
 	// aggergate partially aggregated results.
@@ -543,6 +546,7 @@ func (b *bytecode) getVRegOffsetAndSize(base, index int) (uint32, uint32) {
 func (a *aggtable) next() rowConsumer { return nil }
 
 func (a *aggtable) writeRows(delims []vmref, rp *rowParams) error {
+	a.rows += int64(len(delims))
 	// Number of projected fields that we GROUP BY. This
 	// specifies how many concatenated values will be stored
 	// in a.repr[] for each aggregated item.
@@ -678,6 +682,8 @@ func (a *aggtable) writeRows(delims []vmref, rp *rowParams) error {
 func (a *aggtable) Close() error {
 	a.bc.reset()
 	parent := a.parent
+	atomic.AddInt64(&parent.rowcount, a.rows)
+	a.rows = 0
 	parent.lock.Lock()
 
 	// a little clever:

@@ -280,6 +280,9 @@ func aggByPartition(b *Trace, agg *Aggregate) (*UnionMap, bool) {
 
 	// just keep the regular parts
 	agg.GroupBy = nonparts
+	// don't allow the bind step to produce a row
+	// for any partitions that do not reach the aggregate stage
+	agg.NonEmpty = true
 
 	thetable.Partitioned = true
 	// partition all the preceding steps

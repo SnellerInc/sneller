@@ -130,11 +130,13 @@ func lowerAggregate(in *pir.Aggregate, from Op) (Op, error) {
 			return &CountStar{
 				Nonterminal: Nonterminal{From: from},
 				As:          in.Agg[0].Result,
+				NonEmpty:    in.NonEmpty,
 			}, nil
 		}
 		return &SimpleAggregate{
 			Nonterminal: Nonterminal{From: from},
 			Outputs:     in.Agg,
+			NonEmpty:    in.NonEmpty,
 		}, nil
 	}
 	agg, windows := splitWindows(in.Agg)
@@ -143,6 +145,7 @@ func lowerAggregate(in *pir.Aggregate, from Op) (Op, error) {
 		Agg:         agg,
 		Windows:     windows,
 		By:          in.GroupBy,
+		NonEmpty:    in.NonEmpty,
 	}, nil
 }
 

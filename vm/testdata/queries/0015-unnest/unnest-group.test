@@ -1,3 +1,4 @@
+## extra-parts: true
 SELECT outer."group", MAX(item)
 FROM input as outer, outer.fields as item
 GROUP BY outer."group"

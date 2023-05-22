@@ -145,8 +145,9 @@ type rowgroup = plan.PartGroups[ion.Datum]
 var _ plan.PartitionHandle = &parallelchunks{}
 
 type parallelchunks struct {
-	chunks [][]byte
-	fields []string
+	chunks     [][]byte
+	fields     []string
+	extraParts bool
 
 	rg *rowgroup
 }
@@ -254,6 +255,20 @@ func (p *parallelchunks) SplitBy(parts []string) ([]plan.TablePart, error) {
 			Handle: Bufhandle(data),
 			Parts:  parts,
 		})
+	})
+	if !p.extraParts {
+		return ret, nil
+	}
+	// produce a new dummy partition with no data;
+	// this is here to ensure it doesn't erroneously
+	// end up in the output
+	dummy := make([]ion.Datum, len(parts))
+	for i := range dummy {
+		dummy[i] = ion.String("__empty_bugcatcher_part")
+	}
+	ret = append(ret, plan.TablePart{
+		Handle: Bufhandle(nil),
+		Parts:  dummy,
 	})
 	return ret, nil
 }
@@ -438,6 +453,10 @@ type TestCaseIon struct {
 	Tags        map[string]string
 }
 
+func (q *TestCaseIon) extraParts() bool {
+	return strings.EqualFold(q.Tags["extra-parts"], "TRUE")
+}
+
 // NeedShuffleOutput determines whether the output
 // need to be shuffled along with the input
 func NeedShuffleOutput(q *expr.Query) bool {
@@ -588,6 +607,7 @@ func (q *TestCaseIon) Execute(flags RunFlags) error {
 		}
 	}
 	tags := q.Tags
+	newparts := q.extraParts()
 	// run a query on the given input table and yield the output list
 	run := func(q *expr.Query, in [][]ion.Datum, st *ion.Symtab, flags RunFlags) ([]ion.Datum, error) {
 		var unsymbolize func(d ion.Datum, st *ion.Symtab) ion.Datum
@@ -666,7 +686,7 @@ func (q *TestCaseIon) Execute(flags RunFlags) error {
 				}
 				if flags&FlagParallel != 0 {
 					maxp = 2
-					input[i] = &parallelchunks{chunks: [][]byte{first, second}}
+					input[i] = &parallelchunks{chunks: [][]byte{first, second}, extraParts: newparts}
 				} else {
 					input[i] = &chunkshandle{chunks: [][]byte{first, second}}
 				}

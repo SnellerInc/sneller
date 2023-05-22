@@ -567,9 +567,11 @@ func writeAggregatedValue(b *ion.Buffer, data []byte, op AggregateOp) int {
 // Aggregate is a QuerySink implementation
 // that computes simple aggregations that do not use groups.
 type Aggregate struct {
-	prog *prog
-	bind Aggregation
-	rest QuerySink
+	prog      *prog
+	bind      Aggregation
+	rest      QuerySink
+	rowcount  int64
+	skipEmpty bool
 
 	// AggregateOp for each aggregated value.
 	//
@@ -666,6 +668,10 @@ func (q *Aggregate) Open() (io.WriteCloser, error) {
 // aggregation into the next QuerySink
 func (q *Aggregate) Close() error {
 	defer q.prog.reset()
+	if q.skipEmpty && q.rowcount == 0 {
+		return flushEmpty(q.rest)
+	}
+
 	var b ion.Buffer
 	var st ion.Symtab
 
@@ -780,6 +786,8 @@ func (p *aggregateLocal) next() rowConsumer {
 }
 
 func (p *aggregateLocal) Close() error {
+	atomic.AddInt64(&p.parent.rowcount, int64(p.rowCount))
+	p.rowCount = 0
 	if p.parent.canMergeAtomically() {
 		mergeAggregatedValuesAtomically(p.parent.AggregatedData, p.partialData, p.parent.aggregateOps)
 	} else {
@@ -807,6 +815,14 @@ func NewAggregate(bind Aggregation, rest QuerySink) (*Aggregate, error) {
 
 	q.AggregatedData = slices.Clone(q.initialData)
 	return q, nil
+}
+
+// SetSkipEmpty configures whether or not the Aggregate
+// flushes any data to its output [QuerySink] when [Close]
+// is called if zero rows have been written.
+// The default behavior is to flush the "zero value" of the rows (typically [NULL]).
+func (q *Aggregate) SetSkipEmpty(skip bool) {
+	q.skipEmpty = skip
 }
 
 func (q *Aggregate) compileAggregate(aggregates Aggregation) error {

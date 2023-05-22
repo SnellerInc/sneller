@@ -599,6 +599,10 @@ type Aggregate struct {
 	// of the binding set
 	GroupBy []expr.Binding
 
+	// NonEmpty, if true, indicates that no results
+	// should be produced when zero rows reach this op
+	NonEmpty bool
+
 	complete bool
 }
 
@@ -610,10 +614,14 @@ func (a *Aggregate) equals(x Step) bool {
 }
 
 func (a *Aggregate) describe(dst io.Writer) {
+	prefix := ""
+	if a.NonEmpty {
+		prefix = "NONEMPTY "
+	}
 	if a.GroupBy == nil {
-		fmt.Fprintf(dst, "AGGREGATE %s\n", a.Agg)
+		fmt.Fprintf(dst, "%sAGGREGATE %s\n", prefix, a.Agg)
 	} else {
-		fmt.Fprintf(dst, "AGGREGATE %s BY %s\n", a.Agg, vm.Selection(a.GroupBy))
+		fmt.Fprintf(dst, "%sAGGREGATE %s BY %s\n", prefix, a.Agg, vm.Selection(a.GroupBy))
 	}
 }
 

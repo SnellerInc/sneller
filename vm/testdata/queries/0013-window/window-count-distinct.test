@@ -1,3 +1,4 @@
+## extra-parts: true
 SELECT COUNT(*), COUNT(DISTINCT d) AS dcount, "group"
 FROM input
 GROUP BY "group"

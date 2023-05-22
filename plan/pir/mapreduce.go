@@ -420,7 +420,8 @@ func reduceAggregate(a *Aggregate, mapping, reduce *Trace) error {
 	// the mapping step terminates here
 	mapping.top = a
 	red := &Aggregate{
-		Agg: out,
+		Agg:      out,
+		NonEmpty: a.NonEmpty,
 	}
 	if a.GroupBy != nil {
 		// insert the set of identity bindings
