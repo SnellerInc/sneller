@@ -23,6 +23,9 @@ import (
 
 // Copy returns a deep copy of e.
 func Copy(e Node) Node {
+	if e == nil {
+		return nil
+	}
 	v := reflect.New(reflect.TypeOf(e)).Elem()
 	copyValue(v, reflect.ValueOf(e))
 	return v.Interface().(Node)

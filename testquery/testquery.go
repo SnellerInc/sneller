@@ -23,10 +23,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"math"
 	"math/rand"
-	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -44,17 +43,17 @@ import (
 	"golang.org/x/exp/slices"
 )
 
-type Bufhandle []byte
+type bufhandle []byte
 
-func (b Bufhandle) Open(_ context.Context) (vm.Table, error) {
+func (b bufhandle) Open(_ context.Context) (vm.Table, error) {
 	return vm.BufferTable([]byte(b), len(b)), nil
 }
 
-func (b Bufhandle) Encode(dst *ion.Buffer, st *ion.Symtab) error {
+func (b bufhandle) Encode(dst *ion.Buffer, st *ion.Symtab) error {
 	return fmt.Errorf("unexpected bufhandle.Encode")
 }
 
-func (b Bufhandle) Size() int64 {
+func (b bufhandle) Size() int64 {
 	return int64(len(b))
 }
 
@@ -239,7 +238,7 @@ func (p *parallelchunks) SplitOn(parts []string, equal []ion.Datum) (plan.TableH
 	}
 	rows := rg.Get(equal)
 	var st ion.Symtab
-	return Bufhandle(flatten(rows, &st)), nil
+	return bufhandle(flatten(rows, &st)), nil
 }
 
 func (p *parallelchunks) SplitBy(parts []string) ([]plan.TablePart, error) {
@@ -252,7 +251,7 @@ func (p *parallelchunks) SplitBy(parts []string) ([]plan.TablePart, error) {
 	rg.Each(func(parts, rows []ion.Datum) {
 		data := flatten(rows, &st)
 		ret = append(ret, plan.TablePart{
-			Handle: Bufhandle(data),
+			Handle: bufhandle(data),
 			Parts:  parts,
 		})
 	})
@@ -267,7 +266,7 @@ func (p *parallelchunks) SplitBy(parts []string) ([]plan.TablePart, error) {
 		dummy[i] = ion.String("__empty_bugcatcher_part")
 	}
 	ret = append(ret, plan.TablePart{
-		Handle: Bufhandle(nil),
+		Handle: bufhandle(nil),
 		Parts:  dummy,
 	})
 	return ret, nil
@@ -351,12 +350,17 @@ func (p *parallelchunks) WriteChunks(dst vm.QuerySink, parallel int) error {
 	return nil
 }
 
-type Queryenv struct {
+// Env is an implementation of plan.Env uses for evaluating test cases.
+type Env struct {
+	// In is the set of tables in the environment.
+	// If [len(In) == 1], then `In[0]` is the table [input].
+	// Otherwise tables [input0], [input1], etc. correspond
+	// to [In[0]], [In[1]], and so forth.
 	In   []plan.TableHandle
 	tags map[string]string
 }
 
-func (e *Queryenv) handle(t expr.Node) (plan.TableHandle, bool) {
+func (e *Env) handle(t expr.Node) (plan.TableHandle, bool) {
 	p, ok := expr.FlatPath(t)
 	if !ok {
 		return nil, false
@@ -384,7 +388,7 @@ func setHints(h plan.TableHandle, hints *plan.Hints) {
 }
 
 // Stat implements plan.Env.Stat
-func (e *Queryenv) Stat(t expr.Node, h *plan.Hints) (plan.TableHandle, error) {
+func (e *Env) Stat(t expr.Node, h *plan.Hints) (plan.TableHandle, error) {
 	handle, ok := e.handle(t)
 	if !ok {
 		return nil, fmt.Errorf("unexpected table expression %q", expr.ToString(t))
@@ -393,7 +397,7 @@ func (e *Queryenv) Stat(t expr.Node, h *plan.Hints) (plan.TableHandle, error) {
 	return handle, nil
 }
 
-var _ plan.Indexer = &Queryenv{}
+var _ plan.Indexer = &Env{}
 
 type handleIndex struct {
 	h    plan.TableHandle
@@ -417,7 +421,7 @@ func (h *handleIndex) HasPartition(x string) bool {
 	return false
 }
 
-func (e *Queryenv) Index(t expr.Node) (plan.Index, error) {
+func (e *Env) Index(t expr.Node) (plan.Index, error) {
 	handle, ok := e.handle(t)
 	if !ok {
 		return nil, fmt.Errorf("unexpected table expression %q", expr.ToString(t))
@@ -428,9 +432,9 @@ func (e *Queryenv) Index(t expr.Node) (plan.Index, error) {
 	}, nil
 }
 
-var _ plan.TableLister = (*Queryenv)(nil)
+var _ plan.TableLister = (*Env)(nil)
 
-func (e *Queryenv) ListTables(db string) ([]string, error) {
+func (e *Env) ListTables(db string) ([]string, error) {
 	if db != "" {
 		return nil, fmt.Errorf("no databases")
 	}
@@ -444,16 +448,30 @@ func (e *Queryenv) ListTables(db string) ([]string, error) {
 	return ts, nil
 }
 
-type TestCaseIon struct {
-	QueryStr    []byte
-	Query       *expr.Query
+// Case is a test case.
+type Case struct {
+	// QueryStr is the raw query string.
+	QueryStr []byte
+	// Query is the parsed query.
+	Query *expr.Query
+	// SymbolTable is the symbol table used
+	// for the input datums.
 	SymbolTable *ion.Symtab
-	Input       [][]ion.Datum
-	Output      []ion.Datum
-	Tags        map[string]string
+	// Input is the raw input data for the query,
+	// grouped by table input. If [len(Input)] is 1,
+	// then datums in [Input[0]] correspond to the table [input].
+	// Otherwise, [Input[0]] corresponds to [input0],
+	// [Input[1]] corresponds to [input1], and so forth.
+	Input [][]ion.Datum
+	// Output is the expected output of the query when
+	// it is run on the provided input(s).
+	Output []ion.Datum
+	// Tags is the set of tags from the testcase file.
+	// See also [tests.CaseSpec.Tags].
+	Tags map[string]string
 }
 
-func (q *TestCaseIon) extraParts() bool {
+func (q *Case) extraParts() bool {
 	return strings.EqualFold(q.Tags["extra-parts"], "TRUE")
 }
 
@@ -565,7 +583,7 @@ func hasAggregate(e expr.Node) bool {
 }
 
 // Shuffle shuffles if possible
-func (q *TestCaseIon) Shuffle() {
+func (q *Case) Shuffle() {
 	// shuffle around the input (and maybe output)
 	// lanes so that we increase the coverage of
 	// lane-specific branches
@@ -592,7 +610,7 @@ const (
 	FlagSplit                   // use a split plan
 )
 
-func (q *TestCaseIon) Execute(flags RunFlags) error {
+func (q *Case) Execute(flags RunFlags) error {
 
 	// fix up the symbols input lst so that they
 	// match the associated symbols input symbolTable
@@ -691,10 +709,10 @@ func (q *TestCaseIon) Execute(flags RunFlags) error {
 					input[i] = &chunkshandle{chunks: [][]byte{first, second}}
 				}
 			} else {
-				input[i] = Bufhandle(flatten(in, st))
+				input[i] = bufhandle(flatten(in, st))
 			}
 		}
-		env := &Queryenv{In: input, tags: tags}
+		env := &Env{In: input, tags: tags}
 		var tree *plan.Tree
 		var err error
 		if flags&FlagSplit != 0 {
@@ -766,9 +784,9 @@ func (q *TestCaseIon) Execute(flags RunFlags) error {
 	return err
 }
 
-// ParseTestCaseIon parses the provided query,
+// parseCase parses the provided query,
 // input and output strings into a test case
-func ParseTestCaseIon(queryStr []string, inputsStr [][]string, outputStr []string, tags map[string]string) (tci *TestCaseIon, err error) {
+func parseCase(queryStr []string, inputsStr [][]string, outputStr []string, tags map[string]string) (tci *Case, err error) {
 
 	// stripInlineComment removes comment from **correctly** formated line.
 	// For example: stripInlineComment(`{"x": 5} # sample data`) => `{"x": 5}`
@@ -832,7 +850,7 @@ func ParseTestCaseIon(queryStr []string, inputsStr [][]string, outputStr []strin
 		return nil, err
 	}
 
-	return &TestCaseIon{
+	return &Case{
 		QueryStr:    query,
 		Query:       exprQuery,
 		SymbolTable: &inst,
@@ -843,15 +861,19 @@ func ParseTestCaseIon(queryStr []string, inputsStr [][]string, outputStr []strin
 
 }
 
-// ReadTestCaseIonFromFile reads a testcase file, that contains three or more
-// part separated with '---'.
+// ReadCase reads a testcase file.
+// The testcase must be in [tests.CaseSpec] format.
+// See [tests.ReadSpec].
 //
-// The first part is an SQL query (text), the last part is the
-// expected rows (JSONRL) and the middle parts are inputs (also
-// in the JSONRL format).
-func ReadTestCaseIonFromFile(fname string) (qtc *TestCaseIon, err error) {
-
-	spec, err := tests.ReadTestCaseSpecFromFile(fname)
+// Each test case must consist of at least 3 sections.
+// The first section should be a SQL query, and the second and
+// third sections should be sequences of JSON records.
+// The second section is interpreted as table data and mapped
+// to the table [input], and the third section is interpreted as output.
+// If more than 3 sections are present, the middle sections are interpreted
+// as inputs and mapped to the tables [input0], [input1], and so on.
+func ReadCase(r io.Reader) (qtc *Case, err error) {
+	spec, err := tests.ReadSpec(r)
 	if err != nil {
 		return nil, err
 	}
@@ -867,23 +889,24 @@ func ReadTestCaseIonFromFile(fname string) (qtc *TestCaseIon, err error) {
 	for i := 1; i < nSections-1; i++ {
 		inputsStr = append(inputsStr, spec.Sections[i])
 	}
-	return ParseTestCaseIon(queryStr, inputsStr, outputStr, spec.Tags)
+	return parseCase(queryStr, inputsStr, outputStr, spec.Tags)
 }
 
 type benchmarkSettings struct {
 	Symbolizeprob float64 // symbolize probability: 0=never, 1=always
 }
 
-// ReadBenchmarkFromFile reads a benchmark specification.
+// ReadBenchmark reads a benchmark specification.
 //
 // Benchmark may contain either SQL query (text) and sample
-// input (JSONRL) separarted with '---'.
+// input (ND-JSON) separarted with '---'.
 //
 // Alternatively, it may contain only an SQL query. But
 // then the FROM part has to be a string which is treated
-// as a filename and this file is read into the input (JSONRL).
-func ReadBenchmarkFromFile(fname string) (*expr.Query, *benchmarkSettings, []byte, error) {
-	spec, err := tests.ReadTestCaseSpecFromFile(fname)
+// as a filename and this file is read into the input (as NDJSON)
+// relative to the given [root].
+func ReadBenchmark(root fs.FS, r io.Reader) (*expr.Query, *benchmarkSettings, []byte, error) {
+	spec, err := tests.ReadSpec(r)
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -914,8 +937,7 @@ func ReadBenchmarkFromFile(fname string) (*expr.Query, *benchmarkSettings, []byt
 			return nil, nil, nil, fmt.Errorf("benchark without input part has to refer an external JSONRL file")
 		}
 
-		path := filepath.Join(filepath.Dir(fname), string(file))
-		f, err := os.Open(path)
+		f, err := root.Open(string(file))
 		if err != nil {
 			return nil, nil, nil, err
 		}

@@ -24,7 +24,7 @@ func TestExecute(t *testing.T) {
 		inputsStr := []string{`{"name": "aaaa"}`, `{"name": "bbbb"}`}
 		outputStr := []string{`{"name": "aaaa"}`, `{"name": "bbbb"}`}
 
-		tci, err := ParseTestCaseIon([]string{queryStr}, [][]string{inputsStr}, outputStr, nil)
+		tci, err := parseCase([]string{queryStr}, [][]string{inputsStr}, outputStr, nil)
 		if err != nil {
 			t.Error(err)
 		}
@@ -38,7 +38,7 @@ func TestExecute(t *testing.T) {
 		inputsStr := []string{`{"name": "aaaa"}`, `{"name": "bbbb"}`}
 		outputStr := []string{`{"name": "aaaa"}`, `{"name": "cccc"}`}
 
-		tci, err := ParseTestCaseIon([]string{queryStr}, [][]string{inputsStr}, outputStr, nil)
+		tci, err := parseCase([]string{queryStr}, [][]string{inputsStr}, outputStr, nil)
 		if err != nil {
 			t.Error(err)
 		}
@@ -52,7 +52,7 @@ func TestExecute(t *testing.T) {
 		inputsStr := []string{`{"age": 7, "name": "aaaa"}`, `{"age": null, "name": "bbbb"}`}
 		outputStr := []string{`{"res1": "aaaa"}`, `{"res1": "cccc"}`}
 
-		tci, err := ParseTestCaseIon([]string{queryStr}, [][]string{inputsStr}, outputStr, nil)
+		tci, err := parseCase([]string{queryStr}, [][]string{inputsStr}, outputStr, nil)
 		if err != nil {
 			t.Error(err)
 		}

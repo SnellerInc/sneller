@@ -77,7 +77,7 @@ func (b *benchTable) WriteChunks(dst vm.QuerySink, parallel int) error {
 	})
 }
 
-func testInput(t *testing.T, tci *testquery.TestCaseIon, shuffleCount int) {
+func testInput(t *testing.T, tci *testquery.Case, shuffleCount int) {
 	var done bool
 
 	for i := 0; i < shuffleCount*2; i++ {
@@ -131,12 +131,12 @@ func benchInput(b *testing.B, sel *expr.Query, inbuf []byte, rows int) {
 		count: int64(b.N),
 		buf:   inbuf,
 	}
-	env := &testquery.Queryenv{In: []plan.TableHandle{bt}}
+
+	env := &testquery.Env{In: []plan.TableHandle{bt}}
 	tree, err := plan.New(sel, env)
 	if err != nil {
 		b.Fatal(err)
 	}
-
 	b.SetBytes(int64(len(inbuf)))
 	b.ResetTimer()
 	start := time.Now()
@@ -218,7 +218,14 @@ func benchPath(b *testing.B, qt queryTest) {
 	var rows int
 	b.Run(qt.name, func(b *testing.B) {
 		if query == nil {
-			q, bs, input, err := testquery.ReadBenchmarkFromFile(qt.path)
+			root := os.DirFS(filepath.Dir(qt.path))
+			name := filepath.Base(qt.path)
+			f, err := root.Open(name)
+			if err != nil {
+				b.Fatal(err)
+			}
+			q, bs, input, err := testquery.ReadBenchmark(root, f)
+			f.Close()
 			if err != nil {
 				b.Fatal(err)
 			}
@@ -240,7 +247,7 @@ func benchPath(b *testing.B, qt queryTest) {
 			}
 			rowmem, rows = versifyInput(&inst, inrows)
 		}
-		benchInput(b, query, rowmem, rows)
+		benchInput(b, query.Clone(), rowmem, rows)
 	})
 }
 
@@ -277,11 +284,17 @@ func TestQueries(t *testing.T) {
 		vm.Errorf = nil
 	}()
 
+	root := os.DirFS(".")
 	for i := range test {
 		path := test[i].path
 		t.Run(test[i].name, func(t *testing.T) {
 			t.Parallel()
-			tci, err := testquery.ReadTestCaseIonFromFile(path)
+			f, err := root.Open(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			tci, err := testquery.ReadCase(f)
+			f.Close()
 			if err != nil {
 				t.Fatal(err)
 			}

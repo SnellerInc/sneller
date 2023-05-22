@@ -19,6 +19,8 @@ import (
 	"strings"
 
 	"github.com/SnellerInc/sneller/ion"
+
+	"golang.org/x/exp/slices"
 )
 
 // CTE is one arm of a "common table expression"
@@ -248,4 +250,19 @@ func (q *Query) CheckHint(h Hint) error {
 // Check checks consistency of the whole query
 func (q *Query) Check() error {
 	return q.CheckHint(NoHint)
+}
+
+// Clone produces a deep copy of the query AST.
+// See also [Copy].
+func (q *Query) Clone() *Query {
+	ret := &Query{
+		Explain: q.Explain,
+		With:    slices.Clone(q.With),
+		Into:    Copy(q.Into),
+		Body:    Copy(q.Body),
+	}
+	for i := range ret.With {
+		ret.With[i].As = Copy(ret.With[i].As).(*Select)
+	}
+	return ret
 }

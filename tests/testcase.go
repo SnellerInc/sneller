@@ -18,42 +18,32 @@ import (
 	"bufio"
 	"bytes"
 	"io"
-	"os"
 	"strings"
 )
 
 var sepdash = []byte("---")
 
-// TestCaseSpec holds the pre-parsed testcase content.
-type TestCaseSpec struct {
-	// List of lines between `---` marks
+// CaseSpec holds parsed testcase content.
+// See [ReadSpec].
+type CaseSpec struct {
+	// Sections is the content of the test case
+	// split by sections (delimited by "---") and then by lines.
 	Sections [][]string
 
 	// Map of key:value tags extracted from comments
 	Tags map[string]string
 }
 
-// ReadTestCaseSpecFromFile is a wrapper for ReadTestcase that reads
-// testcase from a file.
-func ReadTestCaseSpecFromFile(fname string) (*TestCaseSpec, error) {
-	f, err := os.Open(fname)
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-
-	return readTestcaseSpec(f)
-}
-
-// readTestcaseSpec reads parts of a text separated by lines `---`.
+// ReadSpec reads a [CaseSpec] from an [io.Reader].
+// The procedure skips empty lines and lines staring with the character [#].
+// Tags in the returned spec are in the following form:
 //
-// Each part is a list of lines.
-// The procedure skips empty lines and lines staring with the `#`.
-// The procedure collects all key=value settings that start with double '##'.
-func readTestcaseSpec(reader io.Reader) (*TestCaseSpec, error) {
+//	## key: value
+//
+// where [key] is tag key and [value] is the tag value.
+func ReadSpec(reader io.Reader) (*CaseSpec, error) {
 	rd := bufio.NewScanner(reader)
-
-	spec := &TestCaseSpec{
+	spec := &CaseSpec{
 		Tags: make(map[string]string),
 	}
 

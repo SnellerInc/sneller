@@ -17,6 +17,7 @@ package pir
 import (
 	"fmt"
 	"io/fs"
+	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -1736,7 +1737,12 @@ func runTestcasesFromFiles(t *testing.T) {
 }
 
 func parseTestcase(fname string) (*buildTestcase, error) {
-	spec, err := tests.ReadTestCaseSpecFromFile(fname)
+	f, err := os.Open(fname)
+	if err != nil {
+		return nil, err
+	}
+	spec, err := tests.ReadSpec(f)
+	f.Close()
 	if err != nil {
 		return nil, err
 	}
