@@ -524,6 +524,15 @@ func (s ssatype) String() string {
 	return b.String()
 }
 
+// instruction costs:
+const (
+	costNop     = -1 // no cost
+	costDefault = 0  // typical ops
+	costMedium  = 1  // unboxing ops
+	costHeavy   = 2  // memory-scanning (string compare, etc.)
+	costXHeavy  = 3  // complex memory-scanning (regexp, fuzzy, etc.)
+)
+
 type ssaopinfo struct {
 	text     string
 	argtypes []ssatype
@@ -536,6 +545,13 @@ type ssaopinfo struct {
 	rettype ssatype
 
 	priority int // instruction scheduling priority; high = early, low = late
+
+	// cost is used to compare instruction cost;
+	// the magnitude of cost is ignored but the relative
+	// ordering of cost(s) is used in short-circuiting optimizations
+	//
+	// the "default" instruction cost is 0
+	cost int
 
 	// the emit function, if we're not using the default
 	emit func(v *value, c *compilestate)
@@ -640,13 +656,13 @@ const (
 var _ssainfo = [_ssamax]ssaopinfo{
 	sinvalid: {text: "INVALID"},
 	// initial top-level values:
-	sinit:     {text: "init", rettype: stBase | stBool, bc: opinit, priority: prioInit},
-	sinitmem:  {text: "initmem", rettype: stMem, emit: emitNone, priority: prioMem},
-	smergemem: {text: "mergemem", vaArgs: memArgs, rettype: stMem, emit: emitNone, priority: prioMem},
+	sinit:     {text: "init", rettype: stBase | stBool, bc: opinit, priority: prioInit, cost: costNop},
+	sinitmem:  {text: "initmem", rettype: stMem, emit: emitNone, priority: prioMem, cost: costNop},
+	smergemem: {text: "mergemem", vaArgs: memArgs, rettype: stMem, emit: emitNone, priority: prioMem, cost: costNop},
 	// initial scalar register value;
 	// not legal to use except to overwrite
 	// with value-parsing ops
-	sundef: {text: "undef", rettype: stFloat | stInt | stString, emit: emitNone, priority: prioInit - 1},
+	sundef: {text: "undef", rettype: stFloat | stInt | stString, emit: emitNone, priority: prioInit - 1, cost: costNop},
 	// kfalse is the canonical 'bottom' mask value;
 	// it is also the MISSING value
 	// (kfalse is overloaded to mean "no result"
@@ -662,11 +678,11 @@ var _ssainfo = [_ssamax]ssaopinfo{
 	sxor:         {text: "xor.k", argtypes: argsBoolBool, rettype: stBool, bc: opxork, disjunctive: true},
 	sxnor:        {text: "xnor.k", argtypes: argsBoolBool, rettype: stBool, bc: opxnork, disjunctive: true},
 
-	sunboxktoi64:    {text: "unbox.k@i64", argtypes: scalar1Args, rettype: stIntMasked, bc: opunboxktoi64},
-	sunboxcoercef64: {text: "unboxcoerce.f64", argtypes: scalar1Args, rettype: stFloatMasked, bc: opunboxcoercef64},
-	sunboxcoercei64: {text: "unboxcoerce.i64", argtypes: scalar1Args, rettype: stIntMasked, bc: opunboxcoercei64},
-	sunboxcvtf64:    {text: "unboxcvt.f64", argtypes: scalar1Args, rettype: stFloatMasked, bc: opunboxcvtf64},
-	sunboxcvti64:    {text: "unboxcvt.i64", argtypes: scalar1Args, rettype: stIntMasked, bc: opunboxcvti64},
+	sunboxktoi64:    {text: "unbox.k@i64", cost: costMedium, argtypes: scalar1Args, rettype: stIntMasked, bc: opunboxktoi64},
+	sunboxcoercef64: {text: "unboxcoerce.f64", cost: costMedium, argtypes: scalar1Args, rettype: stFloatMasked, bc: opunboxcoercef64},
+	sunboxcoercei64: {text: "unboxcoerce.i64", cost: costMedium, argtypes: scalar1Args, rettype: stIntMasked, bc: opunboxcoercei64},
+	sunboxcvtf64:    {text: "unboxcvt.f64", cost: costMedium, argtypes: scalar1Args, rettype: stFloatMasked, bc: opunboxcvtf64},
+	sunboxcvti64:    {text: "unboxcvt.i64", cost: costMedium, argtypes: scalar1Args, rettype: stIntMasked, bc: opunboxcvti64},
 
 	// two-operand comparison ops
 	scmpv:       {text: "cmpv", argtypes: value2Args, rettype: stInt | stBool, bc: opcmpv},
@@ -676,11 +692,11 @@ var _ssainfo = [_ssamax]ssaopinfo{
 	scmpvimmi64: {text: "cmpv.i64.imm", argtypes: []ssatype{stValue, stBool}, rettype: stInt | stBool, immfmt: fmti64, bc: opcmpvi64imm},
 	scmpvf64:    {text: "cmpv.f64", argtypes: []ssatype{stValue, stFloat, stBool}, rettype: stInt | stBool, bc: opcmpvf64},
 	scmpvimmf64: {text: "cmpv.f64.imm", argtypes: []ssatype{stValue, stBool}, rettype: stInt | stBool, immfmt: fmtf64, bc: opcmpvf64imm},
-	scmpltstr:   {text: "cmplt.str", argtypes: str2Args, rettype: stBool, bc: opcmpltstr},
-	scmplestr:   {text: "cmple.str", argtypes: str2Args, rettype: stBool, bc: opcmplestr},
-	scmpgtstr:   {text: "cmpgt.str", argtypes: str2Args, rettype: stBool, bc: opcmpgtstr},
-	scmpgestr:   {text: "cmpge.str", argtypes: str2Args, rettype: stBool, bc: opcmpgestr},
-	scmpeqstr:   {text: "cmpeq.str", argtypes: []ssatype{stString, stString, stBool}, rettype: stBool, bc: opcmpeqslice},
+	scmpltstr:   {text: "cmplt.str", cost: costMedium, argtypes: str2Args, rettype: stBool, bc: opcmpltstr},
+	scmplestr:   {text: "cmple.str", cost: costMedium, argtypes: str2Args, rettype: stBool, bc: opcmplestr},
+	scmpgtstr:   {text: "cmpgt.str", cost: costMedium, argtypes: str2Args, rettype: stBool, bc: opcmpgtstr},
+	scmpgestr:   {text: "cmpge.str", cost: costMedium, argtypes: str2Args, rettype: stBool, bc: opcmpgestr},
+	scmpeqstr:   {text: "cmpeq.str", cost: costMedium, argtypes: []ssatype{stString, stString, stBool}, rettype: stBool, bc: opcmpeqslice},
 
 	scmpltk:    {text: "cmplt.k", argtypes: argsBoolBoolBool, rettype: stBool, bc: opcmpltk},
 	scmpltimmk: {text: "cmplt.k@imm", argtypes: argsBoolBool, rettype: stBool, immfmt: fmtbool, bc: opcmpltkimm},
@@ -732,11 +748,11 @@ var _ssainfo = [_ssamax]ssaopinfo{
 	// we have an optional scalar reg value that
 	// is merged into, in which case we are guaranteed
 	// to preserve the non-updated lanes
-	stostr:  {text: "tostr", argtypes: scalar1Args, rettype: stStringMasked, bc: opunpack, emit: emitslice},
-	stolist: {text: "tolist", argtypes: scalar1Args, rettype: stListMasked, bc: opunpack, emit: emitslice},
-	stoblob: {text: "toblob", argtypes: scalar1Args, rettype: stBlobMasked, bc: opunpack, emit: emitslice},
+	stostr:  {text: "tostr", cost: costMedium, argtypes: scalar1Args, rettype: stStringMasked, bc: opunpack, emit: emitslice},
+	stolist: {text: "tolist", cost: costMedium, argtypes: scalar1Args, rettype: stListMasked, bc: opunpack, emit: emitslice},
+	stoblob: {text: "toblob", cost: costMedium, argtypes: scalar1Args, rettype: stBlobMasked, bc: opunpack, emit: emitslice},
 
-	sunsymbolize: {text: "unsymbolize", argtypes: scalar1Args, rettype: stValue, bc: opunsymbolize, safeValueMask: true},
+	sunsymbolize: {text: "unsymbolize", cost: costMedium, argtypes: scalar1Args, rettype: stValue, bc: opunsymbolize, safeValueMask: true},
 
 	// boolean -> scalar conversions;
 	// first argument is true/false; second is present/missing
@@ -750,7 +766,7 @@ var _ssainfo = [_ssamax]ssaopinfo{
 	scvtf64toi64: {text: "cvt.f64@i64", argtypes: fp1Args, rettype: stIntMasked, bc: opcvttruncf64toi64},
 	scvti64tostr: {text: "cvt.i64@str", argtypes: int1Args, rettype: stStringMasked, bc: opcvti64tostr},
 
-	sstrconcat: {text: "strconcat", rettype: stStringMasked, argtypes: []ssatype{}, vaArgs: []ssatype{stString, stBool}, bc: opconcatstr, emit: emitConcatStr},
+	sstrconcat: {text: "strconcat", cost: costXHeavy, rettype: stStringMasked, argtypes: []ssatype{}, vaArgs: []ssatype{stString, stBool}, bc: opconcatstr, emit: emitConcatStr},
 
 	//#region string operations
 	slowerstr: {text: "lower.str", argtypes: str1Args, rettype: stStringMasked, bc: opslower},
@@ -763,10 +779,10 @@ var _ssainfo = [_ssamax]ssaopinfo{
 	sEqPatternCi:     {text: "eq_pattern_ci", argtypes: str1Args, rettype: stStringMasked, immfmt: fmtdict, bc: opEqPatternCi},
 	sEqPatternUTF8Ci: {text: "eq_pattern_utf8_ci", argtypes: str1Args, rettype: stStringMasked, immfmt: fmtdict, bc: opEqPatternUTF8Ci},
 
-	sCmpFuzzyA3:              {text: "cmp_str_fuzzy_A3", argtypes: []ssatype{stString, stInt, stBool}, rettype: stBool, immfmt: fmtother, bc: opCmpStrFuzzyA3},
-	sCmpFuzzyUnicodeA3:       {text: "cmp_str_fuzzy_unicode_A3", argtypes: []ssatype{stString, stInt, stBool}, rettype: stBool, immfmt: fmtother, bc: opCmpStrFuzzyUnicodeA3},
-	sHasSubstrFuzzyA3:        {text: "has_substr_fuzzy_A3", argtypes: []ssatype{stString, stInt, stBool}, rettype: stBool, immfmt: fmtother, bc: opHasSubstrFuzzyA3},
-	sHasSubstrFuzzyUnicodeA3: {text: "has_substr_fuzzy_unicode_A3", argtypes: []ssatype{stString, stInt, stBool}, rettype: stBool, immfmt: fmtother, bc: opHasSubstrFuzzyUnicodeA3},
+	sCmpFuzzyA3:              {text: "cmp_str_fuzzy_A3", cost: costHeavy, argtypes: []ssatype{stString, stInt, stBool}, rettype: stBool, immfmt: fmtother, bc: opCmpStrFuzzyA3},
+	sCmpFuzzyUnicodeA3:       {text: "cmp_str_fuzzy_unicode_A3", cost: costHeavy, argtypes: []ssatype{stString, stInt, stBool}, rettype: stBool, immfmt: fmtother, bc: opCmpStrFuzzyUnicodeA3},
+	sHasSubstrFuzzyA3:        {text: "has_substr_fuzzy_A3", cost: costXHeavy, argtypes: []ssatype{stString, stInt, stBool}, rettype: stBool, immfmt: fmtother, bc: opHasSubstrFuzzyA3},
+	sHasSubstrFuzzyUnicodeA3: {text: "has_substr_fuzzy_unicode_A3", cost: costXHeavy, argtypes: []ssatype{stString, stInt, stBool}, rettype: stBool, immfmt: fmtother, bc: opHasSubstrFuzzyUnicodeA3},
 
 	sStrTrimWsLeft:    {text: "trim_ws_left", argtypes: str1Args, rettype: stString, bc: opTrimWsLeft},
 	sStrTrimWsRight:   {text: "trim_ws_right", argtypes: str1Args, rettype: stString, bc: opTrimWsRight},
@@ -774,71 +790,71 @@ var _ssainfo = [_ssamax]ssaopinfo{
 	sStrTrimCharRight: {text: "trim_char_right", argtypes: str1Args, rettype: stString, immfmt: fmtdict, bc: opTrim4charRight},
 
 	// s, k = contains_prefix_cs s, k, $const
-	sStrContainsPrefixCs:     {text: "contains_prefix_cs", argtypes: str1Args, rettype: stStringMasked, immfmt: fmtdict, bc: opContainsPrefixCs},
-	sStrContainsPrefixCi:     {text: "contains_prefix_ci", argtypes: str1Args, rettype: stStringMasked, immfmt: fmtdict, bc: opContainsPrefixCi},
-	sStrContainsPrefixUTF8Ci: {text: "contains_prefix_utf8_ci", argtypes: str1Args, rettype: stStringMasked, immfmt: fmtdict, bc: opContainsPrefixUTF8Ci},
+	sStrContainsPrefixCs:     {text: "contains_prefix_cs", cost: costMedium, argtypes: str1Args, rettype: stStringMasked, immfmt: fmtdict, bc: opContainsPrefixCs},
+	sStrContainsPrefixCi:     {text: "contains_prefix_ci", cost: costMedium, argtypes: str1Args, rettype: stStringMasked, immfmt: fmtdict, bc: opContainsPrefixCi},
+	sStrContainsPrefixUTF8Ci: {text: "contains_prefix_utf8_ci", cost: costMedium, argtypes: str1Args, rettype: stStringMasked, immfmt: fmtdict, bc: opContainsPrefixUTF8Ci},
 
 	// s, k = contains_suffix_cs s, k, $const
-	sStrContainsSuffixCs:     {text: "contains_suffix_cs", argtypes: str1Args, rettype: stStringMasked, immfmt: fmtdict, bc: opContainsSuffixCs},
-	sStrContainsSuffixCi:     {text: "contains_suffix_ci", argtypes: str1Args, rettype: stStringMasked, immfmt: fmtdict, bc: opContainsSuffixCi},
-	sStrContainsSuffixUTF8Ci: {text: "contains_suffix_utf8_ci", argtypes: str1Args, rettype: stStringMasked, immfmt: fmtdict, bc: opContainsSuffixUTF8Ci},
+	sStrContainsSuffixCs:     {text: "contains_suffix_cs", cost: costMedium, argtypes: str1Args, rettype: stStringMasked, immfmt: fmtdict, bc: opContainsSuffixCs},
+	sStrContainsSuffixCi:     {text: "contains_suffix_ci", cost: costMedium, argtypes: str1Args, rettype: stStringMasked, immfmt: fmtdict, bc: opContainsSuffixCi},
+	sStrContainsSuffixUTF8Ci: {text: "contains_suffix_utf8_ci", cost: costMedium, argtypes: str1Args, rettype: stStringMasked, immfmt: fmtdict, bc: opContainsSuffixUTF8Ci},
 
 	// s, k = contains_substr_cs s, k, $const
-	sStrContainsSubstrCs:     {text: "contains_substr_cs", argtypes: str1Args, rettype: stStringMasked, immfmt: fmtdict, bc: opContainsSubstrCs},
-	sStrContainsSubstrCi:     {text: "contains_substr_ci", argtypes: str1Args, rettype: stStringMasked, immfmt: fmtdict, bc: opContainsSubstrCi},
-	sStrContainsSubstrUTF8Ci: {text: "contains_substr_utf8_ci", argtypes: str1Args, rettype: stStringMasked, immfmt: fmtdict, bc: opContainsSubstrUTF8Ci},
+	sStrContainsSubstrCs:     {text: "contains_substr_cs", cost: costHeavy, argtypes: str1Args, rettype: stStringMasked, immfmt: fmtdict, bc: opContainsSubstrCs},
+	sStrContainsSubstrCi:     {text: "contains_substr_ci", cost: costHeavy, argtypes: str1Args, rettype: stStringMasked, immfmt: fmtdict, bc: opContainsSubstrCi},
+	sStrContainsSubstrUTF8Ci: {text: "contains_substr_utf8_ci", cost: costHeavy, argtypes: str1Args, rettype: stStringMasked, immfmt: fmtdict, bc: opContainsSubstrUTF8Ci},
 
 	// s, k = contains_pattern_cs s, k, $const
-	sStrContainsPatternCs:     {text: "contains_pattern_cs", argtypes: str1Args, rettype: stStringMasked, immfmt: fmtdict, bc: opContainsPatternCs},
-	sStrContainsPatternCi:     {text: "contains_pattern_ci", argtypes: str1Args, rettype: stStringMasked, immfmt: fmtdict, bc: opContainsPatternCi},
-	sStrContainsPatternUTF8Ci: {text: "contains_pattern_utf8_ci", argtypes: str1Args, rettype: stStringMasked, immfmt: fmtdict, bc: opContainsPatternUTF8Ci},
+	sStrContainsPatternCs:     {text: "contains_pattern_cs", cost: costHeavy, argtypes: str1Args, rettype: stStringMasked, immfmt: fmtdict, bc: opContainsPatternCs},
+	sStrContainsPatternCi:     {text: "contains_pattern_ci", cost: costHeavy, argtypes: str1Args, rettype: stStringMasked, immfmt: fmtdict, bc: opContainsPatternCi},
+	sStrContainsPatternUTF8Ci: {text: "contains_pattern_utf8_ci", cost: costHeavy, argtypes: str1Args, rettype: stStringMasked, immfmt: fmtdict, bc: opContainsPatternUTF8Ci},
 
 	// ip matching
-	sIsSubnetOfIP4: {text: "is_subnet_of_ip4", argtypes: str1Args, rettype: stBool, immfmt: fmtdict, bc: opIsSubnetOfIP4},
+	sIsSubnetOfIP4: {text: "is_subnet_of_ip4", cost: costMedium, argtypes: str1Args, rettype: stBool, immfmt: fmtdict, bc: opIsSubnetOfIP4},
 
 	// s, k = skip_1char_left s, k -- skip one unicode character at the beginning (left) of a string slice
 	sStrSkip1CharLeft: {text: "skip_1char_left", argtypes: str1Args, rettype: stStringMasked, bc: opSkip1charLeft},
 	// s, k = skip_1char_right s, k -- skip one unicode character off the end (right) of a string slice
 	sStrSkip1CharRight: {text: "skip_1char_right", argtypes: str1Args, rettype: stStringMasked, bc: opSkip1charRight},
 	// s, k = skip_nchar_left s, k -- skip n unicode character at the beginning (left) of a string slice
-	sStrSkipNCharLeft: {text: "skip_nchar_left", argtypes: []ssatype{stString, stInt, stBool}, rettype: stStringMasked, bc: opSkipNcharLeft},
+	sStrSkipNCharLeft: {text: "skip_nchar_left", cost: costHeavy, argtypes: []ssatype{stString, stInt, stBool}, rettype: stStringMasked, bc: opSkipNcharLeft},
 	// s, k = skip_nchar_right s, k -- skip n unicode character off the end (right) of a string slice
-	sStrSkipNCharRight: {text: "skip_nchar_right", argtypes: []ssatype{stString, stInt, stBool}, rettype: stStringMasked, bc: opSkipNcharRight},
+	sStrSkipNCharRight: {text: "skip_nchar_right", cost: costHeavy, argtypes: []ssatype{stString, stInt, stBool}, rettype: stStringMasked, bc: opSkipNcharRight},
 
 	soctetlength:     {text: "octetlength", argtypes: str1Args, rettype: stInt, bc: opoctetlength},
 	scharacterlength: {text: "characterlength", argtypes: str1Args, rettype: stInt, bc: opcharlength},
 	sSubStr:          {text: "substr", argtypes: []ssatype{stString, stInt, stInt, stBool}, rettype: stString, bc: opSubstr},
 	sSplitPart:       {text: "split_part", argtypes: []ssatype{stString, stInt, stBool}, rettype: stStringMasked, immfmt: fmtdict, bc: opSplitPart},
 
-	sDfaT6:  {text: "dfa_tiny6", argtypes: str1Args, rettype: stBool, immfmt: fmtdict, bc: opDfaT6},
-	sDfaT7:  {text: "dfa_tiny7", argtypes: str1Args, rettype: stBool, immfmt: fmtdict, bc: opDfaT7},
-	sDfaT8:  {text: "dfa_tiny8", argtypes: str1Args, rettype: stBool, immfmt: fmtdict, bc: opDfaT8},
-	sDfaT6Z: {text: "dfa_tiny6Z", argtypes: str1Args, rettype: stBool, immfmt: fmtdict, bc: opDfaT6Z},
-	sDfaT7Z: {text: "dfa_tiny7Z", argtypes: str1Args, rettype: stBool, immfmt: fmtdict, bc: opDfaT7Z},
-	sDfaT8Z: {text: "dfa_tiny8Z", argtypes: str1Args, rettype: stBool, immfmt: fmtdict, bc: opDfaT8Z},
-	sDfaLZ:  {text: "dfa_largeZ", argtypes: str1Args, rettype: stBool, immfmt: fmtdict, bc: opDfaLZ},
+	sDfaT6:  {text: "dfa_tiny6", cost: costXHeavy, argtypes: str1Args, rettype: stBool, immfmt: fmtdict, bc: opDfaT6},
+	sDfaT7:  {text: "dfa_tiny7", cost: costXHeavy, argtypes: str1Args, rettype: stBool, immfmt: fmtdict, bc: opDfaT7},
+	sDfaT8:  {text: "dfa_tiny8", cost: costXHeavy, argtypes: str1Args, rettype: stBool, immfmt: fmtdict, bc: opDfaT8},
+	sDfaT6Z: {text: "dfa_tiny6Z", cost: costXHeavy, argtypes: str1Args, rettype: stBool, immfmt: fmtdict, bc: opDfaT6Z},
+	sDfaT7Z: {text: "dfa_tiny7Z", cost: costXHeavy, argtypes: str1Args, rettype: stBool, immfmt: fmtdict, bc: opDfaT7Z},
+	sDfaT8Z: {text: "dfa_tiny8Z", cost: costXHeavy, argtypes: str1Args, rettype: stBool, immfmt: fmtdict, bc: opDfaT8Z},
+	sDfaLZ:  {text: "dfa_largeZ", cost: costXHeavy, argtypes: str1Args, rettype: stBool, immfmt: fmtdict, bc: opDfaLZ},
 
 	// compare against a constant exactly
-	sequalconst: {text: "equalconst", argtypes: scalar1Args, rettype: stBool, immfmt: fmtother, emit: emitconstcmp},
+	sequalconst: {text: "equalconst", cost: costHeavy, argtypes: scalar1Args, rettype: stBool, immfmt: fmtother, emit: emitconstcmp},
 
-	ssplit: {text: "split", argtypes: []ssatype{stList, stBool}, rettype: stListAndValueMasked, bc: opsplit, priority: prioParse},
+	ssplit: {text: "split", cost: costMedium, argtypes: []ssatype{stList, stBool}, rettype: stListAndValueMasked, bc: opsplit, priority: prioParse},
 
 	// convert value to base pointer
 	// when it is structure-typed
-	stuples: {text: "tuples", argtypes: []ssatype{stValue, stBool}, rettype: stBaseMasked, bc: optuple, priority: prioParse},
+	stuples: {text: "tuples", cost: costMedium, argtypes: []ssatype{stValue, stBool}, rettype: stBaseMasked, bc: optuple, priority: prioParse},
 
 	// find a struct field by name relative to a base pointer
-	sdot: {text: "dot", argtypes: []ssatype{stBase, stBool}, rettype: stValueMasked, immfmt: fmtother, bc: opfindsym, priority: prioParse},
+	sdot: {text: "dot", cost: costMedium, argtypes: []ssatype{stBase, stBool}, rettype: stValueMasked, immfmt: fmtother, bc: opfindsym, priority: prioParse},
 	// find a struct field by name relative
 	// to a previously-computed base pointer;
 	// arguments are: (base, prevV, prevK, wantedK)
-	sdot2: {text: "dot2", argtypes: []ssatype{stBase, stValue, stBool, stBool}, rettype: stValueMasked, immfmt: fmtother, bc: opfindsym2, priority: prioParse},
+	sdot2: {text: "dot2", cost: costMedium, argtypes: []ssatype{stBase, stValue, stBool, stBool}, rettype: stValueMasked, immfmt: fmtother, bc: opfindsym2, priority: prioParse},
 
 	sauxval: {text: "auxval", argtypes: []ssatype{}, rettype: stValueMasked, immfmt: fmtslot, priority: prioParse, bc: opauxval},
 
 	// hash and hash-with-seed ops
-	shashvalue:  {text: "hashvalue", argtypes: []ssatype{stValue, stBool}, rettype: stHash, immfmt: fmtslot, bc: ophashvalue, priority: prioHash},
-	shashvaluep: {text: "hashvalue+", argtypes: []ssatype{stHash, stValue, stBool}, rettype: stHash, immfmt: fmtslotx2hash, bc: ophashvalueplus, priority: prioHash},
+	shashvalue:  {text: "hashvalue", cost: costHeavy, argtypes: []ssatype{stValue, stBool}, rettype: stHash, immfmt: fmtslot, bc: ophashvalue, priority: prioHash},
+	shashvaluep: {text: "hashvalue+", cost: costHeavy, argtypes: []ssatype{stHash, stValue, stBool}, rettype: stHash, immfmt: fmtslotx2hash, bc: ophashvalueplus, priority: prioHash},
 
 	shashmember: {text: "hashmember", argtypes: []ssatype{stHash, stBool}, rettype: stBool, immfmt: fmtother, bc: ophashmember, emit: emithashmember},
 	shashlookup: {text: "hashlookup", argtypes: []ssatype{stHash, stBool}, rettype: stValueMasked, immfmt: fmtother, bc: ophashlookup, emit: emithashlookup},
@@ -857,12 +873,12 @@ var _ssainfo = [_ssamax]ssaopinfo{
 
 	// identity ops; these ops just return their input
 	// associated with a different not-missing mask
-	smakev:  {text: "make.v", rettype: stValue, argtypes: []ssatype{stValue, stBool}, bc: opmovv},
-	smakevk: {text: "make.vk", rettype: stValueMasked, argtypes: []ssatype{stValue, stBool}, bc: opmovvk},
-	sfloatk: {text: "floatk", rettype: stFloat, argtypes: []ssatype{stFloat, stBool}, bc: opmovf64},
+	smakev:  {text: "make.v", cost: costNop, rettype: stValue, argtypes: []ssatype{stValue, stBool}, bc: opmovv},
+	smakevk: {text: "make.vk", cost: costNop, rettype: stValueMasked, argtypes: []ssatype{stValue, stBool}, bc: opmovvk},
+	sfloatk: {text: "floatk", cost: costNop, rettype: stFloat, argtypes: []ssatype{stFloat, stBool}, bc: opmovf64},
 	// notmissing is an identity op that exists so that (*value).notMissing
 	// can assume a value other than prog.mask(*value)
-	snotmissing: {text: "notmissing", rettype: stBool, argtypes: []ssatype{stBool}, bc: opmovk},
+	snotmissing: {text: "notmissing", cost: costNop, rettype: stBool, argtypes: []ssatype{stBool}, bc: opmovk},
 
 	sblendv:   {text: "blend.v", rettype: stValueMasked, argtypes: []ssatype{stValue, stBool, stValue, stBool}, bc: opblendv, disjunctive: true, safeValueMask: true},
 	sblendf64: {text: "blend.f64", rettype: stFloatMasked, argtypes: []ssatype{stFloat, stBool, stFloat, stBool}, bc: opblendf64, disjunctive: true},
@@ -1006,10 +1022,10 @@ var _ssainfo = [_ssamax]ssaopinfo{
 	// boxing ops
 	//
 	// turn two masks into TRUE/FALSE/MISSING according to 3VL
-	sboxmask:  {text: "boxmask", argtypes: []ssatype{stBool, stBool}, rettype: stValue, bc: opboxk, safeValueMask: true},
-	sboxint:   {text: "boxint", argtypes: []ssatype{stInt, stBool}, rettype: stValue, bc: opboxi64, safeValueMask: true},
-	sboxfloat: {text: "boxfloat", argtypes: []ssatype{stFloat, stBool}, rettype: stValue, bc: opboxf64, safeValueMask: true},
-	sboxstr:   {text: "boxstr", argtypes: []ssatype{stString, stBool}, rettype: stValue, bc: opboxstr, safeValueMask: true},
+	sboxmask:  {text: "boxmask", cost: costHeavy, argtypes: []ssatype{stBool, stBool}, rettype: stValue, bc: opboxk, safeValueMask: true},
+	sboxint:   {text: "boxint", cost: costHeavy, argtypes: []ssatype{stInt, stBool}, rettype: stValue, bc: opboxi64, safeValueMask: true},
+	sboxfloat: {text: "boxfloat", cost: costHeavy, argtypes: []ssatype{stFloat, stBool}, rettype: stValue, bc: opboxf64, safeValueMask: true},
+	sboxstr:   {text: "boxstr", cost: costXHeavy, argtypes: []ssatype{stString, stBool}, rettype: stValue, bc: opboxstr, safeValueMask: true},
 
 	// timestamp operations
 	sbroadcastts:            {text: "broadcast.ts", rettype: stTime, argtypes: []ssatype{}, immfmt: fmti64, bc: opbroadcasti64},

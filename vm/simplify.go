@@ -33,6 +33,13 @@ func conjoin(p *prog, a, b *value) (*value, bool) {
 	if a == b {
 		return nil, false
 	}
+	// if b is more expensive than a,
+	// *try* to perform short-circuiting by
+	// evaluating the less-expensive op first
+	// (the opposite is still profitable, but less so)
+	if ssainfo[b.op].cost > ssainfo[a.op].cost {
+		a, b = b, a
+	}
 	try := func(p *prog, a, b *value) (*value, bool) {
 		// a must be conjunctive and not be a dependency of b
 		if ssainfo[a.op].disjunctive || dependsOn(b, a) {
