@@ -19,6 +19,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/SnellerInc/sneller/aws"
 	"github.com/SnellerInc/sneller/ion/blockfmt"
@@ -61,6 +62,7 @@ func NewEnvProvider() (Provider, error) {
 	if s3EndPoint == "" {
 		s3EndPoint = fmt.Sprintf("https://s3.%s.amazonaws.com", region)
 	}
+	s3EndPoint = strings.TrimSuffix(s3EndPoint, "/")
 
 	return &S3Static{
 		CheckToken: func(t string) error {

@@ -230,6 +230,9 @@ func Open(k *aws.SigningKey, bucket, object string, contents bool) (*File, error
 
 func flakyDo(cl *http.Client, req *http.Request) (*http.Response, error) {
 	hasBody := req.Body != nil
+	if cl == nil {
+		cl = &DefaultClient
+	}
 	res, err := cl.Do(req)
 	if err == nil && (res.StatusCode != 500 && res.StatusCode != 503) {
 		return res, err
