@@ -6096,173 +6096,110 @@ TEXT bchashvalueplus(SB), NOSPLIT|NOFRAME, $0
 //   Z28 = offsets relative to base
 //   Z29 = lengths relative to offsets
 TEXT hashimpl_tail(SB), NOSPLIT|NOFRAME, $0
-  VBROADCASTI32X4  chachaiv<>+0(SB), Z27
-  VMOVDQA32        X28, X10
-  VMOVDQA32        X29, X11
-  VPXORD           0(R14), Z27, Z9
-  CALL             hashx4(SB)
-  VMOVDQU32        Z9, 0(DX)
-  VEXTRACTI32X4    $1, Z28, X10
-  VEXTRACTI32X4    $1, Z29, X11
-  VPXORD           64(R14), Z27, Z9
-  CALL             hashx4(SB)
-  VMOVDQU32        Z9, 64(DX)
-  VEXTRACTI32X4    $2, Z28, X10
-  VEXTRACTI32X4    $2, Z29, X11
-  VPXORD           128(R14), Z27, Z9
-  CALL             hashx4(SB)
-  VMOVDQU32        Z9, 128(DX)
-  VEXTRACTI32X4    $3, Z28, X10
-  VEXTRACTI32X4    $3, Z29, X11
-  VPXORD           192(R14), Z27, Z9
-  CALL             hashx4(SB)
-  VMOVDQU32        Z9, 192(DX)
+  KMOVW            K1, K6        // save current predicate
+  VMOVDQU64        0(R14), Z9    // Z9 = k1
+  VMOVDQU64        128(R14), Z8  // Z8 = k2
+  VMOVDQA32        Y28, Y10      // Y10 = lo 8 offsets
+  VMOVDQA32        Y29, Y11      // Y11 = lo 8 lengths
+  CALL             siphashx8(SB) // eval first 8
+  VMOVDQU64        Z9, 0(DX)     // first 8 of 64 bit upper
+  VMOVDQU64        Z10, 128(DX)  // first 8 of 64 bit lower
+  VMOVDQU64        64(R14), Z9
+  VMOVDQU64        192(R14), Z8
+  VEXTRACTI32X8    $1, Z28, Y10  // Y11 = hi 8 offsets
+  VEXTRACTI32X8    $1, Z29, Y11  // Y10 = hi 8 lengths
+  KSHIFTRW         $8, K1, K1    // shift lanes
+  CALL             siphashx8(SB) // eval second 8
+  VMOVDQU64        Z9, 64(DX)
+  VMOVDQU64        Z10, 192(DX)
+  KMOVW            K6, K1        // restore original lanes
   NEXT()
 
-#define QROUNDx4(rowa, rowb, rowc, rowd, ztmp) \
-  VPADDD rowa, rowb, rowa                      \
-  VPXORD rowa, rowd, ztmp                      \
-  VPROLD $16, ztmp, rowd                       \
-  VPADDD rowc, rowd, rowc                      \
-  VPXORD rowb, rowc, ztmp                      \
-  VPROLD $12, ztmp, rowb                       \
-  VPADDD rowa, rowb, rowa                      \
-  VPXORD rowd, rowa, ztmp                      \
-  VPROLD $8, ztmp, rowd                        \
-  VPADDD rowc, rowd, rowc                      \
-  VPXORD rowb, rowc, ztmp                      \
-  VPROLD $7, ztmp, rowb
+// 1 round of siphash on 4x64bit state x 8 lanes
+#define SIPROUND(mask, v0, v1, v2, v3) \
+  VPADDQ v0, v1, mask, v0              \
+  VPROLQ $13, v1, mask, v1             \
+  VPXORQ v0, v1, mask, v1              \
+  VPROLQ $32, v0, mask, v0             \
+  VPADDQ v2, v3, mask, v2              \
+  VPROLQ $16, v3, mask, v3             \
+  VPXORQ v3, v2, mask, v3              \
+  VPADDQ v0, v3, mask, v0              \
+  VPROLQ $21, v3, mask, v3             \
+  VPXORQ v3, v0, mask, v3              \
+  VPADDQ v2, v1, mask, v2              \
+  VPROLQ $17, v1, mask, v1             \
+  VPXORQ v1, v2, mask, v1              \
+  VPROLQ $32, v2, mask, v2
 
-// within each 4-dword lane,
-// rotate words left by 1
-#define ROTLD_1(row) VPSHUFD $57, row, row
-// ... left by 2
-#define ROTLD_2(row) VPSHUFD $78, row, row
-// ... left by 3
-#define ROTLD_3(row) VPSHUFD $147, row, row
+#define SIPROUNDx2(mask, v0, v1, v2, v3) \
+  SIPROUND(mask, v0, v1, v2, v3) \
+  SIPROUND(mask, v0, v1, v2, v3)
 
-#define ROUNDx2(rowa, rowb, rowc, rowd, ztmp) \
-  QROUNDx4(rowa, rowb, rowc, rowd, ztmp)      \
-  ROTLD_1(rowb)                               \
-  ROTLD_2(rowc)                               \
-  ROTLD_3(rowd)                               \
-  QROUNDx4(rowa, rowb, rowc, rowd, ztmp)      \
-  ROTLD_3(rowb)                               \
-  ROTLD_2(rowc)                               \
-  ROTLD_1(rowd)
+// tail mask for <8-byte loads:
+#define CONST_TAIL_MASK8() CONST_GET_PTR(tail_mask_map8, 0)
+CONST_DATA_U64(tail_mask_map8,  0, $0x0000000000000000)
+CONST_DATA_U64(tail_mask_map8,  8, $0x00000000000000FF)
+CONST_DATA_U64(tail_mask_map8, 16, $0x000000000000FFFF)
+CONST_DATA_U64(tail_mask_map8, 24, $0x0000000000FFFFFF)
+CONST_DATA_U64(tail_mask_map8, 32, $0x00000000FFFFFFFF)
+CONST_DATA_U64(tail_mask_map8, 40, $0x000000FFFFFFFFFF)
+CONST_DATA_U64(tail_mask_map8, 48, $0x0000FFFFFFFFFFFF)
+CONST_DATA_U64(tail_mask_map8, 56, $0x00FFFFFFFFFFFFFF)
+CONST_GLOBAL(tail_mask_map8, $64)
 
-// mask used to expand an 8-bit pattern [?d?c_?b?a]
-// into 16-bit pattern [dddd_cccc_bbbb_aaaa]
-CONST_DATA_U8(hashexpand,  0, $0x01) // bit a
-CONST_DATA_U8(hashexpand,  1, $0x01)
-CONST_DATA_U8(hashexpand,  2, $0x01)
-CONST_DATA_U8(hashexpand,  3, $0x01)
-CONST_DATA_U8(hashexpand,  4, $0x04) // bit b
-CONST_DATA_U8(hashexpand,  5, $0x04)
-CONST_DATA_U8(hashexpand,  6, $0x04)
-CONST_DATA_U8(hashexpand,  7, $0x04)
-CONST_DATA_U8(hashexpand,  8, $0x10) // bit c
-CONST_DATA_U8(hashexpand,  9, $0x10)
-CONST_DATA_U8(hashexpand, 10, $0x10)
-CONST_DATA_U8(hashexpand, 11, $0x10)
-CONST_DATA_U8(hashexpand, 12, $0x40) // bit d
-CONST_DATA_U8(hashexpand, 13, $0x40)
-CONST_DATA_U8(hashexpand, 14, $0x40)
-CONST_DATA_U8(hashexpand, 15, $0x40)
-CONST_GLOBAL(hashexpand, $16)
-
-
-// inputs:
-//   R15 = base, X10:X11 = offset:ptr, Z9 = iv
-// outputs:
-//   Z9 = 4x128 hash outputs
-// clobbers:
-//   Z6-Z24, CX, R13
-TEXT hashx4(SB), NOFRAME|NOSPLIT, $0
-  // populate initial rows (seed should be populated)
-  VBROADCASTI32X4 chachaiv<>+16(SB), Z12
-  VBROADCASTI32X4 chachaiv<>+32(SB), Z13
-  VBROADCASTI32X4 chachaiv<>+48(SB), Z14
-
-  // unpack 4 lanes to 8 lanes for offsets and lengths
-  VPMOVZXDQ    X10, Y10         // Y10 = 4*64bit offsets (zero extend)
-  VPMOVZXDQ    X11, Y11         // Y11 = 4*64bit lengths (zero extend)
-  VPMOVZXDQ    Y10, Z10         // Z10 = 4*128bit offsets (zero extend)
-  VPMOVZXDQ    Y11, Z11         // Z11 = 4*128bit lengths (zero extend)
-  VPXORD       Z9, Z11, Z9      // fold length into IV
-
-  VPUNPCKLQDQ  Z10, Z10, Z10    // Z10 = 8*64bit offsets, duplicated pair-wise
-  VPUNPCKLQDQ  Z11, Z11, Z11    // Z11 = 8*64bit lengths, duplicated pair-wise
-  VPBROADCASTQ CONSTQ_8(), Z8   // Z8 = $8
-  MOVL         $0xaa, CX
-  KMOVB        CX, K4
-  VPADDQ       Z8, Z10, K4, Z10 // offset in odd lanes += 8
-  VPSUBQ       Z8, Z11, K4, Z11 // length in odd lanes -= 8
-
-  // create masks for each lane
-  VPXORQ        Z16, Z16, Z16           // Z16 = zeros
-  VPBROADCASTQ  CONSTQ_NEG_1(), Z20     // Z20 = all 1s
-  VPCMPQ        $6, Z16, Z11, K2        // K2 = lanes > 0 (signed!)
-  VPANDQ.BCST.Z CONSTQ_7(), Z11, K2, Z7 // Z7 = bytes&7 or 0 if <=0
-  VPSLLQ        $3, Z7, Z7              // Z7 = valid bytes *= 8 = valid bits
-  VPSLLVQ       Z7, Z20, Z7             // Z7 = ones << valid bits
-  VPSLLQ        $1, Z8, Z6              // Z6 = $16 as quadwords
-
-  KTESTB       K2, K2
-  JZ           done
-  VMOVUPD      CONST_GET_PTR(hashexpand, 0), X25
+// inputs: K1 = active, R15 = base, Y10:Y11 = offset:ptr, Z9 = k0, Z8 = k1
+// outputs: Z9 = lo 64 bits x 8, Z10 = hi 64 bits x 8
+// clobbers: K1-K3, Z10-Z20
+TEXT siphashx8(SB), NOFRAME|NOSPLIT, $0
+  // comments are derived from the reference implementation:
+  // https://github.com/veorq/SipHash/blob/master/siphash.c
+  VPBROADCASTD   CONSTD_8(), Y18
+  VPXORQ.BCST    siphashiv<>+0(SB), Z9, Z12  // v0 = k0 ^ seed0
+  VPXORQ.BCST    siphashiv<>+8(SB), Z8, Z13  // v1 = k1 ^ seed1
+  VPXORQ.BCST    siphashiv<>+16(SB), Z9, Z14 // v2 = k0 ^ seed2
+  VPXORQ.BCST    siphashiv<>+24(SB), Z8, Z15 // v3 = k1 ^ seed3
+  VPXORQ.BCST    CONSTQ_0xEE(), Z13, Z13     // v1 ^= 0xee
+  VPMOVZXDQ      Y11, Z20       //
+  VPSLLQ         $56, Z20, Z20  // Z20 = b = ((uint64_t)inlen) << 56
+  JMP            main_loop_tail
 loop:
-  // expand an 8-bit pattern from K2 [?d?c_?b?a]
-  // into a 16-bit pattern [dddd_cccc_bbbb_aaaa]
-  KMOVB        K2, BX
-  VPBROADCASTB BX, X15
-  VPANDD       X15, X25, X15
-  VPCMPEQB     X15, X25, K5
-
-  VPXORQ       Z17, Z17, Z17
-  VPXORQ       Z18, Z18, Z18
-  VPXORQ       Z19, Z19, Z19
-
-  KMOVB        K2, K3
-  VPGATHERQQ   0(R15)(Z10*1), K3, Z17  // Z17 = row 0
-  VPCMPUQ      $6, Z11, Z8, K2, K3     // K3 = len < 8 (unsigned!)
-  VPANDNQ      Z17, Z7, K3, Z17        // &^=mask when len<8
-  VPSUBQ       Z6, Z11, K2, Z11        // len -= 16
-
-  VPCMPQ       $6, Z16, Z11, K2, K2    // still > 0?
-  KMOVB        K2, K3
-  VPGATHERQQ   16(R15)(Z10*1), K3, Z18 // Z18 = row 1
-  VPCMPUQ      $6, Z11, Z8, K2, K3     // len<8
-  VPANDNQ      Z18, Z7, K3, Z18        // &^=mask when len<8
-  VPSUBQ       Z6, Z11, K2, Z11        // len -= 16
-
-  VPCMPQ       $6, Z16, Z11, K2, K2    // k1 = still > 0?
-  KMOVB        K2, K3
-  VPGATHERQQ   32(R15)(Z10*1), K3, Z19 // Z19 = row 2
-  VPCMPUQ      $6, Z11, Z8, K2, K3     // K3 = len<8
-  VPANDNQ      Z19, Z7, K3, Z19
-  VPSUBQ       Z6, Z11, K2, Z11
-
-  VMOVDQA32 Z9, Z20
-  VPXORD    Z12, Z17, Z21
-  VPXORD    Z13, Z18, Z22
-  VPXORD    Z14, Z19, Z23
-  MOVL      $4, R13
-rounds:
-  ROUNDx2(Z20, Z21, Z22, Z23, Z24)
-  DECL      R13
-  JNZ       rounds
-  VPADDD    Z9,  Z20, K5, Z9
-  VPADDD    Z12, Z21, K5, Z12
-  VPADDD    Z13, Z22, K5, Z13
-  VPADDD    Z14, Z23, K5, Z14
-
-  // loop tail: continue while any(len(lane))>0
-  VPCMPQ      $6, Z16, Z11, K2, K2          // len(lane) > 0?
-  VPADDQ.BCST CONSTQ_48(), Z10, K2, Z10     // offset += 48
-  KTESTB      K2, K2
-  JNZ         loop
-done:
+  KMOVW          K2, K3
+  VPGATHERDQ     0(R15)(Y10*1), K3, Z16 // Z16 = m
+  VPXORQ         Z16, Z15, K2, Z15      // v3 ^= m
+  SIPROUNDx2(K2, Z12, Z13, Z14, Z15)
+  VPXORQ         Z16, Z12, K2, Z12      // v0 ^= m
+  VPADDD         Y18, Y10, K2, Y10      // offset += 8
+  VPSUBD         Y18, Y11, K2, Y11      // len -= 8
+main_loop_tail:
+  VPXORQ         Z16, Z16, Z16          // kill dependency
+  VPCMPD         $VPCMP_IMM_GE, Y18, Y11, K1, K2
+  KTESTW         K2, K2                 // K2 = lanes where len(input)>=8
+  JNZ            loop
+final_rounds:
+  // load final fragments <8 bytes or 0 value for Z16
+  VPTESTMD       Y11, Y11, K1, K2       // K2 = active && (len(inputs) != 0)
+  VPGATHERDQ     0(R15)(Y10*1), K2, Z16 // b = load64(ptr)
+  VPMOVZXDQ      Y11, Z11               // Z11 = remaining lengths as qwords
+  VPERMQ         CONST_TAIL_MASK8(), Z11, Z21
+  VPANDQ         Z21, Z16, Z16          // b &= mask
+  VPORQ          Z20, Z16, Z16          // b |= (length<<56)
+  VPXORQ         Z16, Z15, Z15          // v3 ^= b
+  SIPROUNDx2(K1, Z12, Z13, Z14, Z15)
+  VPXORQ         Z16, Z12, Z12          // v0 ^= b
+  // 4 rounds of finalization for each 64 bits of output:
+  VPXORQ.BCST    CONSTQ_0xEE(), Z14, Z14 // v2 ^= 0xee
+  SIPROUNDx2(K1, Z12, Z13, Z14, Z15)
+  SIPROUNDx2(K1, Z12, Z13, Z14, Z15)
+  VPXORQ         Z12, Z13, Z16
+  VPXORQ         Z14, Z15, Z17
+  VPXORQ         Z17, Z16, Z9            // ret0 = v0 ^ v1 ^ v2 ^ v3 = lo64
+  VPXORQ.BCST    CONSTQ_0xDD(), Z13, Z13 // v1 ^= 0xdd
+  SIPROUNDx2(K1, Z12, Z13, Z14, Z15)
+  SIPROUNDx2(K1, Z12, Z13, Z14, Z15)
+  VPXORQ         Z12, Z13, Z16
+  VPXORQ         Z14, Z15, Z17
+  VPXORQ         Z17, Z16, Z10           // ret1 = v0 ^ v1 ^ v2 ^ v3 = hi64
   RET
 
 // k[0] = hashmember(h[1], imm16[2]).k[3]
@@ -6285,13 +6222,6 @@ TEXT bchashmember(SB), NOSPLIT|NOFRAME, $0
   // we should have Z15 = first 8 lo 64, Z16 = second 8 lo 64
   VMOVDQU64   0(R8), Z15
   VMOVDQU64   64(R8), Z16
-  VPUNPCKLQDQ Z16, Z15, Z15
-  VMOVDQU64   128(R8), Z16
-  VMOVDQU64   192(R8), Z17
-  VPUNPCKLQDQ Z17, Z16, Z16
-  VMOVDQU64   permute64+0(SB), Z18
-  VPERMQ      Z15, Z18, Z15                      // Z15 = low 8 hashes (64-bit)
-  VPERMQ      Z16, Z18, Z16                      // Z16 = hi 8 ''
   VMOVDQA64   Z15, Z17                           // Z17, Z18 = temporaries for rotated hashes
   VMOVDQA64   Z16, Z18
 
@@ -6426,13 +6356,6 @@ TEXT bchashlookup(SB), NOSPLIT|NOFRAME, $0
   // we should have Z15 = first 8 lo 64, Z16 = second 8 lo 64
   VMOVDQU64   0(R8), Z15
   VMOVDQU64   64(R8), Z16
-  VPUNPCKLQDQ Z16, Z15, Z15
-  VMOVDQU64   128(R8), Z16
-  VMOVDQU64   192(R8), Z17
-  VPUNPCKLQDQ Z17, Z16, Z16
-  VMOVDQU64   permute64+0(SB), Z18
-  VPERMQ      Z15, Z18, Z15                      // Z15 = low 8 hashes (64-bit)
-  VPERMQ      Z16, Z18, Z16                      // Z16 = hi 8 ''
   VMOVDQA64   Z15, Z17                           // Z17, Z18 = temporaries for rotated hashes
   VMOVDQA64   Z16, Z18
 
@@ -6887,14 +6810,7 @@ TEXT bcaggbucket(SB), NOSPLIT|NOFRAME, $0
   // we should have Z15 = first 8 lo 64, Z16 = second 8 lo 64
   VMOVDQU64   0(R8), Z15
   VMOVDQU64   64(R8), Z16
-  VPUNPCKLQDQ Z16, Z15, Z15
-  VMOVDQU64   128(R8), Z16
-  VMOVDQU64   192(R8), Z17
-  VPUNPCKLQDQ Z17, Z16, Z16
-  VMOVDQU64   permute64+0(SB), Z18
-  VPERMQ      Z15, Z18, Z15                      // Z15 = low 8 hashes (64-bit)
-  VPERMQ      Z16, Z18, Z16                      // Z16 = hi 8 ''
-  VMOVDQA64   Z15, Z17                           // Z17, Z18 = temporaries for rotated hashes
+  VMOVDQA64   Z15, Z17     // Z17, Z18 = temporaries for rotated hashes
   VMOVDQA64   Z16, Z18
 
   // load some immediates
@@ -12298,25 +12214,11 @@ TEXT bcpowuintf64(SB), NOSPLIT|NOFRAME, $0
     BC_STORE_F64_TO_SLOT(IN(Z2), IN(Z3), IN(BX))
     NEXT_ADVANCE(BC_SLOT_SIZE*3 + BC_IMM64_SIZE)
 
-
-// chacha8 random initialization vector
-DATA  chachaiv<>+0(SB)/4, $0x9722F977  // XOR'd with length for real IV
-DATA  chachaiv<>+4(SB)/4, $0x3320646e
-DATA  chachaiv<>+8(SB)/4, $0x79622d32
-DATA  chachaiv<>+12(SB)/4, $0x6b206574
-DATA  chachaiv<>+16(SB)/4, $0x058A60F5
-DATA  chachaiv<>+20(SB)/4, $0xB25F6FB1
-DATA  chachaiv<>+24(SB)/4, $0x1FEFA3D9
-DATA  chachaiv<>+28(SB)/4, $0xB9D8F520
-DATA  chachaiv<>+32(SB)/4, $0xB415DBCC
-DATA  chachaiv<>+36(SB)/4, $0x34B70366
-DATA  chachaiv<>+40(SB)/4, $0x3F4DBB4D
-DATA  chachaiv<>+44(SB)/4, $0xCBB67392
-DATA  chachaiv<>+48(SB)/4, $0x61707865
-DATA  chachaiv<>+52(SB)/4, $0x143BE9F6
-DATA  chachaiv<>+56(SB)/4, $0xDA97A1A8
-DATA  chachaiv<>+60(SB)/4, $0x6F0E9495
-GLOBL chachaiv<>(SB), RODATA|NOPTR, $64
+DATA  siphashiv<>+0(SB)/8, $0x736f6d6570736575
+DATA  siphashiv<>+8(SB)/8, $0x646f72616e646f6d
+DATA  siphashiv<>+16(SB)/8, $0x6c7967656e657261
+DATA  siphashiv<>+24(SB)/8, $0x7465646279746573
+GLOBL siphashiv<>(SB), RODATA|NOPTR, $4*8
 
 DATA permute64+0x00(SB)/8, $0
 DATA permute64+0x08(SB)/8, $2

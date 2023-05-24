@@ -570,7 +570,7 @@ func (a *aggtable) writeRows(delims []vmref, rp *rowParams) error {
 				continue
 			}
 
-			h := hashmem[i*2]
+			h := hashmem[i] // first 64 bits of 128-bit hash in lane i
 			off, ok := a.tree.insertSlow(h)
 			if !ok {
 				continue

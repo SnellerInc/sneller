@@ -43,7 +43,7 @@ scalar_loop:
     MOVB    BL, (R15)(DX*1)
 
 loop_tail:
-    ADDQ    $16, R8
+    ADDQ    $8, R8
     SHRL    $1, R14
     JNZ     scalar_loop
 
@@ -129,7 +129,7 @@ iter_rows:
 #undef AGG_BUFFER_PTR
 
 skip:
-    ADDQ    $16, HASHMEM_PTR // next 128-bit hash
+    ADDQ    $8, HASHMEM_PTR    // next 64-bit hash word
     ADDQ    $4, BYTEBUCKET_PTR // next bucket
     SHRQ    $1, CURRENT_MASK
     JNZ     iter_rows

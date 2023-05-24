@@ -1302,15 +1302,15 @@ where Make in (
 		{
 			query: `SELECT APPROX_COUNT_DISTINCT(Make) AS "count", APPROX_COUNT_DISTINCT(foo) AS "count2" FROM 'parking3.ion'`,
 			expectedRows: []string{
-				`{"count": 60, "count2": 0}`,
+				`{"count": 59, "count2": 0}`,
 			},
 		},
 		{
 			query: `SELECT Color, APPROX_COUNT_DISTINCT(Make) FROM 'parking.10n' GROUP BY Color ORDER BY Color LIMIT 5`,
 			expectedRows: []string{
 				`{"Color": "BG", "count": 2}`,
-				`{"Color": "BK", "count": 36}`,
-				`{"Color": "BL", "count": 24}`,
+				`{"Color": "BK", "count": 35}`,
+				`{"Color": "BL", "count": 23}`,
 				`{"Color": "BN", "count": 4}`,
 				`{"Color": "BR", "count": 3}`,
 			},

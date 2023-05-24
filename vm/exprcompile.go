@@ -1175,16 +1175,16 @@ func (h *hashImm) precompute(p *prog) {
 
 	// gather up to 4 values before hashing
 	var tmp ion.Buffer
-	var endpos [4]uint32
+	var endpos [8]uint32
 	var pos int
 
 	flush := func(n int) {
 		buf := tmp.Bytes()
 		// ensure a movq at buf[len(buf)-1] will touch valid memory:
 		buf = slices.Grow(buf, 7)
-		ret := chacha8x4(&buf[0], endpos)
+		ret := siphashx8(0, 0, &buf[0], &endpos)
 		for i := 0; i < n; i++ {
-			n, _ := tree.insertSlow(binary.LittleEndian.Uint64(ret[i][:]))
+			n, _ := tree.insertSlow(ret[0][i])
 			positions = append(positions, n)
 		}
 		pos = 0
@@ -1201,8 +1201,8 @@ func (h *hashImm) precompute(p *prog) {
 		enc(&tmp, d)
 		endpos[pos] = uint32(tmp.Size())
 		pos++
-		if pos == 4 {
-			flush(4)
+		if pos == len(endpos) {
+			flush(len(endpos))
 		}
 		return true
 	})
@@ -1211,7 +1211,7 @@ func (h *hashImm) precompute(p *prog) {
 	}
 	if pos > 0 {
 		valid := pos
-		for pos < 4 {
+		for pos < len(endpos) {
 			// duplicate zero-width lanes up to 4
 			endpos[pos] = endpos[pos-1]
 			pos++
@@ -1260,16 +1260,16 @@ func (h *hashSetImm) precompute() {
 	// gather up to 4 values before hashing
 	var tmp ion.Buffer
 	var empty ion.Symtab
-	var endpos [4]uint32
+	var endpos [8]uint32
 	var pos int
 
 	flush := func(n int) {
 		buf := tmp.Bytes()
 		// ensure a movq at buf[len(buf)-1] will touch valid memory:
 		buf = slices.Grow(buf, 7)
-		ret := chacha8x4(&buf[0], endpos)
+		ret := siphashx8(0, 0, &buf[0], &endpos)
 		for i := 0; i < n; i++ {
-			tree.insertSlow(binary.LittleEndian.Uint64(ret[i][:]))
+			tree.insertSlow(ret[0][i])
 		}
 		pos = 0
 		tmp.Set(buf[:0])
@@ -1285,8 +1285,8 @@ func (h *hashSetImm) precompute() {
 		enc(&tmp, d)
 		endpos[pos] = uint32(tmp.Size())
 		pos++
-		if pos == 4 {
-			flush(4)
+		if pos == len(endpos) {
+			flush(len(endpos))
 		}
 		return true
 	})
@@ -1295,7 +1295,7 @@ func (h *hashSetImm) precompute() {
 	}
 	if pos > 0 {
 		valid := pos
-		for pos < 4 {
+		for pos < len(endpos) {
 			// duplicate zero-width lanes up to 4
 			endpos[pos] = endpos[pos-1]
 			pos++
@@ -1383,17 +1383,17 @@ func (p *prog) mkhash(st *symtab, imm interface{}) *radixTree64 {
 
 	// batches of 4
 	var pos int
-	var endpos [4]uint32
-	var recent [4]ion.Datum
+	var endpos [8]uint32
+	var recent [8]ion.Datum
 
 	flush := func(n int) {
 		buf := tmp.Bytes()
 		buf = slices.Grow(buf, 7)
-		ret := chacha8x4(&buf[0], endpos)
+		ret := siphashx8(0, 0, &buf[0], &endpos)
 		tmp.Set(buf[:0])
 		for i := 0; i < n; i++ {
 			putval(&tmp, recent[i])
-			buf, _ := tree.Insert(binary.LittleEndian.Uint64(ret[i][:]))
+			buf, _ := tree.Insert(ret[0][i])
 			data := st.slab.malloc(tmp.Size())
 			copy(data, tmp.Bytes())
 			pos, ok := vmdispl(data)
@@ -1411,15 +1411,15 @@ func (p *prog) mkhash(st *symtab, imm interface{}) *radixTree64 {
 		endpos[pos] = uint32(tmp.Size())
 		recent[pos] = v
 		pos++
-		if pos == 4 {
-			flush(4)
+		if pos == len(endpos) {
+			flush(len(endpos))
 			pos = 0
 		}
 		return true
 	})
 	if pos > 0 {
 		valid := pos
-		for pos < 4 {
+		for pos < len(endpos) {
 			// duplicate zero-width lanes up to 4
 			endpos[pos] = endpos[pos-1]
 			pos++
@@ -1439,9 +1439,9 @@ func (p *prog) mktree(st *symtab, imm interface{}) *radixTree64 {
 
 	values := hset.set
 	tree := newRadixTree(0)
-	// gather up to 4 values before hashing
+	// gather up to 8 values before hashing
 	var tmp ion.Buffer
-	var endpos [4]uint32
+	var endpos [8]uint32
 	var pos int
 
 	enc := values.Transcoder(&st.Symtab)
@@ -1453,9 +1453,9 @@ func (p *prog) mktree(st *symtab, imm interface{}) *radixTree64 {
 			buf := tmp.Bytes()
 			// ensure a movq at buf[len(buf)-1] will touch valid memory:
 			buf = slices.Grow(buf, 7)
-			ret := chacha8x4(&buf[0], endpos)
+			ret := siphashx8(0, 0, &buf[0], &endpos)
 			for i := 0; i < 4; i++ {
-				tree.insertSlow(binary.LittleEndian.Uint64(ret[i][:]))
+				tree.insertSlow(ret[0][i])
 			}
 			pos = 0
 			tmp.Set(buf[:0])
@@ -1464,16 +1464,16 @@ func (p *prog) mktree(st *symtab, imm interface{}) *radixTree64 {
 	})
 	if pos > 0 {
 		valid := pos
-		for pos < 4 {
+		for pos < len(endpos) {
 			// duplicate zero-width lanes up to 4
 			endpos[pos] = endpos[pos-1]
 			pos++
 		}
 		buf := tmp.Bytes()
 		buf = slices.Grow(buf, 7)
-		ret := chacha8x4(&buf[0], endpos)
+		ret := siphashx8(0, 0, &buf[0], &endpos)
 		for i := 0; i < valid; i++ {
-			tree.insertSlow(binary.LittleEndian.Uint64(ret[i][:]))
+			tree.insertSlow(ret[0][i])
 		}
 	}
 	return tree

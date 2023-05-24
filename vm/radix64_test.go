@@ -21,6 +21,8 @@ import (
 
 	"github.com/SnellerInc/sneller/expr"
 	"github.com/SnellerInc/sneller/ion"
+
+	"github.com/dchest/siphash"
 )
 
 // walk the tree and check that each value
@@ -125,9 +127,7 @@ func TestRadixBytecodeFind(t *testing.T) {
 		if obj == nil {
 			continue
 		}
-		h := make([]byte, 16)
-		chacha8Hash(obj, h)
-		h64 := binary.LittleEndian.Uint64(h)
+		h64, _ := siphash.Hash128(0, 0, obj)
 		hashes = append(hashes, h64)
 		t.Logf("row %d: hash %x", i, h64)
 		_, _ = agt.tree.Insert(h64)
@@ -141,6 +141,9 @@ func TestRadixBytecodeFind(t *testing.T) {
 	abort := uint16(0)
 	n = agt.fasteval(first16, &abort)
 	if n != 16 {
+		slot := agt.bc.errinfo >> 3
+		hashmem := agt.bc.vstack[slot : slot+16]
+		t.Logf("hashes: %x", hashmem)
 		t.Fatalf("n = %d", n)
 	}
 	if abort != 0 {
@@ -229,7 +232,6 @@ func TestRadixBytecodeInsert(t *testing.T) {
 	if len(agt.pairs) != 59 {
 		t.Errorf("distinct=%d, wanted %d", len(agt.pairs), 59)
 	}
-	hmem := make([]byte, 16)
 	names := make(map[string]bool)
 	results := make(map[string]int)
 	for i := range agt.pairs {
@@ -243,8 +245,7 @@ func TestRadixBytecodeInsert(t *testing.T) {
 			t.Errorf("grouped name %q twice", str)
 		}
 		names[str] = true
-		chacha8Hash(repr, hmem)
-		h := binary.LittleEndian.Uint64(hmem)
+		h, _ := siphash.Hash128(0, 0, repr)
 		// note: hashof can return either hash(repr) or rotl(hash(repr), 32)
 		// depending on how the item was inserted into the table
 		if h != hash && h != bits.RotateLeft64(hash, 32) {
@@ -368,8 +369,7 @@ func TestRadixBytecodeInsert(t *testing.T) {
 		if err != nil {
 			t.Errorf("%x not an ion string...?", repr)
 		}
-		chacha8Hash(repr, hmem)
-		h := binary.LittleEndian.Uint64(hmem)
+		h, _ := siphash.Hash128(0, 0, repr)
 		// note: hashof can return either hash(repr) or rotl(hash(repr), 32)
 		// depending on how the item was inserted into the table
 		if h != hash && h != bits.RotateLeft64(hash, 32) {

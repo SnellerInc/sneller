@@ -57,14 +57,7 @@ doit:
   ADDQ        VIRT_VALUES, R8
   VMOVDQU64   0(R8), Z15
   VMOVDQU64   64(R8), Z16
-  VPUNPCKLQDQ Z16, Z15, Z15
-  VMOVDQU64   128(R8), Z16
-  VMOVDQU64   192(R8), Z17
-  VPUNPCKLQDQ Z17, Z16, Z16
-  VMOVDQU64   permute64+0(SB), Z18
-  VPERMQ      Z15, Z18, Z15                      // Z15 = low 8 hashes (64-bit)
-  VPERMQ      Z16, Z18, Z16                      // Z16 = hi 8 ''
-  VMOVDQA64   Z15, Z17                           // Z17, Z18 = temporaries for rotated hashes
+  VMOVDQA64   Z15, Z17         // Z17, Z18 = temporaries for rotated hashes
   VMOVDQA64   Z16, Z18
 
   // handle some easy deduplication within 8-lane chunks
