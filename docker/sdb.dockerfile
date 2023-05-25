@@ -10,4 +10,7 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -buildmode=exe -o /
 
 FROM alpine:latest
 COPY --from=build /app/output/sdb /usr/local/bin
+
+RUN wget -c https://github.com/jupiter/parquet2json/releases/download/v2.0.2/parquet2json-i686-unknown-linux-musl.tar.gz -O - | tar xz -C /usr/local/bin
+
 ENTRYPOINT ["/usr/local/bin/sdb"]
