@@ -17,6 +17,7 @@ package main
 import (
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -146,6 +147,12 @@ func (s *server) queryHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	default:
 		http.Error(w, "invalid 'Accept' header", http.StatusBadRequest)
+		return
+	}
+
+	statsOptIn := r.URL.Query().Has("stats")
+	if encodingFormat == tnproto.OutputChunkedJSONArray && statsOptIn {
+		http.Error(w, "cannot return stats with normal JSON output (try NDJSON)", http.StatusBadRequest)
 		return
 	}
 
@@ -329,8 +336,13 @@ func (s *server) queryHandler(w http.ResponseWriter, r *http.Request) {
 	if sendTrailer {
 		setTiming(w, elapsed, &stats)
 	}
-	if encodingFormat == tnproto.OutputChunkedIon {
-		writeStatus(w, &stats, tree.Results, tree.ResultTypes)
+	switch encodingFormat {
+	case tnproto.OutputChunkedIon:
+		writeStatusIon(w, &stats, tree.Results, tree.ResultTypes)
+	case tnproto.OutputChunkedJSON:
+		if statsOptIn {
+			writeStatusJSON(w, &stats, tree.Results, tree.ResultTypes)
+		}
 	}
 	s.logger.Printf("tenant %s query ID %s duration %s bytes %d hits %d misses %d",
 		tenantID, queryID, elapsed, stats.BytesScanned, stats.CacheHits, stats.CacheMisses)
@@ -427,7 +439,7 @@ func writeError(w http.ResponseWriter, errtext string) {
 	w.Write(tmp.Bytes())
 }
 
-func writeStatus(w http.ResponseWriter, stats *plan.ExecStats, results []expr.Binding, types []expr.TypeSet) {
+func writeStatusIon(w http.ResponseWriter, stats *plan.ExecStats, results []expr.Binding, types []expr.TypeSet) {
 	var tmp ion.Buffer
 	var st ion.Symtab
 	resultsym := st.Intern("final_status")
@@ -460,4 +472,24 @@ func writeStatus(w http.ResponseWriter, stats *plan.ExecStats, results []expr.Bi
 	st.Marshal(&tmp, true)
 	w.Write(tmp.Bytes()[split:])
 	w.Write(tmp.Bytes()[:split])
+}
+
+func writeStatusJSON(w http.ResponseWriter, stats *plan.ExecStats, results []expr.Binding, types []expr.TypeSet) {
+	result := map[string]any{
+		"$sneller_final_status$": map[string]any{
+			"hits":    stats.CacheHits,
+			"misses":  stats.CacheMisses,
+			"scanned": stats.BytesScanned,
+		},
+	}
+
+	if len(results) > 0 && len(types) > 0 {
+		resultSet := make(map[string]string)
+		for i, bound := range results {
+			resultSet[bound.Result()] = types[i].String()
+		}
+		result["result_set"] = resultSet
+	}
+
+	json.NewEncoder(w).Encode(&result)
 }
