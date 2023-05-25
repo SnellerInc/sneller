@@ -1,0 +1,83 @@
+{
+    "$doc_count": 13014,
+    "2": {
+        "$groups$": [
+            {
+                "$keys$": [1647648000],
+                "$results$": { "$doc_count": 2542 },
+                "$nested$": {
+                    "3": {
+                        "$groups$": [
+                            { "$keys$": ["No Delay"           ], "$results$": { "$doc_count": 1919 }},
+                            { "$keys$": ["NAS Delay"          ], "$results$": { "$doc_count":  177 }},
+                            { "$keys$": ["Late Aircraft Delay"], "$results$": { "$doc_count":  168 }},
+                            { "$keys$": ["Carrier Delay"      ], "$results$": { "$doc_count":  156 }},
+                            { "$keys$": ["Weather Delay"      ], "$results$": { "$doc_count":   68 }}
+                        ]
+                    }
+                }
+            },
+            {
+                "$keys$": [1648512000],
+                "$results$": { "$doc_count": 3126 },
+                "$nested$": {
+                    "3": {
+                        "$groups$": [
+                            { "$keys$": ["No Delay"           ], "$results$": { "$doc_count": 2357 }},
+                            { "$keys$": ["Late Aircraft Delay"], "$results$": { "$doc_count":  235 }},
+                            { "$keys$": ["NAS Delay"          ], "$results$": { "$doc_count":  197 }},
+                            { "$keys$": ["Carrier Delay"      ], "$results$": { "$doc_count":  194 }},
+                            { "$keys$": ["Weather Delay"      ], "$results$": { "$doc_count":   76 }}
+                        ]
+                    }
+                }
+            },
+            {
+                "$keys$": [1649376000],
+                "$results$": { "$doc_count": 3011 },
+                "$nested$": {
+                    "3": {
+                        "$groups$": [
+                            { "$keys$": ["No Delay"           ], "$results$": { "$doc_count": 2249 }},
+                            { "$keys$": ["Carrier Delay"      ], "$results$": { "$doc_count":  213 }},
+                            { "$keys$": ["NAS Delay"          ], "$results$": { "$doc_count":  207 }},
+                            { "$keys$": ["Late Aircraft Delay"], "$results$": { "$doc_count":  198 }},
+                            { "$keys$": ["Security Delay"     ], "$results$": { "$doc_count":   79 }}
+                        ]
+                    }
+                }
+            },
+            {
+                "$keys$": [1650240000],
+                "$results$": { "$doc_count": 3168},
+                "$nested$": {
+                    "3": {
+                        "$groups$": [
+                            { "$keys$": ["No Delay"           ], "$results$": { "$doc_count": 2345 }},
+                            { "$keys$": ["Late Aircraft Delay"], "$results$": { "$doc_count":  228 }},
+                            { "$keys$": ["Carrier Delay"      ], "$results$": { "$doc_count":  225 }},
+                            { "$keys$": ["NAS Delay"          ], "$results$": { "$doc_count":  217 }},
+                            { "$keys$": ["Security Delay"     ], "$results$": { "$doc_count":   84 }}
+                        ]
+                    }
+                }
+            },
+            {
+                "$keys$": [1651104000],
+                "$results$": { "$doc_count": 1167},
+                "$nested$": {
+                    "3": {
+                        "$groups$": [
+                            { "$keys$": ["No Delay"           ], "$results$": { "$doc_count": 874 }},
+                            { "$keys$": ["Carrier Delay"      ], "$results$": { "$doc_count":  75 }},
+                            { "$keys$": ["NAS Delay"          ], "$results$": { "$doc_count":  75 }},
+                            { "$keys$": ["Late Aircraft Delay"], "$results$": { "$doc_count":  74 }},
+                            { "$keys$": ["Security Delay"     ], "$results$": { "$doc_count":  42 }}
+                        ]
+                    }
+
+                }
+            }
+        ]
+    }
+}

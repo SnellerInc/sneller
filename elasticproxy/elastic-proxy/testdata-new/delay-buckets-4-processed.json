@@ -1,0 +1,20 @@
+{
+    "$doc_count": 3270,
+    "2": {
+        "$groups$": [
+            { "$keys$": [  0], "$results$": { "$doc_count": 134 }},
+            { "$keys$": [ 30], "$results$": { "$doc_count": 278 }},
+            { "$keys$": [ 60], "$results$": { "$doc_count": 276 }},
+            { "$keys$": [ 90], "$results$": { "$doc_count": 246 }},
+            { "$keys$": [120], "$results$": { "$doc_count": 264 }},
+            { "$keys$": [150], "$results$": { "$doc_count": 270 }},
+            { "$keys$": [180], "$results$": { "$doc_count": 252 }},
+            { "$keys$": [210], "$results$": { "$doc_count": 294 }},
+            { "$keys$": [240], "$results$": { "$doc_count": 305 }},
+            { "$keys$": [270], "$results$": { "$doc_count": 297 }},
+            { "$keys$": [300], "$results$": { "$doc_count": 261 }},
+            { "$keys$": [330], "$results$": { "$doc_count": 251 }},
+            { "$keys$": [360], "$results$": { "$doc_count": 142 }}
+        ]
+    }
+}

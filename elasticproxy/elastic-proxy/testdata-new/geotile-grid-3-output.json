@@ -1,0 +1,17 @@
+{
+    "$bucket:gridSplit%0": [
+        { "$key:gridSplit%0": "7/23/41", "$doc_count": 135, "sum_of_FlightDelayMin": 4770 },
+        { "$key:gridSplit%0": "7/29/43", "$doc_count": 114, "sum_of_FlightDelayMin": 5025 },
+        { "$key:gridSplit%0": "7/20/44", "$doc_count":  47, "sum_of_FlightDelayMin": 2115 },
+        { "$key:gridSplit%0": "7/25/45", "$doc_count":  38, "sum_of_FlightDelayMin":  930 },
+        { "$key:gridSplit%0": "7/22/44", "$doc_count":  34, "sum_of_FlightDelayMin": 1755 },
+        { "$key:gridSplit%0": "7/31/47", "$doc_count":  32, "sum_of_FlightDelayMin": 2040 },
+        { "$key:gridSplit%0": "7/31/46", "$doc_count":  32, "sum_of_FlightDelayMin": 1950 },
+        { "$key:gridSplit%0": "7/30/47", "$doc_count":  27, "sum_of_FlightDelayMin": 1155 },
+        { "$key:gridSplit%0": "7/20/45", "$doc_count":  26, "sum_of_FlightDelayMin": 1005 },
+        { "$key:gridSplit%0": "7/26/47", "$doc_count":  25, "sum_of_FlightDelayMin":  840 },
+        { "$key:gridSplit%0": "7/30/46", "$doc_count":  25, "sum_of_FlightDelayMin": 1650 },
+        { "$key:gridSplit%0": "7/31/45", "$doc_count":  15, "sum_of_FlightDelayMin": 1110 }
+    ],
+    "$total_count": 13014
+}

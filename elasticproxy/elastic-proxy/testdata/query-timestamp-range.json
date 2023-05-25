@@ -1,0 +1,23 @@
+{
+  "query": {
+    "bool": {
+      "must": [],
+      "filter": [
+        {
+          "match_all": {}
+        },
+        {
+          "range": {
+            "timestamp": {
+              "gte": "2021-08-05T00:23:52.267Z",
+              "lte": "2021-08-05T07:57:24.961Z",
+              "format": "strict_date_optional_time"
+            }
+          }
+        }
+      ],
+      "should": [],
+      "must_not": []
+    }
+  }
+}

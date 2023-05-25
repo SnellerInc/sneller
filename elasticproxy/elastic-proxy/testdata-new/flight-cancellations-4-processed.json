@@ -1,0 +1,9 @@
+{
+    "$doc_count": 13014,
+    "2": {
+        "$groups$": [
+            { "$keys$": [false], "$results$": { "$doc_count": 11344 }},
+            { "$keys$": [true ], "$results$": { "$doc_count":  1670 }}
+        ]
+    }
+}

@@ -1,0 +1,1 @@
+(("$source"."field2" ~ '(^|[ \t])(?i)abc([ \t]|$)') OR ("$source"."field1" ~ '(^|[ \t])(?i)def([ \t]|$)'))

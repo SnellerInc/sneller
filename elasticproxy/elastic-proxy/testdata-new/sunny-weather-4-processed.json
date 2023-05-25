@@ -1,0 +1,385 @@
+{
+    "$doc_count": 13014,
+    "events_over_time": {
+        "$groups$": [
+            {
+                "$keys$": [
+                    1647820800
+                ],
+                "$results$": {
+                    "$doc_count": 339,
+                    "sunny_weather:$doc_count": 60
+                }
+            },
+            {
+                "$keys$": [
+                    1647907200
+                ],
+                "$results$": {
+                    "$doc_count": 297,
+                    "sunny_weather:$doc_count": 47
+                }
+            },
+            {
+                "$keys$": [
+                    1647993600
+                ],
+                "$results$": {
+                    "$doc_count": 342,
+                    "sunny_weather:$doc_count": 51
+                }
+            },
+            {
+                "$keys$": [
+                    1648080000
+                ],
+                "$results$": {
+                    "$doc_count": 322,
+                    "sunny_weather:$doc_count": 60
+                }
+            },
+            {
+                "$keys$": [
+                    1648166400
+                ],
+                "$results$": {
+                    "$doc_count": 338,
+                    "sunny_weather:$doc_count": 64
+                }
+            },
+            {
+                "$keys$": [
+                    1648252800
+                ],
+                "$results$": {
+                    "$doc_count": 345,
+                    "sunny_weather:$doc_count": 57
+                }
+            },
+            {
+                "$keys$": [
+                    1648339200
+                ],
+                "$results$": {
+                    "$doc_count": 213,
+                    "sunny_weather:$doc_count": 28
+                }
+            },
+            {
+                "$keys$": [
+                    1648425600
+                ],
+                "$results$": {
+                    "$doc_count": 346,
+                    "sunny_weather:$doc_count": 58
+                }
+            },
+            {
+                "$keys$": [
+                    1648512000
+                ],
+                "$results$": {
+                    "$doc_count": 331,
+                    "sunny_weather:$doc_count": 55
+                }
+            },
+            {
+                "$keys$": [
+                    1648598400
+                ],
+                "$results$": {
+                    "$doc_count": 314,
+                    "sunny_weather:$doc_count": 50
+                }
+            },
+            {
+                "$keys$": [
+                    1648684800
+                ],
+                "$results$": {
+                    "$doc_count": 298,
+                    "sunny_weather:$doc_count": 52
+                }
+            },
+            {
+                "$keys$": [
+                    1648771200
+                ],
+                "$results$": {
+                    "$doc_count": 332,
+                    "sunny_weather:$doc_count": 60
+                }
+            },
+            {
+                "$keys$": [
+                    1648857600
+                ],
+                "$results$": {
+                    "$doc_count": 328,
+                    "sunny_weather:$doc_count": 56
+                }
+            },
+            {
+                "$keys$": [
+                    1648944000
+                ],
+                "$results$": {
+                    "$doc_count": 219,
+                    "sunny_weather:$doc_count": 34
+                }
+            },
+            {
+                "$keys$": [
+                    1649030400
+                ],
+                "$results$": {
+                    "$doc_count": 338,
+                    "sunny_weather:$doc_count": 68
+                }
+            },
+            {
+                "$keys$": [
+                    1649116800
+                ],
+                "$results$": {
+                    "$doc_count": 322,
+                    "sunny_weather:$doc_count": 55
+                }
+            },
+            {
+                "$keys$": [
+                    1649203200
+                ],
+                "$results$": {
+                    "$doc_count": 313,
+                    "sunny_weather:$doc_count": 43
+                }
+            },
+            {
+                "$keys$": [
+                    1649289600
+                ],
+                "$results$": {
+                    "$doc_count": 331,
+                    "sunny_weather:$doc_count": 43
+                }
+            },
+            {
+                "$keys$": [
+                    1649376000
+                ],
+                "$results$": {
+                    "$doc_count": 321,
+                    "sunny_weather:$doc_count": 46
+                }
+            },
+            {
+                "$keys$": [
+                    1649462400
+                ],
+                "$results$": {
+                    "$doc_count": 300,
+                    "sunny_weather:$doc_count": 52
+                }
+            },
+            {
+                "$keys$": [
+                    1649548800
+                ],
+                "$results$": {
+                    "$doc_count": 210,
+                    "sunny_weather:$doc_count": 33
+                }
+            },
+            {
+                "$keys$": [
+                    1649635200
+                ],
+                "$results$": {
+                    "$doc_count": 336,
+                    "sunny_weather:$doc_count": 70
+                }
+            },
+            {
+                "$keys$": [
+                    1649721600
+                ],
+                "$results$": {
+                    "$doc_count": 306,
+                    "sunny_weather:$doc_count": 62
+                }
+            },
+            {
+                "$keys$": [
+                    1649808000
+                ],
+                "$results$": {
+                    "$doc_count": 318,
+                    "sunny_weather:$doc_count": 45
+                }
+            },
+            {
+                "$keys$": [
+                    1649894400
+                ],
+                "$results$": {
+                    "$doc_count": 334,
+                    "sunny_weather:$doc_count": 60
+                }
+            },
+            {
+                "$keys$": [
+                    1649980800
+                ],
+                "$results$": {
+                    "$doc_count": 345,
+                    "sunny_weather:$doc_count": 53
+                }
+            },
+            {
+                "$keys$": [
+                    1650067200
+                ],
+                "$results$": {
+                    "$doc_count": 301,
+                    "sunny_weather:$doc_count": 51
+                }
+            },
+            {
+                "$keys$": [
+                    1650153600
+                ],
+                "$results$": {
+                    "$doc_count": 240,
+                    "sunny_weather:$doc_count": 43
+                }
+            },
+            {
+                "$keys$": [
+                    1650240000
+                ],
+                "$results$": {
+                    "$doc_count": 344,
+                    "sunny_weather:$doc_count": 69
+                }
+            },
+            {
+                "$keys$": [
+                    1650326400
+                ],
+                "$results$": {
+                    "$doc_count": 335,
+                    "sunny_weather:$doc_count": 68
+                }
+            },
+            {
+                "$keys$": [
+                    1650412800
+                ],
+                "$results$": {
+                    "$doc_count": 330,
+                    "sunny_weather:$doc_count": 50
+                }
+            },
+            {
+                "$keys$": [
+                    1650499200
+                ],
+                "$results$": {
+                    "$doc_count": 324,
+                    "sunny_weather:$doc_count": 65
+                }
+            },
+            {
+                "$keys$": [
+                    1650585600
+                ],
+                "$results$": {
+                    "$doc_count": 329,
+                    "sunny_weather:$doc_count": 49
+                }
+            },
+            {
+                "$keys$": [
+                    1650672000
+                ],
+                "$results$": {
+                    "$doc_count": 297,
+                    "sunny_weather:$doc_count": 52
+                }
+            },
+            {
+                "$keys$": [
+                    1650758400
+                ],
+                "$results$": {
+                    "$doc_count": 222,
+                    "sunny_weather:$doc_count": 28
+                }
+            },
+            {
+                "$keys$": [
+                    1650844800
+                ],
+                "$results$": {
+                    "$doc_count": 325,
+                    "sunny_weather:$doc_count": 45
+                }
+            },
+            {
+                "$keys$": [
+                    1650931200
+                ],
+                "$results$": {
+                    "$doc_count": 337,
+                    "sunny_weather:$doc_count": 64
+                }
+            },
+            {
+                "$keys$": [
+                    1651017600
+                ],
+                "$results$": {
+                    "$doc_count": 325,
+                    "sunny_weather:$doc_count": 60
+                }
+            },
+            {
+                "$keys$": [
+                    1651104000
+                ],
+                "$results$": {
+                    "$doc_count": 299,
+                    "sunny_weather:$doc_count": 44
+                }
+            },
+            {
+                "$keys$": [
+                    1651190400
+                ],
+                "$results$": {
+                    "$doc_count": 326,
+                    "sunny_weather:$doc_count": 52
+                }
+            },
+            {
+                "$keys$": [
+                    1651276800
+                ],
+                "$results$": {
+                    "$doc_count": 338,
+                    "sunny_weather:$doc_count": 66
+                }
+            },
+            {
+                "$keys$": [
+                    1651363200
+                ],
+                "$results$": {
+                    "$doc_count": 204,
+                    "sunny_weather:$doc_count": 33
+                }
+            }
+        ]
+    }
+}

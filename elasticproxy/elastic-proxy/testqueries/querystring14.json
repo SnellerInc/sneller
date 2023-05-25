@@ -1,0 +1,6 @@
+{
+    "query_string": {
+        "default_field": "test",
+        "query": "Lease AND input.request.namespace:kube\\-node\\-lease"
+    }
+}

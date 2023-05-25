@@ -1,0 +1,28 @@
+{
+    "bool": {
+        "filter": [
+            {
+                "term": {
+                    "tenant": "test"
+                }
+            },
+            {
+                "range": {
+                    "server_timestamp": {
+                        "from": 1650924880212508000,
+                        "include_lower": true,
+                        "include_upper": true,
+                        "to": null
+                    }
+                }
+            }
+        ],
+        "must": {
+            "query_string": {
+                "default_field": "decision",
+                "default_operator": "AND",
+                "query": "test AND foo"
+            }
+        }
+    }
+}

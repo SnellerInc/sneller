@@ -1,0 +1,64 @@
+{
+  "aggs": {
+    "2": {
+      "terms": {
+        "field": "OriginCountry",
+        "order": {
+          "_count": "desc"
+        },
+        "size": 5
+      },
+      "aggs": {
+        "3": {
+          "terms": {
+            "field": "DestCountry",
+            "order": {
+              "_count": "desc"
+            },
+            "size": 5
+          }
+        }
+      }
+    }
+  },
+  "size": 0,
+  "fields": [
+    {
+      "field": "timestamp",
+      "format": "date_time"
+    }
+  ],
+  "script_fields": {},
+  "stored_fields": [
+    "*"
+  ],
+  "runtime_mappings": {
+    "hour_of_day": {
+      "type": "long",
+      "script": {
+        "source": "emit(doc['timestamp'].value.hourOfDay);"
+      }
+    }
+  },
+  "_source": {
+    "excludes": []
+  },
+  "query": {
+    "bool": {
+      "must": [],
+      "filter": [
+        {
+          "range": {
+            "timestamp": {
+              "gte": "2021-09-14T21:26:36.084Z",
+              "lte": "2021-09-15T21:26:36.084Z",
+              "format": "strict_date_optional_time"
+            }
+          }
+        }
+      ],
+      "should": [],
+      "must_not": []
+    }
+  }
+}

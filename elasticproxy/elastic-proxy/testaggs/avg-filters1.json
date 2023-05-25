@@ -1,0 +1,16 @@
+{
+    "size": 0,
+    "aggs": {
+        "t_shirts": {
+            "filters": {
+                "filters" : {
+                    "errors" :   { "term" : { "body" : "error"   }},
+                    "warnings" : { "term" : { "body" : "warning" }}
+                }
+            },
+            "aggs": {
+                "avg_price": { "avg": { "field": "price" } }
+            }
+        }
+    }
+}

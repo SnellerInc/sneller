@@ -1,0 +1,659 @@
+{
+    "$doc_count": 46743,
+    "agg0": {
+        "$groups$": [
+            {
+                "$keys$": [ "United States" ],
+                "$results$": { "$doc_count": 8779 },
+                "$nested$": {
+                    "agg1": {
+                        "$groups$": [
+                            { "$keys$": [ "Computer and Internet Info" ], "$results$": { "$doc_count": 5802 } },
+                            { "$keys$": [ "Educational Institutions" ], "$results$": { "$doc_count": 818 } },
+                            { "$keys$": [ "Web Hosting" ], "$results$": { "$doc_count": 551 } },
+                            { "$keys$": [ "Business and Economy" ], "$results$": { "$doc_count": 364 } },
+                            { "$keys$": [ "Training and Tools" ], "$results$": { "$doc_count": 301 } },
+                            { "$keys$": [ "Society" ], "$results$": { "$doc_count": 264 } },
+                            { "$keys$": [ "Shareware and Freeware" ], "$results$": { "$doc_count": 253 } },
+                            { "$keys$": [ "Shopping" ], "$results$": { "$doc_count": 102 } },
+                            { "$keys$": [ "Reference and Research" ], "$results$": { "$doc_count": 73 } },
+                            { "$keys$": [ "News and Media" ], "$results$": { "$doc_count": 44 } },
+                            { "$keys$": [ "Hacking" ], "$results$": { "$doc_count": 42 } },
+                            { "$keys$": [ "Internet Communications" ], "$results$": { "$doc_count": 37 } },
+                            { "$keys$": [ "Travel" ], "$results$": { "$doc_count": 31 } },
+                            { "$keys$": [ "Internet Portals" ], "$results$": { "$doc_count": 25 } },
+                            { "$keys$": [ "Streaming Media" ], "$results$": { "$doc_count": 21 } },
+                            { "$keys$": [ "Dead Sites" ], "$results$": { "$doc_count": 13 } },
+                            { "$keys$": [ "Parked Domains" ], "$results$": { "$doc_count": 12 } },
+                            { "$keys$": [ "SPAM URLs" ], "$results$": { "$doc_count": 11 } },
+                            { "$keys$": [ "Uncategorized" ], "$results$": { "$doc_count": 9 } },
+                            { "$keys$": [ "Entertainment and Arts" ], "$results$": { "$doc_count": 3 } },
+                            { "$keys$": [ "Content Delivery Networks" ], "$results$": { "$doc_count": 2 } },
+                            { "$keys$": [ "Search Engines" ], "$results$": { "$doc_count": 1 } }
+                        ]
+                    }
+                }
+            },
+            {
+                "$keys$": [ "Taiwan" ],
+                "$results$": { "$doc_count": 381 },
+                "$nested$": {
+                    "agg1": {
+                        "$groups$": [
+                            { "$keys$": [ "Uncategorized" ], "$results$": { "$doc_count": 350 } },
+                            { "$keys$": [ "Internet Portals" ], "$results$": { "$doc_count": 12 } },
+                            { "$keys$": [ "Dead Sites" ], "$results$": { "$doc_count": 10 } },
+                            { "$keys$": [ "Business and Economy" ], "$results$": { "$doc_count": 9 } }
+                        ]
+                    }
+                }
+            },
+            {
+                "$keys$": [ "Canada" ],
+                "$results$": { "$doc_count": 226 },
+                "$nested$": {
+                    "agg1": {
+                        "$groups$": [
+                            { "$keys$": [ "Society" ], "$results$": { "$doc_count": 100 } },
+                            { "$keys$": [ "Entertainment and Arts" ], "$results$": { "$doc_count": 73 } },
+                            { "$keys$": [ "Local Information" ], "$results$": { "$doc_count": 28 } },
+                            { "$keys$": [ "Computer and Internet Info" ], "$results$": { "$doc_count": 16 } },
+                            { "$keys$": [ "Phishing and Other Frauds" ], "$results$": { "$doc_count": 3 } },
+                            { "$keys$": [ "Business and Economy" ], "$results$": { "$doc_count": 2 } },
+                            { "$keys$": [ "News and Media" ], "$results$": { "$doc_count": 1 } },
+                            { "$keys$": [ "Uncategorized" ], "$results$": { "$doc_count": 1 } },
+                            { "$keys$": [ "Individual Stock Advice and Tools" ], "$results$": { "$doc_count": 1 } },
+                            { "$keys$": [ "Parked Domains" ], "$results$": { "$doc_count": 1 } }
+                        ]
+                    }
+                }
+            },
+            {
+                "$keys$": [ "Sweden" ],
+                "$results$": { "$doc_count": 172 },
+                "$nested$": {
+                    "agg1": {
+                        "$groups$": [
+                            { "$keys$": [ "Computer and Internet Info" ], "$results$": { "$doc_count": 91 } },
+                            { "$keys$": [ "Business and Economy" ], "$results$": { "$doc_count": 80 } },
+                            { "$keys$": [ "Dead Sites" ], "$results$": { "$doc_count": 1 } }
+                        ]
+                    }
+                }
+            },
+            {
+                "$keys$": [ "Vietnam" ],
+                "$results$": { "$doc_count": 149 },
+                "$nested$": {
+                    "agg1": {
+                        "$groups$": [
+                            { "$keys$": [ "Malware Sites" ], "$results$": { "$doc_count": 144 } },
+                            { "$keys$": [ "Internet Communications" ], "$results$": { "$doc_count": 3 } },
+                            { "$keys$": [ "Society" ], "$results$": { "$doc_count": 1 } },
+                            { "$keys$": [ "Dead Sites" ], "$results$": { "$doc_count": 1 } }
+                        ]
+                    }
+                }
+            },
+            {
+                "$keys$": [ "Italy" ],
+                "$results$": { "$doc_count": 79 },
+                "$nested$": {
+                    "agg1": {
+                        "$groups$": [
+                            { "$keys$": [ "Computer and Internet Info" ], "$results$": { "$doc_count": 43 } },
+                            { "$keys$": [ "Dead Sites" ], "$results$": { "$doc_count": 17 } },
+                            { "$keys$": [ "Phishing and Other Frauds" ], "$results$": { "$doc_count": 14 } },
+                            { "$keys$": [ "Business and Economy" ], "$results$": { "$doc_count": 3 } },
+                            { "$keys$": [ "Uncategorized" ], "$results$": { "$doc_count": 2 } }
+                        ]
+                    }
+                }
+            },
+            {
+                "$keys$": [ "Japan" ],
+                "$results$": { "$doc_count": 72 },
+                "$nested$": {
+                    "agg1": {
+                        "$groups$": [
+                            { "$keys$": [ "Parked Domains" ], "$results$": { "$doc_count": 21 } },
+                            { "$keys$": [ "Business and Economy" ], "$results$": { "$doc_count": 20 } },
+                            { "$keys$": [ "Internet Portals" ], "$results$": { "$doc_count": 13 } },
+                            { "$keys$": [ "News and Media" ], "$results$": { "$doc_count": 7 } },
+                            { "$keys$": [ "Computer and Internet Info" ], "$results$": { "$doc_count": 7 } },
+                            { "$keys$": [ "Dead Sites" ], "$results$": { "$doc_count": 3 } },
+                            { "$keys$": [ "Reference and Research" ], "$results$": { "$doc_count": 1 } }
+                        ]
+                    }
+                }
+            },
+            {
+                "$keys$": [ "Hong Kong" ],
+                "$results$": { "$doc_count": 56 },
+                "$nested$": {
+                    "agg1": {
+                        "$groups$": [
+                            { "$keys$": [ "Dead Sites" ], "$results$": { "$doc_count": 46 } },
+                            { "$keys$": [ "Web Hosting" ], "$results$": { "$doc_count": 6 } },
+                            { "$keys$": [ "Business and Economy" ], "$results$": { "$doc_count": 4 } }
+                        ]
+                    }
+                }
+            },
+            {
+                "$keys$": [ "Germany" ],
+                "$results$": { "$doc_count": 46 },
+                "$nested$": {
+                    "agg1": {
+                        "$groups$": [
+                            { "$keys$": [ "Business and Economy" ], "$results$": { "$doc_count": 31 } },
+                            { "$keys$": [ "Phishing and Other Frauds" ], "$results$": { "$doc_count": 8 } },
+                            { "$keys$": [ "Dead Sites" ], "$results$": { "$doc_count": 6 } },
+                            { "$keys$": [ "Computer and Internet Info" ], "$results$": { "$doc_count": 1 } }
+                        ]
+                    }
+                }
+            },
+            {
+                "$keys$": [ "Russia" ],
+                "$results$": { "$doc_count": 27 },
+                "$nested$": {
+                    "agg1": {
+                        "$groups$": [
+                            { "$keys$": [ "Computer and Internet Info" ], "$results$": { "$doc_count": 17 } },
+                            { "$keys$": [ "Business and Economy" ], "$results$": { "$doc_count": 4 } },
+                            { "$keys$": [ "Web Hosting" ], "$results$": { "$doc_count": 2 } },
+                            { "$keys$": [ "Uncategorized" ], "$results$": { "$doc_count": 2 } },
+                            { "$keys$": [ "Society" ], "$results$": { "$doc_count": 1 } },
+                            { "$keys$": [ "Questionable" ], "$results$": { "$doc_count": 1 } }
+                        ]
+                    }
+                }
+            },
+            {
+                "$keys$": [ "Thailand" ],
+                "$results$": { "$doc_count": 21 },
+                "$nested$": {
+                    "agg1": {
+                        "$groups$": [
+                            { "$keys$": [ "Business and Economy" ], "$results$": { "$doc_count": 8 } },
+                            { "$keys$": [ "Computer and Internet Info" ], "$results$": { "$doc_count": 6 } },
+                            { "$keys$": [ "Dead Sites" ], "$results$": { "$doc_count": 3 } },
+                            { "$keys$": [ "Shopping" ], "$results$": { "$doc_count": 1 } },
+                            { "$keys$": [ "Phishing and Other Frauds" ], "$results$": { "$doc_count": 1 } },
+                            { "$keys$": [ "Travel" ], "$results$": { "$doc_count": 1 } },
+                            { "$keys$": [ "Religion" ], "$results$": { "$doc_count": 1 } }
+                        ]
+                    }
+                }
+            },
+            {
+                "$keys$": [ "Bulgaria" ],
+                "$results$": { "$doc_count": 21 },
+                "$nested$": {
+                    "agg1": {
+                        "$groups$": [
+                            { "$keys$": [ "Business and Economy" ], "$results$": { "$doc_count": 21 } }
+                        ]
+                    }
+                }
+            },
+            {
+                "$keys$": [ "Colombia" ],
+                "$results$": { "$doc_count": 20 },
+                "$nested$": {
+                    "agg1": {
+                        "$groups$": [
+                            { "$keys$": [ "Religion" ], "$results$": { "$doc_count": 20 } }
+                        ]
+                    }
+                }
+            },
+            {
+                "$keys$": [ "Argentina" ],
+                "$results$": { "$doc_count": 17 },
+                "$nested$": {
+                    "agg1": {
+                        "$groups$": [
+                            { "$keys$": [ "Phishing and Other Frauds" ], "$results$": { "$doc_count": 16 } },
+                            { "$keys$": [ "Uncategorized" ], "$results$": { "$doc_count": 1 } }
+                        ]
+                    }
+                }
+            },
+            {
+                "$keys$": [ "France" ],
+                "$results$": { "$doc_count": 17 },
+                "$nested$": {
+                    "agg1": {
+                        "$groups$": [
+                            { "$keys$": [ "Web Hosting" ], "$results$": { "$doc_count": 8 } },
+                            { "$keys$": [ "Content Delivery Networks" ], "$results$": { "$doc_count": 2 } },
+                            { "$keys$": [ "Travel" ], "$results$": { "$doc_count": 2 } },
+                            { "$keys$": [ "Search Engines" ], "$results$": { "$doc_count": 2 } },
+                            { "$keys$": [ "Shopping" ], "$results$": { "$doc_count": 1 } },
+                            { "$keys$": [ "Training and Tools" ], "$results$": { "$doc_count": 1 } },
+                            { "$keys$": [ "Business and Economy" ], "$results$": { "$doc_count": 1 } }
+                        ]
+                    }
+                }
+            },
+            {
+                "$keys$": [ "Singapore" ],
+                "$results$": { "$doc_count": 15 },
+                "$nested$": {
+                    "agg1": {
+                        "$groups$": [
+                            { "$keys$": [ "Content Delivery Networks" ], "$results$": { "$doc_count": 10 } },
+                            { "$keys$": [ "Computer and Internet Info" ], "$results$": { "$doc_count": 3 } },
+                            { "$keys$": [ "Business and Economy" ], "$results$": { "$doc_count": 1 } },
+                            { "$keys$": [ "Fashion and Beauty" ], "$results$": { "$doc_count": 1 } }
+                        ]
+                    }
+                }
+            },
+            {
+                "$keys$": [ "Brazil" ],
+                "$results$": { "$doc_count": 13 },
+                "$nested$": {
+                    "agg1": {
+                        "$groups$": [
+                            { "$keys$": [ "Uncategorized" ], "$results$": { "$doc_count": 5 } },
+                            { "$keys$": [ "Sports" ], "$results$": { "$doc_count": 3 } },
+                            { "$keys$": [ "Religion" ], "$results$": { "$doc_count": 2 } },
+                            { "$keys$": [ "Business and Economy" ], "$results$": { "$doc_count": 2 } },
+                            { "$keys$": [ "Computer and Internet Info" ], "$results$": { "$doc_count": 1 } }
+                        ]
+                    }
+                }
+            },
+            {
+                "$keys$": [ "Spain" ],
+                "$results$": { "$doc_count": 13 },
+                "$nested$": {
+                    "agg1": {
+                        "$groups$": [
+                            { "$keys$": [ "Dead Sites" ], "$results$": { "$doc_count": 11 } },
+                            { "$keys$": [ "Business and Economy" ], "$results$": { "$doc_count": 2 } }
+                        ]
+                    }
+                }
+            },
+            {
+                "$keys$": [ "Israel" ],
+                "$results$": { "$doc_count": 12 },
+                "$nested$": {
+                    "agg1": {
+                        "$groups$": [
+                            { "$keys$": [ "Computer and Internet Info" ], "$results$": { "$doc_count": 11 } },
+                            { "$keys$": [ "Religion" ], "$results$": { "$doc_count": 1 } }
+                        ]
+                    }
+                }
+            },
+            {
+                "$keys$": [ "Finland" ],
+                "$results$": { "$doc_count": 9 },
+                "$nested$": {
+                    "agg1": {
+                        "$groups$": [
+                            { "$keys$": [ "Phishing and Other Frauds" ], "$results$": { "$doc_count": 6 } },
+                            { "$keys$": [ "Computer and Internet Info" ], "$results$": { "$doc_count": 3 } }
+                        ]
+                    }
+                }
+            },
+            {
+                "$keys$": [ "Australia" ],
+                "$nested$": {
+                    "agg1": {
+                        "$groups$": [
+                            { "$keys$": [ "Business and Economy" ], "$results$": { "$doc_count": 6 } },
+                            { "$keys$": [ "Web Hosting" ], "$results$": { "$doc_count": 2 } },
+                            { "$keys$": [ "Internet Portals" ], "$results$": { "$doc_count": 1 } }
+                        ]
+                    }
+                }
+            },
+            {
+                "$keys$": [ "India" ],
+                "$nested$": {
+                    "agg1": {
+                        "$groups$": [
+                            { "$keys$": [ "Computer and Internet Info" ], "$results$": { "$doc_count": 4 } },
+                            { "$keys$": [ "Business and Economy" ], "$results$": { "$doc_count": 2 } },
+                            { "$keys$": [ "Web Hosting" ], "$results$": { "$doc_count": 2 } }
+                        ]
+                    }
+                }
+            },
+            {
+                "$keys$": [ "Poland" ],
+                "$nested$": {
+                    "agg1": {
+                        "$groups$": [
+                            { "$keys$": [ "Games" ], "$results$": { "$doc_count": 4 } },
+                            { "$keys$": [ "Uncategorized" ], "$results$": { "$doc_count": 2 } },
+                            { "$keys$": [ "Business and Economy" ], "$results$": { "$doc_count": 1 } },
+                            { "$keys$": [ "Society" ], "$results$": { "$doc_count": 1 } }
+                        ]
+                    }
+                }
+            },
+            {
+                "$keys$": [ "United Kingdom" ],
+                "$nested$": {
+                    "agg1": {
+                        "$groups$": [
+                            { "$keys$": [ "Dead Sites" ], "$results$": { "$doc_count": 4 } },
+                            { "$keys$": [ "Entertainment and Arts" ], "$results$": { "$doc_count": 1 } },
+                            { "$keys$": [ "Computer and Internet Info" ], "$results$": { "$doc_count": 1 } },
+                            { "$keys$": [ "Business and Economy" ], "$results$": { "$doc_count": 1 } }
+                        ]
+                    }
+                }
+            },
+            {
+                "$keys$": [ "Greece" ],
+                "$nested$": {
+                    "agg1": {
+                        "$groups$": [
+                            { "$keys$": [ "Business and Economy" ], "$results$": { "$doc_count": 3 } },
+                            { "$keys$": [ "Educational Institutions" ], "$results$": { "$doc_count": 1 } }
+                        ]
+                    }
+                }
+            },
+            {
+                "$keys$": [ "Ukraine" ],
+                "$nested$": {
+                    "agg1": {
+                        "$groups$": [
+                            { "$keys$": [ "Entertainment and Arts" ], "$results$": { "$doc_count": 3 } },
+                            { "$keys$": [ "Shopping" ], "$results$": { "$doc_count": 2 } }
+                        ]
+                    }
+                }
+            },
+            {
+                "$keys$": [ "New Zealand" ],
+                "$nested$": {
+                    "agg1": {
+                        "$groups$": [
+                            { "$keys$": [ "Society" ], "$results$": { "$doc_count": 3 } }
+                        ]
+                    }
+                }
+            },
+            {
+                "$keys$": [ "South Korea" ],
+                "$nested$": {
+                    "agg1": {
+                        "$groups$": [
+                            { "$keys$": [ "Web Hosting" ], "$results$": { "$doc_count": 2 } }
+                        ]
+                    }
+                }
+            },
+            {
+                "$keys$": [ "Netherlands" ],
+                "$nested$": {
+                    "agg1": {
+                        "$groups$": [
+                            { "$keys$": [ "SPAM URLs" ], "$results$": { "$doc_count": 2 } },
+                            { "$keys$": [ "Search Engines" ], "$results$": { "$doc_count": 2 } },
+                            { "$keys$": [ "Phishing and Other Frauds" ], "$results$": { "$doc_count": 1 } },
+                            { "$keys$": [ "Computer and Internet Info" ], "$results$": { "$doc_count": 1 } },
+                            { "$keys$": [ "Entertainment and Arts" ], "$results$": { "$doc_count": 1 } },
+                            { "$keys$": [ "Business and Economy" ], "$results$": { "$doc_count": 1 } }
+                        ]
+                    }
+                }
+            },
+            {
+                "$keys$": [ "Croatia" ],
+                "$nested$": {
+                    "agg1": {
+                        "$groups$": [
+                            { "$keys$": [ "Business and Economy" ], "$results$": { "$doc_count": 2 } }
+                        ]
+                    }
+                }
+            },
+            {
+                "$keys$": [ "Martinique" ],
+                "$nested$": {
+                    "agg1": {
+                        "$groups$": [
+                            { "$keys$": [ "Search Engines" ], "$results$": { "$doc_count": 2 } }
+                        ]
+                    }
+                }
+            },
+            {
+                "$keys$": [ "Switzerland" ],
+                "$nested$": {
+                    "agg1": {
+                        "$groups$": [
+                            { "$keys$": [ "Business and Economy" ], "$results$": { "$doc_count": 2 } }
+                        ]
+                    }
+                }
+            },
+            {
+                "$keys$": [ "Indonesia" ],
+                "$nested$": {
+                    "agg1": {
+                        "$groups$": [
+                            { "$keys$": [ "Web Hosting" ], "$results$": { "$doc_count": 2 } },
+                            { "$keys$": [ "Travel" ], "$results$": { "$doc_count": 1 } }
+                        ]
+                    }
+                }
+            },
+            {
+                "$keys$": [ "Belgium" ],
+                "$nested$": {
+                    "agg1": {
+                        "$groups$": [
+                            { "$keys$": [ "Content Delivery Networks" ], "$results$": { "$doc_count": 2 } }
+                        ]
+                    }
+                }
+            },
+            {
+                "$keys$": [ "Uganda" ],
+                "$nested$": {
+                    "agg1": {
+                        "$groups$": [
+                            { "$keys$": [ "Uncategorized" ], "$results$": { "$doc_count": 2 } }
+                        ]
+                    }
+                }
+            },
+            {
+                "$keys$": [ "Zambia" ],
+                "$nested$": {
+                    "agg1": {
+                        "$groups$": [
+                            { "$keys$": [ "Business and Economy" ], "$results$": { "$doc_count": 2 } }
+                        ]
+                    }
+                }
+            },
+            {
+                "$keys$": [ "Cyprus" ],
+                "$nested$": {
+                    "agg1": {
+                        "$groups$": [
+                            { "$keys$": [ "Computer and Internet Info" ], "$results$": { "$doc_count": 1 } }
+                        ]
+                    }
+                }
+            },
+            {
+                "$keys$": [ "Guatemala" ],
+                "$nested$": {
+                    "agg1": {
+                        "$groups$": [
+                            { "$keys$": [ "Shopping" ], "$results$": { "$doc_count": 1 } }
+                        ]
+                    }
+                }
+            },
+            {
+                "$keys$": [ "Mexico" ],
+                "$nested$": {
+                    "agg1": {
+                        "$groups$": [
+                            { "$keys$": [ "Business and Economy" ], "$results$": { "$doc_count": 1 } }
+                        ]
+                    }
+                }
+            },
+            {
+                "$keys$": [ "Hungary" ],
+                "$nested$": {
+                    "agg1": {
+                        "$groups$": [
+                            { "$keys$": [ "Business and Economy" ], "$results$": { "$doc_count": 1 } },
+                            { "$keys$": [ "Computer and Internet Info" ], "$results$": { "$doc_count": 1 } },
+                            { "$keys$": [ "Society" ], "$results$": { "$doc_count": 1 } }
+                        ]
+                    }
+                }
+            },
+            {
+                "$keys$": [ "Paraguay" ],
+                "$nested$": {
+                    "agg1": {
+                        "$groups$": [
+                            { "$keys$": [ "Uncategorized" ], "$results$": { "$doc_count": 1 } },
+                            { "$keys$": [ "Personal sites and Blogs" ], "$results$": { "$doc_count": 1 } }
+                        ]
+                    }
+                }
+            },
+            {
+                "$keys$": [ "Slovakia" ],
+                "$nested$": {
+                    "agg1": {
+                        "$groups$": [
+                            { "$keys$": [ "Business and Economy" ], "$results$": { "$doc_count": 1 } }
+                        ]
+                    }
+                }
+            },
+            {
+                "$keys$": [ "Austria" ],
+                "$nested$": {
+                    "agg1": {
+                        "$groups$": [
+                            { "$keys$": [ "Business and Economy" ], "$results$": { "$doc_count": 1 } }
+                        ]
+                    }
+                }
+            },
+            {
+                "$keys$": [ "Ecuador" ],
+                "$nested$": {
+                    "agg1": {
+                        "$groups$": [
+                            { "$keys$": [ "Business and Economy" ], "$results$": { "$doc_count": 1 } }
+                        ]
+                    }
+                }
+            },
+            {
+                "$keys$": [ "Uruguay" ],
+                "$nested$": {
+                    "agg1": {
+                        "$groups$": [
+                            { "$keys$": [ "Computer and Internet Info" ], "$results$": { "$doc_count": 1 } }
+                        ]
+                    }
+                }
+            },
+            {
+                "$keys$": [ "Czechia" ],
+                "$nested$": {
+                    "agg1": {
+                        "$groups$": [
+                            { "$keys$": [ "Reference and Research" ], "$results$": { "$doc_count": 1 } }
+                        ]
+                    }
+                }
+            },
+            {
+                "$keys$": [ "Macao" ],
+                "$nested$": {
+                    "agg1": {
+                        "$groups$": [
+                            { "$keys$": [ "Business and Economy" ], "$results$": { "$doc_count": 1 } }
+                        ]
+                    }
+                }
+            },
+            {
+                "$keys$": [ "Bangladesh" ],
+                "$nested$": {
+                    "agg1": {
+                        "$groups$": [
+                            { "$keys$": [ "Malware Sites" ], "$results$": { "$doc_count": 1 } }
+                        ]
+                    }
+                }
+            },
+            {
+                "$keys$": [ "Bolivia" ],
+                "$nested$": {
+                    "agg1": {
+                        "$groups$": [
+                            { "$keys$": [ "Educational Institutions" ], "$results$": { "$doc_count": 1 } }
+                        ]
+                    }
+                }
+            },
+            {
+                "$keys$": [ "Turkey" ],
+                "$nested$": {
+                    "agg1": {
+                        "$groups$": [
+                            { "$keys$": [ "Uncategorized" ], "$results$": { "$doc_count": 1 } }
+                        ]
+                    }
+                }
+            },
+            {
+                "$keys$": [ "Portugal" ],
+                "$nested$": {
+                    "agg1": {
+                        "$groups$": [
+                            { "$keys$": [ "Entertainment and Arts" ], "$results$": { "$doc_count": 1 } }
+                        ]
+                    }
+                }
+            },
+            {
+                "$keys$": [ "Puerto Rico" ],
+                "$nested$": {
+                    "agg1": {
+                        "$groups$": [
+                            { "$keys$": [ "Educational Institutions" ], "$results$": { "$doc_count": 1 } }
+                        ]
+                    }
+                }
+            },
+            {
+                "$keys$": [ "Venezuela" ],
+                "$nested$": {
+                    "agg1": {
+                        "$groups$": [
+                            { "$keys$": [ "Dead Sites" ], "$results$": { "$doc_count": 1 } }
+                        ]
+                    }
+                }
+            }
+        ]
+    }
+}

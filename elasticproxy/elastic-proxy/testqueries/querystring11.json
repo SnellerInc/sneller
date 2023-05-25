@@ -1,0 +1,30 @@
+{
+    "bool": {
+        "filter": [
+            {
+                "term": {
+                    "tenant": "test"
+                }
+            },
+            {
+                "range": {
+                    "server_timestamp": {
+                        "from": 1650925071353435000,
+                        "include_lower": true,
+                        "include_upper": true,
+                        "to": null
+                    }
+                }
+            }
+        ],
+        "must": {
+            "query_string": {
+                "default_operator": "AND",
+                "fields": [
+                    "u_date_*"
+                ],
+                "query": "[\"2019-07-24T00:00:00-07:00\" TO \"2019-07-25T00:00:00-07:00\"}"
+            }
+        }
+    }
+}

@@ -1,0 +1,41 @@
+{
+    "size": 0,
+    "aggs": {
+          "events_over_time": {
+              "aggs": {
+                  "aggs0": {
+                      "filter": {
+                          "term": {
+                              "DestCountry": "AU"
+                          }
+                      }
+                  }
+              },
+              "date_histogram": {
+                  "field": "timestamp",
+                  "interval": "86400s"
+              }
+          }
+    },
+    "fields": [
+      {
+        "field": "timestamp",
+        "format": "date_time"
+      }
+    ],
+    "query": {
+      "bool": {
+        "filter": [
+          {
+            "range": {
+              "timestamp": {
+                "gte": "2022-03-01T00:00:00.000Z",
+                "lte": "2022-07-01T00:00:00.000Z",
+                "format": "strict_date_optional_time"
+              }
+            }
+          }
+        ]
+      }
+    }
+  }

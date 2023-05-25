@@ -1,0 +1,34 @@
+{
+    "aggs": {
+      "events_over_time": {
+        "date_histogram": {
+          "field": "timestamp",
+          "interval": "86400s"
+        },
+        "aggs": {
+          "unknown_weather": {
+            "filter": { "term": { "OriginWeather": "unknown" } }
+          }
+        }
+      }
+    },
+    "query": {
+      "bool": {
+        "must": [],
+        "filter": [
+          {
+            "range": {
+              "timestamp": {
+                "gte": "2022-03-01T00:00:00.000Z",
+                "lte": "2022-07-01T00:00:00.000Z",
+                "format": "strict_date_optional_time"
+              }
+            }
+          }
+        ],
+        "should": [],
+        "must_not": []
+      }
+    },
+    "size": 0
+  }

@@ -1,0 +1,58 @@
+{
+    "settings": {
+        "analysis": {
+          "normalizer": {
+            "lowercase_normalizer": {
+              "type": "custom",
+              "char_filter": [],
+              "filter": ["lowercase", "asciifolding"]
+            }
+          }
+        }
+      },
+      "mappings": {
+        "properties": {
+            "title": {
+                "type": "text",
+                "fields": {
+                    "keyword": {
+                        "type": "keyword",
+                        "ignore_above": 256
+                    },
+                    "raw": {
+                        "type": "keyword",
+                        "normalizer": "lowercase_normalizer",
+                        "ignore_above": 256
+                    }
+                }
+            },
+            "description": {
+                "type": "text",
+                "fields": {
+                    "keyword": {
+                        "type": "keyword",
+                        "ignore_above": 256
+                    }
+                }
+            },
+            "url": {
+                "type": "keyword"
+            },
+            "source": {
+                "type": "keyword"
+            },
+            "category": {
+                "type": "keyword"
+            },
+            "language": {
+                "type": "keyword"
+            },
+            "country": {
+                "type": "keyword"
+            },
+            "published_at": {
+                "type": "date"
+            }
+        }
+        }
+}

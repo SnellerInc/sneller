@@ -1,0 +1,41 @@
+WITH
+  "$source" AS
+    (SELECT *
+     FROM "test"."sample_flights" AS "$source"
+     WHERE (("$source"."timestamp" >= `2022-03-01T00:00:00Z`) AND ("$source"."timestamp" <= `2022-07-01T00:00:00Z`))
+    ),
+
+  "$bucket:2%0" AS
+    (SELECT "$source"."OriginCountry" AS "$key:2%0",
+            COUNT(*) AS "$doc_count"
+     FROM "$source"
+     GROUP BY "$source"."OriginCountry"
+     ORDER BY "$doc_count" DESC
+     LIMIT 5
+    ),
+
+  "$bucket:2:3%0" AS
+    (SELECT "$source"."OriginCountry" AS "$key:2%0",
+            "$source"."DestCountry" AS "$key:2:3%0",
+            COUNT(*) AS "$doc_count"
+     FROM "$source"
+     WHERE ("$source"."OriginCountry" IN (SELECT "$selection"."$key:2%0"
+     FROM "$bucket:2%0" AS "$selection"))
+     GROUP BY "$source"."OriginCountry",
+              "$source"."DestCountry"
+     HAVING (ROW_NUMBER() OVER (PARTITION BY "$source"."OriginCountry" ORDER BY COUNT(*) DESC) <= 5)
+     ORDER BY "$doc_count" DESC
+    )
+
+SELECT
+  (SELECT COUNT(*)
+   FROM "$source"
+  ) AS "$total_count",
+
+  (SELECT *
+   FROM "$bucket:2%0"
+  ) AS "$bucket:2%0",
+
+  (SELECT *
+   FROM "$bucket:2:3%0"
+  ) AS "$bucket:2:3%0"

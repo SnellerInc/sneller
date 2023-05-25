@@ -1,0 +1,14 @@
+{
+    "from": 2,
+    "size": 2,
+    "fields": ["title","published_at"],
+    "_source": false,
+    "query": {
+        "query_string": {
+            "query": "title:Biden"
+        }
+    },
+    "sort" : [
+        {"published_at" : {"order" : "asc"}}
+    ]
+}

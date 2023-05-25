@@ -1,0 +1,53 @@
+{
+  "aggs": {
+    "2": {
+      "terms": {
+        "field": "Carrier",
+        "order": {
+          "_count": "desc"
+        },
+        "size": 5
+      }
+    }
+  },
+  "size": 0,
+  "fields": [
+    {
+      "field": "timestamp",
+      "format": "date_time"
+    }
+  ],
+  "script_fields": {},
+  "stored_fields": [
+    "*"
+  ],
+  "runtime_mappings": {
+    "hour_of_day": {
+      "type": "long",
+      "script": {
+        "source": "emit(doc['timestamp'].value.hourOfDay);"
+      }
+    }
+  },
+  "_source": {
+    "excludes": []
+  },
+  "query": {
+    "bool": {
+      "must": [],
+      "filter": [
+        {
+          "range": {
+            "timestamp": {
+              "gte": "2022-03-01T00:00:00.000Z",
+              "lte": "2022-07-01T00:00:00.000Z",
+              "format": "strict_date_optional_time"
+            }
+          }
+        }
+      ],
+      "should": [],
+      "must_not": []
+    }
+  }
+}

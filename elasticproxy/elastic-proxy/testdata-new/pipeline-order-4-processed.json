@@ -1,0 +1,39 @@
+{
+    "$doc_count": 13014,
+    "resource_id": {
+        "$groups$": [
+            { "$keys$": [ "IT" ], "$results$": { "$doc_count": 2269, "dest_airport_count": 136, "orig_airport_count": 18 } },
+            { "$keys$": [ "US" ], "$results$": { "$doc_count": 1995, "dest_airport_count": 138, "orig_airport_count": 73 } },
+            { "$keys$": [ "JP" ], "$results$": { "$doc_count":  797, "dest_airport_count": 103, "orig_airport_count":  6 } },
+            { "$keys$": [ "CN" ], "$results$": { "$doc_count":  740, "dest_airport_count": 118, "orig_airport_count":  6 } },
+            { "$keys$": [ "CA" ], "$results$": { "$doc_count":  615, "dest_airport_count":  96, "orig_airport_count":  5 } },
+            { "$keys$": [ "DE" ], "$results$": { "$doc_count":  546, "dest_airport_count": 112, "orig_airport_count":  4 } },
+            { "$keys$": [ "IN" ], "$results$": { "$doc_count":  521, "dest_airport_count": 101, "orig_airport_count":  4 } },
+            { "$keys$": [ "AU" ], "$results$": { "$doc_count":  515, "dest_airport_count": 119, "orig_airport_count":  4 } },
+            { "$keys$": [ "GB" ], "$results$": { "$doc_count":  510, "dest_airport_count":  70, "orig_airport_count":  4 } },
+            { "$keys$": [ "KR" ], "$results$": { "$doc_count":  406, "dest_airport_count":  87, "orig_airport_count":  3 } },
+            { "$keys$": [ "RU" ], "$results$": { "$doc_count":  396, "dest_airport_count":  39, "orig_airport_count":  3 } },
+            { "$keys$": [ "AE" ], "$results$": { "$doc_count":  384, "dest_airport_count": 125, "orig_airport_count":  3 } },
+            { "$keys$": [ "ZA" ], "$results$": { "$doc_count":  355, "dest_airport_count":  98, "orig_airport_count":  3 } },
+            { "$keys$": [ "EC" ], "$results$": { "$doc_count":  283, "dest_airport_count":  58, "orig_airport_count":  1 } },
+            { "$keys$": [ "AR" ], "$results$": { "$doc_count":  257, "dest_airport_count":  54, "orig_airport_count":  1 } },
+            { "$keys$": [ "CO" ], "$results$": { "$doc_count":  252, "dest_airport_count":  81, "orig_airport_count":  1 } },
+            { "$keys$": [ "ES" ], "$results$": { "$doc_count":  236, "dest_airport_count": 108, "orig_airport_count":  2 } },
+            { "$keys$": [ "FR" ], "$results$": { "$doc_count":  153, "dest_airport_count":  72, "orig_airport_count":  1 } },
+            { "$keys$": [ "PR" ], "$results$": { "$doc_count":  144, "dest_airport_count":  50, "orig_airport_count":  1 } },
+            { "$keys$": [ "CH" ], "$results$": { "$doc_count":  144, "dest_airport_count":   1, "orig_airport_count":  1 } },
+            { "$keys$": [ "CL" ], "$results$": { "$doc_count":  137, "dest_airport_count":  65, "orig_airport_count":  1 } },
+            { "$keys$": [ "MX" ], "$results$": { "$doc_count":  134, "dest_airport_count":  50, "orig_airport_count":  1 } },
+            { "$keys$": [ "DK" ], "$results$": { "$doc_count":  133, "dest_airport_count":  69, "orig_airport_count":  1 } },
+            { "$keys$": [ "NL" ], "$results$": { "$doc_count":  132, "dest_airport_count":  82, "orig_airport_count":  1 } },
+            { "$keys$": [ "SE" ], "$results$": { "$doc_count":  131, "dest_airport_count":  19, "orig_airport_count":  1 } },
+            { "$keys$": [ "TR" ], "$results$": { "$doc_count":  128, "dest_airport_count":  78, "orig_airport_count":  1 } },
+            { "$keys$": [ "FI" ], "$results$": { "$doc_count":  124, "dest_airport_count":  63, "orig_airport_count":  1 } },
+            { "$keys$": [ "NO" ], "$results$": { "$doc_count":  120, "dest_airport_count":  37, "orig_airport_count":  1 } },
+            { "$keys$": [ "AT" ], "$results$": { "$doc_count":  118, "dest_airport_count":   7, "orig_airport_count":  1 } },
+            { "$keys$": [ "IE" ], "$results$": { "$doc_count":  117, "dest_airport_count":  62, "orig_airport_count":  1 } },
+            { "$keys$": [ "PE" ], "$results$": { "$doc_count":  116, "dest_airport_count":  54, "orig_airport_count":  1 } },
+            { "$keys$": [ "PL" ], "$results$": { "$doc_count":  106, "dest_airport_count":   6, "orig_airport_count":  1 } }
+        ]
+    }
+}

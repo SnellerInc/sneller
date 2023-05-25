@@ -1,0 +1,138 @@
+{
+    "_shards": {
+        "failed": 0,
+        "skipped": 0,
+        "successful": 1,
+        "total": 1
+    },
+    "hits": {
+        "hits": [
+            {
+                "_id": "Y4koHoQBtMmSfHU1Gp6j",
+                "_index": "news",
+                "_score": null,
+                "_type": "_doc",
+                "fields": {
+                    "published_at": [
+                        "2022-07-28T02:30:25.000Z"
+                    ],
+                    "title": [
+                        "Senator Joe Manchin suddenly backs Biden climate and tax bill"
+                    ]
+                },
+                "sort": [
+                    1658975425000
+                ]
+            },
+            {
+                "_id": "YokoHoQBtMmSfHU1Gp6j",
+                "_index": "news",
+                "_score": null,
+                "_type": "_doc",
+                "fields": {
+                    "published_at": [
+                        "2022-07-28T21:11:01.000Z"
+                    ],
+                    "title": [
+                        "Xi and Biden exchange warnings on Taiwan"
+                    ]
+                },
+                "sort": [
+                    1659042661000
+                ]
+            },
+            {
+                "_id": "UIkoHoQBtMmSfHU1Gp6j",
+                "_index": "news",
+                "_score": null,
+                "_type": "_doc",
+                "fields": {
+                    "published_at": [
+                        "2022-08-09T03:30:46.000Z"
+                    ],
+                    "title": [
+                        "Can Biden capitalise on legislative victories?"
+                    ]
+                },
+                "sort": [
+                    1660015846000
+                ]
+            },
+            {
+                "_id": "QYkoHoQBtMmSfHU1Gp6j",
+                "_index": "news",
+                "_score": null,
+                "_type": "_doc",
+                "fields": {
+                    "published_at": [
+                        "2022-08-24T16:00:33.000Z"
+                    ],
+                    "title": [
+                        "Biden cancels $10,000 in student loan debts"
+                    ]
+                },
+                "sort": [
+                    1661356833000
+                ]
+            },
+            {
+                "_id": "K4koHoQBtMmSfHU1Gp6j",
+                "_index": "news",
+                "_score": null,
+                "_type": "_doc",
+                "fields": {
+                    "published_at": [
+                        "2022-09-19T05:46:29.000Z"
+                    ],
+                    "title": [
+                        "Biden again says US would defend Taiwan if China attacks"
+                    ]
+                },
+                "sort": [
+                    1663566389000
+                ]
+            },
+            {
+                "_id": "KokoHoQBtMmSfHU1Gp6j",
+                "_index": "news",
+                "_score": null,
+                "_type": "_doc",
+                "fields": {
+                    "published_at": [
+                        "2022-09-19T15:52:17.000Z"
+                    ],
+                    "title": [
+                        "Covid-19 pandemic 'is over' in the US - Joe Biden"
+                    ]
+                },
+                "sort": [
+                    1663602737000
+                ]
+            },
+            {
+                "_id": "F4koHoQBtMmSfHU1Gp6j",
+                "_index": "news",
+                "_score": null,
+                "_type": "_doc",
+                "fields": {
+                    "published_at": [
+                        "2022-10-06T20:25:40.000Z"
+                    ],
+                    "title": [
+                        "Biden to pardon federal marijuana convictions"
+                    ]
+                },
+                "sort": [
+                    1665087940000
+                ]
+            }
+        ],
+        "max_score": null,
+        "total": {
+            "relation": "eq",
+            "value": 7
+        }
+    },
+    "timed_out": false,
+    "took": 0
+}

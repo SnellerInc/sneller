@@ -40,7 +40,7 @@ sdb:
   tag: latest
   pullPolicy: IfNotPresent
   cronJob: "* * * * *"
-  database: sf1
+  database: default
   tablePattern: "*"
   batchSize: "1073741824"
 

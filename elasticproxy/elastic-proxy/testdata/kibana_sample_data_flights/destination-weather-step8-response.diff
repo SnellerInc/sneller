@@ -1,0 +1,60 @@
+ {
+   "_shards": {
+     "failed": 0,
+     "skipped": 0,
+     "successful": 1,
+     "total": 1
+   },
+   "aggregations": {
+     "2": {
+       "buckets": [
+         : {
+           "doc_count": 2350,
+           "key": "Rain"
+         },
+         : {
+           "doc_count": 2326,
+           "key": "Clear"
+         },
+         : {
+           "doc_count": 2267,
+           "key": "Sunny"
+         },
+         : {
+           "doc_count": 2216,
+           "key": "Cloudy"
+         },
+         : {
+           "doc_count": 984,
+           "key": "Heavy Fog"
+         },
+         : {
+           "doc_count": 978,
+           "key": "Thunder & Lightning"
+         },
+         : {
+           "doc_count": 949,
+           "key": "Damaging Wind"
+         },
+         : {
+           "doc_count": 944,
+           "key": "Hail"
+         }
+       ]
++      "doc_count_error_upper_bound": 0
++      "sum_other_doc_count": 0
+     }
+   },
+   "hits": {
+     "hits": [
+     ],
+     "max_score": null,
+     "total": {
+-      "relation": "eq",
++      "relation": "gte",
+-      "value": 13014
++      "value": 10000
+     }
+   },
+   "timed_out": false
+ }

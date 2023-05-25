@@ -1,0 +1,87 @@
+version: '3'
+services:
+  minio:
+    image: quay.io/minio/minio:latest
+    ports:
+     - "127.0.0.1:9100:9100"
+     - "127.0.0.1:9101:9101"
+    environment:
+     - MINIO_ROOT_USER=${AWS_ACCESS_KEY_ID}
+     - MINIO_ROOT_PASSWORD=${AWS_SECRET_ACCESS_KEY}
+     - MINIO_UID=${DOCKER_UID}
+     - MINIO_GID=${DOCKER_GID}
+    volumes:
+     - minio:/data
+    command: server /data --address ":9100" --console-address ":9101"
+
+  snellerd:
+    image: snellerinc/snellerd:latest
+    user: ${DOCKER_UID}:${DOCKER_GID}
+    ports:
+     - "127.0.0.1:9180:9180"
+    environment:
+     - CACHEDIR=/var/cache/sneller
+    env_file:
+     - .env
+    tmpfs:
+     - /var/cache/sneller:size=${CACHESIZE}
+    command: daemon -e 0.0.0.0:9180
+
+  memcached:
+    image: memcached:latest
+    user: ${DOCKER_UID}:${DOCKER_GID}
+    ports:
+     - "127.0.0.1:11211:11211"
+
+  elasticproxy:
+    image: snellerinc/elasticproxy:latest
+    user: ${DOCKER_UID}:${DOCKER_GID}
+    ports:
+      - "127.0.0.1:9243:9200"
+    environment:
+      PROXY_VERBOSE: 1
+    volumes:
+     - ./proxy-config.json:/root/proxy-config.json
+     - ./elastic-proxy:/var/log/proxy
+
+  elastic:
+    image: elasticsearch:7.17.1
+    user: ${DOCKER_UID}:${DOCKER_GID}
+    ports:
+      - "127.0.0.1:9200:9200"
+      - "127.0.0.1:9300:9300"
+    environment:
+      discovery.type: single-node
+      ELASTIC_PASSWORD: ${ELASTIC_PASSWORD}
+    volumes:
+     - elastic-certs:/usr/share/elasticsearch/config/certs
+     - elastic-data:/usr/share/elasticsearch/data
+
+  kibana1:
+    image: docker.elastic.co/kibana/kibana:7.17.1
+    user: ${DOCKER_UID}:${DOCKER_GID}
+    ports:
+      - "127.0.0.1:5601:5601"
+    environment:
+      ELASTICSEARCH_HOSTS: '["http://elastic:9200"]'
+      ELASTICSEARCH_USERNAME: 'elastic'
+      ELASTICSEARCH_PASSWORD: ${ELASTIC_PASSWORD}
+
+  kibana2:
+    image: docker.elastic.co/kibana/kibana:7.17.1
+    user: ${DOCKER_UID}:${DOCKER_GID}
+    ports:
+      - "127.0.0.1:6601:5601"
+    environment:
+      ELASTICSEARCH_HOSTS: '["http://elasticproxy:9200"]'
+      ELASTICSEARCH_USERNAME: 'elastic'
+      ELASTICSEARCH_PASSWORD: ${ELASTIC_PASSWORD}
+
+volumes:
+  minio:
+  elastic-certs:
+  elastic-data:
+
+networks:
+  default:
+    name: sneller-network

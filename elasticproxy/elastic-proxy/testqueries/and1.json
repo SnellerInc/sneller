@@ -1,0 +1,6 @@
+{
+    "query_string": {
+        "default_field": "field1",
+        "query": "field2:abc def"
+    }
+}

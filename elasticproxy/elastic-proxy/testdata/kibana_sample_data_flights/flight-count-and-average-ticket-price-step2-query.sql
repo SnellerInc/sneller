@@ -1,0 +1,1 @@
+SELECT TIME_BUCKET(timestamp, 864000) AS _tmbucket1, COUNT(*), AVG(AvgTicketPrice) AS _2 FROM kibana_sample_data_flights WHERE timestamp BETWEEN `2022-03-01T00:00:00Z` AND `2022-07-01T00:00:00Z` GROUP BY TIME_BUCKET(timestamp, 864000) ORDER BY _tmbucket1

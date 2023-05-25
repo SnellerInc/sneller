@@ -1,0 +1,9 @@
+{
+    "terms": {
+        "user.id": [
+            "kimchy",
+            "elkbee"
+        ],
+        "boost": 1.0
+    }
+}

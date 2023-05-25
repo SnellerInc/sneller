@@ -1,0 +1,61 @@
+{
+    "_source": {
+        "excludes": []
+    },
+    "aggs": {
+        "0": {
+            "aggs": {
+                "1": {
+                    "terms": {
+                        "field": "DestCountry",
+                        "order": {
+                            "_key": "asc"
+                        },
+                        "size": 3
+                    }
+                }
+            },
+            "terms": {
+                "field": "OriginCountry",
+                "order": {
+                    "_key": "asc"
+                },
+                "size": 5
+            }
+        }
+    },
+    "fields": [
+        {
+            "field": "eventTime",
+            "format": "date_time"
+        },
+        {
+            "field": "timestamp",
+            "format": "date_time"
+        }
+    ],
+    "query": {
+        "bool": {
+            "filter": [
+                {
+                    "range": {
+                        "timestamp": {
+                            "gte": "2022-03-01T00:00:00.000Z",
+                            "lte": "2022-07-01T00:00:00.000Z",
+                            "format": "strict_date_optional_time"
+                        }
+                    }
+                }
+            ],
+            "must": [],
+            "must_not": [],
+            "should": []
+        }
+    },
+    "runtime_mappings": {},
+    "script_fields": {},
+    "size": 0,
+    "stored_fields": [
+        "*"
+    ]
+}

@@ -1,0 +1,9 @@
+_terms1,count
+"Rain","2350",
+"Clear","2326",
+"Sunny","2267",
+"Cloudy","2216",
+"Heavy Fog","984",
+"Thunder & Lightning","978",
+"Damaging Wind","949",
+"Hail","944",

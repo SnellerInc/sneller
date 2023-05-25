@@ -1,0 +1,37 @@
+{
+    "bool": {
+        "must": {
+            "term": {
+                "user.id": "kimchy"
+            }
+        },
+        "filter": {
+            "term": {
+                "tags": "production"
+            }
+        },
+        "must_not": {
+            "range": {
+                "age": {
+                    "from": 10,
+                    "include_lower": false,
+                    "to": 20
+                }
+            }
+        },
+        "should": [
+            {
+                "term": {
+                    "tags": "env1"
+                }
+            },
+            {
+                "term": {
+                    "tags": "deployed"
+                }
+            }
+        ],
+        "minimum_should_match": 1,
+        "boost": 1.0
+    }
+}

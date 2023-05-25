@@ -4,6 +4,9 @@ snellerd:
   pullPolicy: Always
   maxCacheDirSize: 64Mi
 
+sdb:
+  database: sf1
+
 configuration:
   values:
     s3EndPoint: http://minio-sneller:9000

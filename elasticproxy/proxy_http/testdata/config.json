@@ -1,0 +1,36 @@
+{
+    "*": {
+        "elastic": {
+            "endpoint": "http://elastic:9200",
+            "user": "elastic",
+            "password": "ep-pass",
+            "esPassword": "esp-pass",
+            "ignoreCert": true
+        },
+        "sneller": {
+            "endpoint": "http://snellerd:9180/",
+            "token": "token",
+            "timeout": 42
+        },
+        "memcache": {
+            "endpoint": "127.0.0.1:1234",
+            "expirationTime": 86400
+        },
+        "mapping": {
+            "flights": {
+                "database": "test",
+                "table": "flights",
+                "ignoreTotalHits": true,
+                "ignoreSumOtherDocCount": true
+            },
+            "news": {
+                "database": "test",
+                "table": "news",
+                "ignoreTotalHits": true,
+                "ignoreSumOtherDocCount": true
+            }
+        },
+        "logFolder": "/var/log/proxy",
+        "compareWithElastic": false
+    }
+}

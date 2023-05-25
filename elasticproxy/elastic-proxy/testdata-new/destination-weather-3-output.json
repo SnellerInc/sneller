@@ -1,0 +1,13 @@
+{
+    "$total_count": 13014,
+    "$bucket:2%0": [
+        { "$key:2%0": "Rain",                     "$doc_count": 2350 },
+        { "$key:2%0": "Clear",                    "$doc_count": 2326 },
+        { "$key:2%0": "Sunny",                    "$doc_count": 2267 },
+        { "$key:2%0": "Cloudy",                   "$doc_count": 2216 },
+        { "$key:2%0": "Heavy Fog",                "$doc_count":  984 },
+        { "$key:2%0": "Thunder \u0026 Lightning", "$doc_count":  978 },
+        { "$key:2%0": "Damaging Wind",            "$doc_count":  949 },
+        { "$key:2%0": "Hail",                     "$doc_count":  944 }
+    ]
+}

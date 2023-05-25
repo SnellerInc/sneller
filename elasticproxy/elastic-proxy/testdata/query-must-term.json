@@ -1,0 +1,13 @@
+{
+  "query": {
+    "bool": {
+      "must": [
+        {
+          "term": {
+            "malicious": "true"
+          }
+        }
+      ]
+    }
+  }
+}

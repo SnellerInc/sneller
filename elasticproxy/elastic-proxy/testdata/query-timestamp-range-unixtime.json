@@ -1,0 +1,1 @@
+{"query":{"bool":{"must":[{"range":{"timestamp":{"boost":2,"gte":1639072511001,"lte":1639072697708}}},{"match_phrase":{"type":"LOG"}}],"must_not":null}}}
