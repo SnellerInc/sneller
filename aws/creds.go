@@ -173,15 +173,23 @@ func AmbientKey(service string, derive DeriveFn) (*SigningKey, error) {
 	baseURI := ""
 	switch service {
 	case "s3":
-		baseURI = os.Getenv("S3_ENDPOINT")
-		if baseURI == "" {
-			baseURI = fmt.Sprintf("https://s3.%s.amazonaws.com", region)
-		}
+		baseURI = S3EndPoint(region)
 	default:
 		return nil, fmt.Errorf("unknown service %s", service)
 	}
 
 	return derive(baseURI, id, secret, token, region, service)
+}
+
+// S3EndPoint returns the endpoint of the object
+// storage service.
+func S3EndPoint(region string) string {
+	endPoint := os.Getenv("S3_ENDPOINT")
+	if endPoint == "" {
+		endPoint = fmt.Sprintf("https://s3.%s.amazonaws.com", region)
+	}
+	endPoint = strings.TrimSuffix(endPoint, "/")
+	return endPoint
 }
 
 type scanspec struct {

@@ -19,7 +19,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"strings"
 
 	"github.com/SnellerInc/sneller/aws"
 	"github.com/SnellerInc/sneller/ion/blockfmt"
@@ -58,12 +57,6 @@ func NewEnvProvider() (Provider, error) {
 		return nil, err
 	}
 
-	s3EndPoint := os.Getenv("S3_ENDPOINT")
-	if s3EndPoint == "" {
-		s3EndPoint = fmt.Sprintf("https://s3.%s.amazonaws.com", region)
-	}
-	s3EndPoint = strings.TrimSuffix(s3EndPoint, "/")
-
 	return &S3Static{
 		CheckToken: func(t string) error {
 			if t != snellerToken {
@@ -81,7 +74,7 @@ func NewEnvProvider() (Provider, error) {
 				SecretAccessKey: secret,
 				SessionToken:    sessionToken,
 				Source:          bucket,
-				BaseURI:         s3EndPoint,
+				BaseURI:         aws.S3EndPoint(region),
 			},
 		},
 	}, nil
