@@ -15,19 +15,28 @@
 package auth
 
 import (
+	"context"
 	"encoding/base64"
 	"errors"
 	"fmt"
 	"os"
+	"sync"
 
 	"github.com/SnellerInc/sneller/aws"
+	"github.com/SnellerInc/sneller/db"
 	"github.com/SnellerInc/sneller/ion/blockfmt"
 )
 
-func NewEnvProvider() (Provider, error) {
-	id, secret, region, sessionToken, err := aws.AmbientCreds()
-	if err != nil {
-		return nil, err
+// NewWebIdentityProvider returns a provider that allows
+// fetching AWS credentials using a web-identity token.
+// It returns a `nil` provider, when one of the required
+// environment variables isn't set.
+func NewWebIdentityProvider() (Provider, error) {
+	region := os.Getenv("AWS_REGION")
+	roleARN := os.Getenv("AWS_ROLE_ARN")
+	webIdentityTokenFile := os.Getenv("AWS_WEB_IDENTITY_TOKEN_FILE")
+	if region == "" || roleARN == "" || webIdentityTokenFile == "" {
+		return nil, nil
 	}
 
 	tenantID := os.Getenv("SNELLER_TENANT_ID")
@@ -57,7 +66,7 @@ func NewEnvProvider() (Provider, error) {
 		return nil, errors.New("missing SNELLER_TOKEN variable")
 	}
 
-	return &S3Static{
+	return &webIdentityProvider{
 		CheckToken: func(t string) error {
 			if t != snellerToken {
 				return errors.New("incorrect token")
@@ -70,12 +79,49 @@ func NewEnvProvider() (Provider, error) {
 			IndexKey: indexKeyBytes,
 			Bucket:   bucket,
 			Credentials: S3BearerCredentials{
-				AccessKeyID:     id,
-				SecretAccessKey: secret,
-				SessionToken:    sessionToken,
-				Source:          bucket,
-				BaseURI:         aws.S3EndPoint(region),
+				CanExpire: true,
 			},
 		},
+		S3Endpoint: aws.S3EndPoint(region),
 	}, nil
+}
+
+type webIdentityProvider struct {
+	S3BearerIdentity
+
+	CheckToken func(t string) error
+
+	S3Endpoint string
+	lock       sync.Mutex
+}
+
+func (p *webIdentityProvider) Authorize(ctx context.Context, token string) (db.Tenant, error) {
+	if p.CheckToken != nil {
+		err := p.CheckToken(token)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	p.lock.Lock()
+	defer p.lock.Unlock()
+
+	if p.Expired() {
+		id, secret, token, _, expiration, err := aws.WebIdentityCreds(nil)
+		if err != nil {
+			return nil, fmt.Errorf("can't exchange web-identity token to AWS credentials: %w", err)
+		}
+
+		p.Credentials = S3BearerCredentials{
+			BaseURI:         p.S3Endpoint,
+			Source:          p.Bucket,
+			AccessKeyID:     id,
+			SecretAccessKey: secret,
+			SessionToken:    token,
+			Expires:         expiration,
+			CanExpire:       true,
+		}
+	}
+
+	return p.Tenant(ctx)
 }

@@ -15,7 +15,10 @@ spec:
             app: sdb
             release: {{ .Release.Name }}
         spec:
-          {{- with .Values.imagePullSecrets }}
+          {{- if .Values.sdb.serviceAccountName }}
+          serviceAccountName: {{ .Values.sdb.serviceAccountName }}
+          {{- end }}
+          {{- with .Values.sdb.imagePullSecrets }}
           imagePullSecrets:
             {{- toYaml . | nindent 8 }}
           {{- end }}
@@ -40,16 +43,19 @@ spec:
                     secretKeyRef:
                       name: {{ template "helpers.s3SecretName" . }}
                       key: awsAccessKeyId
+                      optional: true
                 - name: AWS_SECRET_ACCESS_KEY
                   valueFrom:
                     secretKeyRef:
                       name: {{ template "helpers.s3SecretName" . }}
                       key: awsSecretAccessKey
+                      optional: true
                 - name: S3_ENDPOINT
                   valueFrom:
                     configMapKeyRef:
                       name: {{ template "helpers.s3ConfigMapName" . }}
                       key: endPoint
+                      optional: true
                 - name: SNELLER_BUCKET
                   valueFrom:
                     configMapKeyRef:
@@ -60,10 +66,5 @@ spec:
                     secretKeyRef:
                       name: {{ template "helpers.indexSecretName" . }}
                       key: snellerIndexKey
-                - name: SNELLER_TOKEN
-                  valueFrom:
-                    secretKeyRef:
-                      name: {{ template "helpers.tokenSecretName" . }}
-                      key: snellerToken
           restartPolicy: Never
 {{- end}}

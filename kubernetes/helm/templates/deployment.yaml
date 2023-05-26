@@ -26,7 +26,10 @@ spec:
         {{ toYaml .Values.snellerd.podAnnotations | indent 8 }}
       {{- end }}
     spec:
-      {{- with .Values.imagePullSecrets }}
+      {{- if .Values.snellerd.serviceAccountName }}
+      serviceAccountName: {{ .Values.snellerd.serviceAccountName }}
+      {{- end }}
+      {{- with .Values.snellerd.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
@@ -70,16 +73,19 @@ spec:
                 secretKeyRef:
                   name: {{ template "helpers.s3SecretName" . }}
                   key: awsAccessKeyId
+                  optional: true
             - name: AWS_SECRET_ACCESS_KEY
               valueFrom:
                 secretKeyRef:
                   name: {{ template "helpers.s3SecretName" . }}
                   key: awsSecretAccessKey
+                  optional: true
             - name: S3_ENDPOINT
               valueFrom:
                 configMapKeyRef:
                   name: {{ template "helpers.s3ConfigMapName" . }}
                   key: endPoint
+                  optional: true
             - name: SNELLER_BUCKET
               valueFrom:
                 configMapKeyRef:

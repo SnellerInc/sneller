@@ -47,7 +47,11 @@ type Provider interface {
 // the specification is interpreted as a file name.
 func Parse(spec string) (Provider, error) {
 	if spec == "" {
-		return NewEnvProvider()
+		p, err := NewWebIdentityProvider()
+		if p == nil && err == nil {
+			p, err = NewEnvProvider()
+		}
+		return p, err
 	}
 	if strings.HasPrefix(spec, "http://") || strings.HasPrefix(spec, "https://") {
 		return FromEndPoint(spec)

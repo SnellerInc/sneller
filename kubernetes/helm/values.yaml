@@ -3,6 +3,7 @@ fullnameOverride: ""
 
 snellerd:
   #name: snellerd
+  #serviceAccountName: snellerd
   replicaCount: 3
   repository: snellerinc/snellerd
   tag: latest
@@ -36,6 +37,7 @@ snellerd:
 
 sdb:
   #name: sdb
+  #serviceAccountName: sdb
   repository: snellerinc/sdb
   tag: latest
   pullPolicy: IfNotPresent
@@ -60,8 +62,8 @@ secrets:
     #secretName: sneller-aws
     values:
       awsRegion: us-east-1
-      awsAccessKeyId: minio
-      awsSecretAccessKey: minio123
+      awsAccessKeyId: ""
+      awsSecretAccessKey: ""
   token:
     useExistingSecret: false
     #secretName: sneller-token
@@ -71,10 +73,10 @@ secrets:
     useExistingSecret: false
     #secretName: sneller-index
     values:
-      snellerIndexKey: 4AiJmIzLvMAP8A/1XdmbuzdwDduxHdu4hVRO7//7vd8=
+      snellerIndexKey: ""
 
 configuration:
   #name:
   values:
-    s3EndPoint: http://minio:9000
-    s3Bucket: s3://test/
+    s3EndPoint: ""
+    s3Bucket: ""

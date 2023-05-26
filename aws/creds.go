@@ -16,10 +16,13 @@ package aws
 
 import (
 	"bufio"
+	"encoding/xml"
 	"errors"
 	"fmt"
 	"io"
 	"io/fs"
+	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -156,6 +159,89 @@ func AmbientCreds() (id, secret, region, token string, err error) {
 	return
 }
 
+// WebIdentityCreds tries to load the credentials
+// from a web-identity. The web-identity token should
+// be stored in a file whose path is exposed in the
+// AWS_WEB_IDENTITY_TOKEN_FILE environment variable.
+// It will assume the role as specified in the
+// AWS_ROLE_ARN environment variable.
+func WebIdentityCreds(client *http.Client) (id, secret, region, token string, expiration time.Time, err error) {
+	region = os.Getenv("AWS_REGION")
+	if region == "" {
+		return "", "", "", "", time.Time{}, fmt.Errorf("AWS_REGION not set")
+	}
+
+	roleSessionName := os.Getenv("AWS_ROLE_SESSION_NAME")
+	if roleSessionName == "" {
+		roleSessionName = "default"
+	}
+
+	roleARN := os.Getenv("AWS_ROLE_ARN")
+	if roleARN == "" {
+		return "", "", "", "", time.Time{}, fmt.Errorf("AWS_ROLE_ARN not set")
+	}
+
+	webIdentityTokenFile := os.Getenv("AWS_WEB_IDENTITY_TOKEN_FILE")
+	if webIdentityTokenFile == "" {
+		return "", "", "", "", time.Time{}, fmt.Errorf("AWS_WEB_IDENTITY_TOKEN_FILE not set")
+	}
+
+	webIdentityToken, err := os.ReadFile(webIdentityTokenFile)
+	if err != nil {
+		return "", "", "", "", time.Time{}, fmt.Errorf("can't read web-identity token from %q: %w", webIdentityTokenFile, err)
+	}
+
+	if client == nil {
+		client = http.DefaultClient
+	}
+
+	u, _ := url.Parse("https://sts.amazonaws.com/?Action=AssumeRoleWithWebIdentity&Version=2011-06-15")
+	q := u.Query()
+	q.Add("RoleSessionName", roleSessionName)
+	q.Add("RoleArn", roleARN)
+	q.Add("WebIdentityToken", strings.TrimSpace(string(webIdentityToken)))
+	u.RawQuery = q.Encode()
+
+	resp, err := client.Do(&http.Request{
+		Method: http.MethodGet,
+		URL:    u,
+		Header: http.Header{
+			"Accept": []string{"application/xml"},
+		},
+	})
+	if err != nil {
+		return "", "", "", "", time.Time{}, fmt.Errorf("can't exchange web-identity token for AWS credentials: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", "", "", "", time.Time{}, fmt.Errorf("AssumeRoleWithWebIdentity returned HTTP status %s", resp.Status)
+	}
+
+	var result struct {
+		Result struct {
+			Credentials struct {
+				AccessKeyID     string    `xml:"AccessKeyId"`
+				SecretAccessKey string    `xml:"SecretAccessKey"`
+				SessionToken    string    `xml:"SessionToken"`
+				Expiration      time.Time `xml:"Expiration"`
+			} `xml:"Credentials"`
+		} `xml:"AssumeRoleWithWebIdentityResult"`
+	}
+
+	if err = xml.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return "", "", "", "", time.Time{}, err
+	}
+
+	creds := result.Result.Credentials
+
+	id = creds.AccessKeyID
+	secret = creds.SecretAccessKey
+	token = creds.SessionToken
+	expiration = creds.Expiration
+	return
+}
+
 // AmbientKey tries to produce a signing key
 // from the ambient filesystem, environment, etc.
 // The key is derived using derive, unless it is nil,
@@ -165,9 +251,12 @@ func AmbientKey(service string, derive DeriveFn) (*SigningKey, error) {
 		derive = DefaultDerive
 	}
 
-	id, secret, region, token, err := AmbientCreds()
+	id, secret, region, token, _, err := WebIdentityCreds(nil)
 	if err != nil {
-		return nil, err
+		id, secret, region, token, err = AmbientCreds()
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	baseURI := ""
