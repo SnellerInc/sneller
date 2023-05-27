@@ -272,7 +272,6 @@ func query(args []string) bool {
 		fmt.Fprintf(os.Stderr, f, args...)
 	}
 
-	var stats plan.ExecStats
 	start := time.Now()
 	ep := plan.ExecParams{
 		Plan:   tree,
@@ -284,6 +283,7 @@ func query(args []string) bool {
 		exitf("%s", err)
 	}
 	if dashv {
+		stats := ep.Stats
 		elapsed := time.Since(start)
 		rate := (float64(stats.BytesScanned) / float64(elapsed)) * 1000.0 / 1024.0 // bytes/ns ~= GB/s -> GiB/s*/
 		fmt.Fprintf(os.Stderr, "%d bytes (%s) scanned in %s %.3gGiB/s\n",
