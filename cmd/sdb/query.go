@@ -73,9 +73,11 @@ func readFile(root fs.FS, args []expr.Node, hint *plan.Hints) (*plan.Input, erro
 		blocks[i].Offset = i
 	}
 	return &plan.Input{
+		Fields: hint.Fields,
 		Descs: []blockfmt.Descriptor{{
 			ObjectInfo: blockfmt.ObjectInfo{
 				Path: string(str),
+				Size: info.Size(),
 			},
 			Trailer: *tr,
 		}},
