@@ -143,14 +143,10 @@ func vmMalloc(size int) []byte {
 }
 
 func (f *readerTable) write(dst io.Writer) error {
-	d := make([]blockfmt.Decoder, len(f.in))
-	for i := range d {
-		d[i].Malloc = vmMalloc
-		d[i].Free = vm.Free
-		d[i].BlockShift = f.in[i].t.BlockShift
-		d[i].Algo = f.in[i].t.Algo
-		d[i].Fields = f.fields
-	}
+	var d blockfmt.Decoder
+	d.Malloc = vmMalloc
+	d.Free = vm.Free
+	d.Fields = f.fields
 	for {
 		i := atomic.AddInt64(&f.block, 1) - 1
 		if i >= int64(len(f.blocks)) {
@@ -159,17 +155,19 @@ func (f *readerTable) write(dst io.Writer) error {
 		idx := f.blocks[i].Index
 		off := f.blocks[i].Offset
 		pos := f.in[idx].t.Blocks[off].Offset
-		d[idx].Offset = pos
+		d.BlockShift = f.in[idx].t.BlockShift
+		d.Algo = f.in[idx].t.Algo
+		d.Offset = pos
 		end := f.in[idx].t.Offset
 		if off < len(f.in[idx].t.Blocks)-1 {
 			end = f.in[idx].t.Blocks[off+1].Offset
 		}
-		size := int64(f.in[idx].t.Blocks[off].Chunks) << d[idx].BlockShift
+		size := int64(f.in[idx].t.Blocks[off].Chunks) << d.BlockShift
 		src, err := SectionReader(f.in[idx].src, pos, end-pos)
 		if err != nil {
 			return err
 		}
-		_, err = d[idx].Copy(dst, src)
+		_, err = d.Copy(dst, src)
 		src.Close()
 		if err != nil {
 			return err
