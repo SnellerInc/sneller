@@ -108,7 +108,27 @@ func (c *cmdlineEnv) Stat(tbl expr.Node, h *plan.Hints) (*plan.Input, error) {
 	return c.Env.Stat(tbl, h)
 }
 
-func tenantEnv(cachedir string, root fs.FS) *sneller.TenantEnv {
+func runner(cachedir string, root fs.FS) plan.Runner {
+	switch root.(type) {
+	case *db.DirFS:
+		return &plan.FSRunner{root}
+	case *db.S3FS:
+		cachedir = filepath.Join(cachedir, "sneller-sdb")
+		cache := dcache.New(cachedir, func() {})
+		err := os.MkdirAll(cachedir, 0750)
+		if err != nil {
+			exitf("%s", err)
+		}
+		cache.Logger = log.New(os.Stderr, "", log.Lshortfile)
+		return &sneller.TenantRunner{
+			Cache: cache,
+		}
+	default:
+		return nil
+	}
+}
+
+func tenantEnv(root fs.FS) *sneller.TenantEnv {
 	var tenant db.Tenant
 	switch t := root.(type) {
 	case *db.DirFS:
@@ -122,17 +142,9 @@ func tenantEnv(cachedir string, root fs.FS) *sneller.TenantEnv {
 	if err != nil {
 		exitf("%s", err)
 	}
-	cache := filepath.Join(cachedir, tenant.ID())
-	err = os.MkdirAll(cache, 0750)
-	if err != nil {
-		exitf("%s", err)
-	}
-	ret := &sneller.TenantEnv{
+	return &sneller.TenantEnv{
 		FSEnv: env,
-		Cache: dcache.New(cache, func() {}),
 	}
-	ret.Cache.Logger = log.New(os.Stderr, "", log.Lshortfile)
-	return ret
 }
 
 var newline = []byte{'\n'}
@@ -227,8 +239,10 @@ func query(args []string) bool {
 		exitf("%s", err)
 	}
 
-	rootfs := root(creds())
-	env := &cmdlineEnv{root: rootfs, Env: tenantEnv(dashtmp, rootfs)}
+	tenant := creds()
+	rootfs := root(tenant)
+	run := runner(dashtmp, rootfs)
+	env := &cmdlineEnv{root: rootfs, Env: tenantEnv(rootfs)}
 	tree, err := plan.New(q, env)
 	if err != nil {
 		exitf("planning query: %s", err)
@@ -274,9 +288,10 @@ func query(args []string) bool {
 
 	start := time.Now()
 	ep := plan.ExecParams{
+		FS:     rootfs,
 		Plan:   tree,
 		Output: stdout,
-		Runner: &plan.FSRunner{FS: rootfs},
+		Runner: run,
 	}
 	err = plan.Exec(&ep)
 	if err != nil {

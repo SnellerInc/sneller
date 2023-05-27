@@ -15,7 +15,9 @@
 package sneller
 
 import (
+	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/binary"
 	"fmt"
 	"io"
@@ -27,6 +29,7 @@ import (
 	"github.com/SnellerInc/sneller/plan"
 	"github.com/SnellerInc/sneller/tenant/dcache"
 	"github.com/SnellerInc/sneller/vm"
+	"github.com/dchest/siphash"
 	"golang.org/x/exp/constraints"
 	"golang.org/x/exp/slices"
 )
@@ -51,14 +54,6 @@ func init() {
 // used as such.
 type TenantEnv struct {
 	*FSEnv
-	Events *os.File
-	Cache  *dcache.Cache
-}
-
-func (t *TenantEnv) Post() {
-	if t.Events != nil {
-		t.Events.Write(onebuf[:])
-	}
 }
 
 type TenantRunner struct {
@@ -162,7 +157,28 @@ func (s *tenantSegment) Size() int64 {
 
 // ETag implements dcache.Segment.ETag
 func (s *tenantSegment) ETag() string {
-	return fmt.Sprintf("%s-%d", s.desc.ETag, s.block)
+	// we're hashing the etag+block together
+	// so that we get an even dispersion of
+	// bits for the top byte (base64-encoded)
+	// which we use as the directory for the
+	// rest of the cache contents
+	//
+	// this avoids an issue for ETags that begin
+	// with deterministic sequences of characters
+	// (like S3 ETags beginning with '"')
+	// causing the first level of cache directory
+	// indirection to become entirely useless
+	const (
+		k0 = 0x9f17c3fd5efd3ce4
+		k1 = 0xdbf1ba5f07eee2c0
+	)
+	var buf bytes.Buffer
+	fmt.Fprintf(&buf, "%s-%d", s.desc.ETag, s.block)
+	lo, hi := siphash.Hash128(k0, k1, buf.Bytes())
+	mem := buf.Bytes()[:0]
+	mem = binary.LittleEndian.AppendUint64(mem, lo)
+	mem = binary.LittleEndian.AppendUint64(mem, hi)
+	return base64.URLEncoding.EncodeToString(mem)
 }
 
 // Read implements dcache.Segment.Open
