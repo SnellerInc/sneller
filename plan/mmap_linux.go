@@ -12,14 +12,28 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-//go:build !linux
+//go:build linux
 
-package main
+package plan
 
-import "io"
+import (
+	"io"
+	"os"
+	"syscall"
+)
 
-func mmap(src io.ReaderAt, size int64) ([]byte, bool) {
-	return nil, false
+func mmap(src io.Reader, size int64) ([]byte, bool) {
+	f, ok := src.(*os.File)
+	if !ok {
+		return nil, false
+	}
+	mem, err := syscall.Mmap(int(f.Fd()), 0, int(size), syscall.PROT_READ, syscall.MAP_PRIVATE)
+	if err != nil {
+		return nil, false
+	}
+	return mem, true
 }
 
-func unmap(buf []byte) {}
+func unmap(mem []byte) {
+	syscall.Munmap(mem)
+}

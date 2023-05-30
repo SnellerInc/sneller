@@ -60,20 +60,43 @@ func (r *FSRunner) Run(dst vm.QuerySink, src *Input, ep *ExecParams) error {
 		}
 		defer f.Close()
 		in[i].src = f
+		in[i].size = src.Descs[i].Size
 	}
 	tbl := readerTable{
 		in:     in,
 		fields: src.Fields,
 		blocks: src.Blocks,
 	}
+	tbl.tryMap()
 	err := tbl.WriteChunks(dst, ep.Parallel)
+	tbl.unmap()
 	ep.Stats.Observe(&tbl)
 	return err
 }
 
+func (f *readerTable) tryMap() {
+	for i := range f.in {
+		mem, ok := mmap(f.in[i].src, f.in[i].size)
+		if ok {
+			f.in[i].mapped = mem
+		}
+	}
+}
+
+func (f *readerTable) unmap() {
+	for i := range f.in {
+		if f.in[i].mapped != nil {
+			unmap(f.in[i].mapped)
+			f.in[i].mapped = nil
+		}
+	}
+}
+
 type readerInput struct {
-	t   *blockfmt.Trailer
-	src io.ReadCloser
+	t      *blockfmt.Trailer
+	src    io.ReadCloser
+	size   int64
+	mapped []byte
 }
 
 type readerTable struct {
@@ -163,12 +186,18 @@ func (f *readerTable) write(dst io.Writer) error {
 			end = f.in[idx].t.Blocks[off+1].Offset
 		}
 		size := int64(f.in[idx].t.Blocks[off].Chunks) << d.BlockShift
-		src, err := SectionReader(f.in[idx].src, pos, end-pos)
-		if err != nil {
-			return err
+		var err error
+		if f.in[idx].mapped != nil {
+			_, err = d.CopyBytes(dst, f.in[idx].mapped[pos:end])
+		} else {
+			var src io.ReadCloser
+			src, err = SectionReader(f.in[idx].src, pos, end-pos)
+			if err != nil {
+				return err
+			}
+			_, err = d.Copy(dst, src)
+			src.Close()
 		}
-		_, err = d.Copy(dst, src)
-		src.Close()
 		if err != nil {
 			return err
 		}
