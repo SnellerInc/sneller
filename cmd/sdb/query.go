@@ -72,7 +72,7 @@ func readFile(root fs.FS, args []expr.Node, hint *plan.Hints) (*plan.Input, erro
 	for i := range blocks {
 		blocks[i].Offset = i
 	}
-	return &plan.Input{
+	ret := &plan.Input{
 		Fields: hint.Fields,
 		Descs: []blockfmt.Descriptor{{
 			ObjectInfo: blockfmt.ObjectInfo{
@@ -82,7 +82,11 @@ func readFile(root fs.FS, args []expr.Node, hint *plan.Hints) (*plan.Input, erro
 			Trailer: *tr,
 		}},
 		Blocks: blocks,
-	}, nil
+	}
+	if hint.Filter != nil {
+		ret = ret.Filter(hint.Filter)
+	}
+	return ret, nil
 }
 
 type cmdlineEnv struct {
