@@ -52,13 +52,6 @@ type Op interface {
 	// a symbol that corresponds to the name of
 	// the type of the plan op (see decode.go)
 	encode(dst *ion.Buffer, st *ion.Symtab, ep *ExecParams) error
-
-	// SetField should take the field label name "name"
-	// and use it to set the corresponding struct field
-	// to the decoded value of 'obj'
-	//
-	// Method has to report unrecognized fields.
-	SetField(ion.Field) error
 }
 
 // Nonterminal is embedded in every
