@@ -78,7 +78,6 @@ func (r *TenantRunner) Run(dst vm.QuerySink, in *plan.Input, ep *plan.ExecParams
 		panic("shouldn't have called Run")
 	}
 	segs := make([]dcache.Segment, 0, len(in.Blocks))
-	var size int64
 	for i := range in.Blocks {
 		seg := &tenantSegment{
 			fs:     ep.FS,
@@ -92,7 +91,7 @@ func (r *TenantRunner) Run(dst vm.QuerySink, in *plan.Input, ep *plan.ExecParams
 		return nil
 	}
 	var flags dcache.Flag
-	if CacheLimit > 0 && size > CacheLimit {
+	if CacheLimit > 0 && in.CompressedSize() > CacheLimit {
 		flags = dcache.FlagNoFill
 	}
 	tbl := r.Cache.MultiTable(ctx, segs, flags)

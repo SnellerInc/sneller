@@ -175,6 +175,17 @@ func (i *Input) Filter(e expr.Node) *Input {
 	return ret
 }
 
+// CompressedSize returns the number of compressed
+// bytes that comprise all of the input blocks.
+func (i *Input) CompressedSize() int64 {
+	s := int64(0)
+	for _, blk := range i.Blocks {
+		start, end := i.Descs[blk.Index].Trailer.BlockRange(blk.Offset)
+		s += (end - start)
+	}
+	return s
+}
+
 // Size returns the decompressed size of all
 // the data referenced by [i].
 func (i *Input) Size() int64 {
