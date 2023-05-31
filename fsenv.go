@@ -159,6 +159,7 @@ func (f *FSEnv) Stat(e expr.Node, h *plan.Hints) (*plan.Input, error) {
 	}
 	f.maxscan += size
 	return &plan.Input{
+		Fields: h.Fields,
 		Descs:  descs,
 		Blocks: blocks,
 	}, nil
