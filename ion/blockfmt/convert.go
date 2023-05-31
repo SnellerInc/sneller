@@ -799,7 +799,7 @@ func (c *Converter) runPrepend(cn *ion.Chunker) error {
 			maxchunks: t.Blocks[0].Chunks - 1, // skip over all but the last chunk
 		}
 	}
-	d.Set(c.Prepend.Trailer, len(t.Blocks))
+	d.Set(c.Prepend.Trailer)
 	_, err := d.Copy(dst, io.LimitReader(c.Prepend.R, size))
 	c.Prepend.R.Close()
 	cn.WalkTimeRanges = nil

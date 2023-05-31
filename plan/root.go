@@ -177,10 +177,8 @@ func (f *readerTable) write(dst io.Writer) error {
 		}
 		idx := f.blocks[i].Index
 		off := f.blocks[i].Offset
+		d.Set(f.in[idx].t)
 		pos := f.in[idx].t.Blocks[off].Offset
-		d.BlockShift = f.in[idx].t.BlockShift
-		d.Algo = f.in[idx].t.Algo
-		d.Offset = pos
 		end := f.in[idx].t.Offset
 		if off < len(f.in[idx].t.Blocks)-1 {
 			end = f.in[idx].t.Blocks[off+1].Offset

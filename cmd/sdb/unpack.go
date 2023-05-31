@@ -80,7 +80,7 @@ func unpack(args []string) {
 	var d blockfmt.Decoder
 	for i := range args {
 		src, trailer := openarg(rootfs, args[i])
-		d.Set(trailer, len(trailer.Blocks))
+		d.Set(trailer)
 		_, err := d.Copy(w, io.LimitReader(src, trailer.Offset))
 		if err != nil {
 			exitf("blockfmt.Decoder.Copy: %s", err)

@@ -207,7 +207,7 @@ func (s *tenantSegment) Decode(dst io.Writer, src []byte) error {
 	dec.Malloc = vmMalloc
 	dec.Free = vm.Free
 	dec.Fields = s.fields
-	dec.Set(&s.desc.Trailer, s.block+1)
+	dec.Set(&s.desc.Trailer)
 	_, err := dec.CopyBytes(dst, src)
 	return err
 }

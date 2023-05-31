@@ -615,9 +615,6 @@ type Decoder struct {
 	// BlockShift is the log2 of the block size.
 	// BlockShift is set automatically by Decoder.Set.
 	BlockShift int
-	// Offset is the offset at which to begin decoding.
-	// Offset is set automatically by Decoder.Set.
-	Offset int64
 	// Algo is the algorithm to use for decompressing
 	// the input data blocks.
 	// Algo is set automatically by Decoder.Set.
@@ -644,19 +641,11 @@ type Decoder struct {
 	tmp    []byte
 }
 
-// Set sets fields in the decoder in order
-// to prepare it for reading blocks from the
-// trailer t up to (but not including) lastblock.
-// To prepare for reading the whole trailer,
-// use Set(t, len(t.Blocks)).
-func (d *Decoder) Set(t *Trailer, lastblock int) {
+// Set copies the [Algo] and [BlockShift] fields
+// from [t] into [d].
+func (d *Decoder) Set(t *Trailer) {
 	d.BlockShift = t.BlockShift
 	d.Algo = t.Algo
-	if lastblock >= len(t.Blocks) {
-		d.Offset = t.Offset
-	} else {
-		d.Offset = t.Blocks[lastblock].Offset
-	}
 }
 
 func (d *Decoder) realloc(size int) []byte {
@@ -694,7 +683,7 @@ func (d *Decoder) free() {
 	}
 }
 
-func (d *Decoder) decompressBlocks(src io.Reader, upto int, dst []byte) (int, error) {
+func (d *Decoder) decompressBlocks(src io.Reader, dst []byte) (int, error) {
 	off, count := 0, 0
 	bs := 1 << d.BlockShift
 
@@ -703,9 +692,8 @@ func (d *Decoder) decompressBlocks(src io.Reader, upto int, dst []byte) (int, er
 	// output space available,
 	// decompress blocks:
 	block := 0
-	for count < upto && len(dst)-off >= bs {
-		n, err := io.ReadFull(src, d.frame[:])
-		count += n
+	for len(dst)-off >= bs {
+		_, err := io.ReadFull(src, d.frame[:])
 		if err != nil {
 			return off, err
 		}
@@ -713,21 +701,20 @@ func (d *Decoder) decompressBlocks(src io.Reader, upto int, dst []byte) (int, er
 			return 0, fmt.Errorf("decoding data: expected a blob; got %s", ion.TypeOf(d.frame[:]))
 		}
 		size := ion.SizeOf(d.frame[:]) - 5
-		if size < 0 || size > (upto-count) {
+		if size < 0 {
 			return off, fmt.Errorf("unexpected frame size %d", size)
 		}
 		buf := d.realloc(size)
-		n, err = io.ReadFull(src, buf)
+		n, err := io.ReadFull(src, buf)
 		if n != len(buf) && err == nil {
 			err = io.ErrUnexpectedEOF
 		}
-		count += n
 		if err != nil {
 			return off, err
 		}
 		err = d.decomp.Decompress(buf, dst[off:off+bs])
 		if err != nil {
-			return 0, fmt.Errorf("decompress @ offset %d of %d block %d size %d: %w", count-n, upto, block, size, err)
+			return 0, fmt.Errorf("decompress @ offset %d block %d size %d: %w", count-n, block, size, err)
 		}
 		off += bs
 		block++
@@ -767,7 +754,7 @@ func (d *Decoder) Decompress(src io.Reader, dst []byte) (int, error) {
 		return 0, err
 	}
 	defer d.free()
-	return d.decompressBlocks(src, int(d.Offset), dst)
+	return d.decompressBlocks(src, dst)
 }
 
 func (d *Decoder) copyZion(w io.Writer, src []byte) (int64, error) {

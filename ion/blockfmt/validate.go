@@ -32,7 +32,7 @@ func Validate(src io.Reader, t *Trailer, diag io.Writer) int {
 	if t.Sparse.Blocks() != len(t.Blocks) {
 		fmt.Fprintf(diag, "sparse has %d blocks; trailer has %d", t.Sparse.Blocks(), len(t.Blocks))
 	}
-	d.Set(t, len(t.Blocks))
+	d.Set(t)
 	w := checkWriter{dst: diag, blocks: t.Blocks, sparse: &t.Sparse}
 	d.Copy(&w, src)
 	return w.rows
