@@ -20,4 +20,4 @@ spec:
   selector:
     app: snellerd
     release: {{ .Release.Name }}
-  type: {{- with .Values.snellerd.serviceType }}
+  type: {{ .Values.snellerd.serviceType }}
