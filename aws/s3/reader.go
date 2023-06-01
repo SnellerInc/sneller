@@ -300,7 +300,7 @@ func (r *Reader) open(k *aws.SigningKey, bucket, object string, contents bool) (
 	if res.StatusCode != 200 {
 		// NOTE: we can't extractMessage() here, because HEAD
 		// errors do not produce a response with an error message
-		return res.Body, fmt.Errorf("s3.Open: HEAD returned %s", res.Status)
+		return res.Body, fmt.Errorf("s3.Open: %s returned %s", req.Method, res.Status)
 	}
 	if res.ContentLength < 0 {
 		return res.Body, fmt.Errorf("s3.Open: content length %d invalid", res.ContentLength)

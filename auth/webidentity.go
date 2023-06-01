@@ -107,7 +107,7 @@ func (p *webIdentityProvider) Authorize(ctx context.Context, token string) (db.T
 	defer p.lock.Unlock()
 
 	if p.Expired() {
-		id, secret, token, _, expiration, err := aws.WebIdentityCreds(nil)
+		id, secret, _, token, expiration, err := aws.WebIdentityCreds(nil)
 		if err != nil {
 			return nil, fmt.Errorf("can't exchange web-identity token to AWS credentials: %w", err)
 		}

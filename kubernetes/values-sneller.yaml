@@ -23,3 +23,7 @@ ingress:
     - secretName: kubernetes-sneller-tls
       hosts:
         - kubernetes-sneller.sneller-dev.io
+secrets:
+  token:
+    values:
+      snellerIndexKey: 4AiJmIzLvMAP8A/1XdmbuzdwDduxHdu4hVRO7//7vd8=

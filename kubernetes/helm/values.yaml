@@ -8,6 +8,7 @@ snellerd:
   repository: snellerinc/snellerd
   tag: latest
   pullPolicy: IfNotPresent
+  serviceType: ClusterIP
   ports:
     snellerd: 8000
     internode: 8001
