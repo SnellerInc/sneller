@@ -18,7 +18,7 @@ package plan
 
 import "io"
 
-func mmap(src io.ReaderAt, size int64) ([]byte, bool) {
+func mmap(src io.Reader, size int64) ([]byte, bool) {
 	return nil, false
 }
 
