@@ -104,13 +104,13 @@ func testRoundtrip(t *testing.T, src []byte) {
 
 	var dec Decoder
 	var enc Encoder
-	dst, err := enc.Compress(src, nil, DefaultANSThreshold)
+	dst, err := enc.Compress(src, nil, DefaultEntropyRejectionThreshold)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// test that encoder state is reset correctly
-	dst2, err := enc.Compress(src, nil, DefaultANSThreshold)
+	dst2, err := enc.Compress(src, nil, DefaultEntropyRejectionThreshold)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -157,7 +157,7 @@ func FuzzRoundTrip(f *testing.F) {
 	f.Fuzz(func(t *testing.T, ref []byte) {
 		var dec Decoder
 		var enc Encoder
-		compressed, err := enc.Compress(ref, nil, DefaultANSThreshold)
+		compressed, err := enc.Compress(ref, nil, DefaultEntropyRejectionThreshold)
 		if err != nil {
 			return // when would this fail?
 		}
@@ -172,7 +172,7 @@ func FuzzRoundTrip(f *testing.F) {
 			return
 		}
 		ref = ref[:len(ref)-1]
-		compressed, err = enc.Compress(ref, nil, DefaultANSThreshold)
+		compressed, err = enc.Compress(ref, nil, DefaultEntropyRejectionThreshold)
 		if err != nil {
 			return // when would this fail?
 		}
@@ -192,7 +192,7 @@ func BenchmarkRef(b *testing.B) {
 		b.Fatal(err)
 	}
 	var enc Encoder
-	dst, err := enc.Compress(src, nil, DefaultANSThreshold)
+	dst, err := enc.Compress(src, nil, DefaultEntropyRejectionThreshold)
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -214,7 +214,7 @@ func BenchmarkTestdata(b *testing.B) {
 			b.Run(name, func(b *testing.B) {
 				var enc Encoder
 				var dec Decoder
-				dst, err := enc.Compress(src, nil, DefaultANSThreshold)
+				dst, err := enc.Compress(src, nil, DefaultEntropyRejectionThreshold)
 				if err != nil {
 					b.Fatal(err)
 				}
@@ -235,7 +235,7 @@ func BenchmarkTestdata(b *testing.B) {
 		runTestdata(b, func(b *testing.B, name string, src []byte) {
 			b.Run(name, func(b *testing.B) {
 				var enc Encoder
-				dst, err := enc.Compress(src, nil, DefaultANSThreshold)
+				dst, err := enc.Compress(src, nil, DefaultEntropyRejectionThreshold)
 				if err != nil {
 					b.Fatal(err)
 				}
@@ -245,7 +245,7 @@ func BenchmarkTestdata(b *testing.B) {
 				b.ReportMetric(float64(len(src)), "input-bytes")
 				b.ReportMetric(float64(len(dst)), "output-bytes")
 				for i := 0; i < b.N; i++ {
-					dst, err = enc.Compress(src, dst[:0], DefaultANSThreshold)
+					dst, err = enc.Compress(src, dst[:0], DefaultEntropyRejectionThreshold)
 					if err != nil {
 						b.Fatal(err)
 					}

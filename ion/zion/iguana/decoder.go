@@ -26,15 +26,17 @@ import (
 //
 // It is not safe to use a Decoder from multiple goroutines simultaneously.
 type Decoder struct {
-	pack     streamPack
-	anstab   ANSDenseTable
-	ansbuf   []byte
-	lastOffs int
+	pack      streamPack
+	anstab    ANSDenseTable
+	ansnibtab ANSNibbleDenseTable
+	entbuf    []byte
+	lastOffs  int
 }
 
 func (d *Decoder) reset() {
 	d.pack = streamPack{}
 	d.anstab = ANSDenseTable{}
+	d.ansnibtab = ANSNibbleDenseTable{}
 }
 
 // Decompress returns the decompressed result of src as a new slice.
@@ -138,7 +140,7 @@ func (d *Decoder) decode(uncompressedLen uint64, ctrlCursor int, dst []byte, src
 			dst = append(dst, src[dataCursor:dataCursor+n]...)
 			dataCursor += n
 
-		case cmdDecodeANS:
+		case cmdDecodeANS32:
 			var lenUncompressed, lenCompressed uint64
 			lenUncompressed, ctrlCursor, ec = readControlVarUint(src, ctrlCursor)
 			if ec != ecOK {
@@ -153,7 +155,49 @@ func (d *Decoder) decode(uncompressedLen uint64, ctrlCursor int, dst []byte, src
 			if ec != ecOK {
 				return dst, ec
 			}
-			dst, ec = ansDecodeExplicit(encoded, &d.anstab, int(lenUncompressed), dst)
+			dst, ec = ans32DecodeExplicit(encoded, &d.anstab, int(lenUncompressed), dst)
+			if ec != ecOK {
+				return dst, ec
+			}
+			dataCursor += lenCompressed
+
+		case cmdDecodeANS1:
+			var lenUncompressed, lenCompressed uint64
+			lenUncompressed, ctrlCursor, ec = readControlVarUint(src, ctrlCursor)
+			if ec != ecOK {
+				return dst, ec
+			}
+			lenCompressed, ctrlCursor, ec = readControlVarUint(src, ctrlCursor)
+			if ec != ecOK {
+				return dst, ec
+			}
+			ans := src[dataCursor : dataCursor+lenCompressed]
+			encoded, ec := ansDecodeTable(&d.anstab, ans)
+			if ec != ecOK {
+				return dst, ec
+			}
+			dst, ec = ans1DecodeExplicit(encoded, &d.anstab, int(lenUncompressed), dst)
+			if ec != ecOK {
+				return dst, ec
+			}
+			dataCursor += lenCompressed
+
+		case cmdDecodeANSNibble:
+			var lenUncompressed, lenCompressed uint64
+			lenUncompressed, ctrlCursor, ec = readControlVarUint(src, ctrlCursor)
+			if ec != ecOK {
+				return dst, ec
+			}
+			lenCompressed, ctrlCursor, ec = readControlVarUint(src, ctrlCursor)
+			if ec != ecOK {
+				return dst, ec
+			}
+			ans := src[dataCursor : dataCursor+lenCompressed]
+			encoded, ec := ansNibbleDecodeTable(&d.ansnibtab, ans)
+			if ec != ecOK {
+				return dst, ec
+			}
+			dst, ec = ansNibbleDecodeExplicit(encoded, &d.ansnibtab, int(lenUncompressed), dst)
 			if ec != ecOK {
 				return dst, ec
 			}
@@ -164,8 +208,12 @@ func (d *Decoder) decode(uncompressedLen uint64, ctrlCursor int, dst []byte, src
 			if ctrlCursor < 0 {
 				return dst, ecOutOfInputData
 			}
-			hdr := src[ctrlCursor]
-			ctrlCursor--
+
+			var hdr uint64
+			hdr, ctrlCursor, ec = readControlVarUint(src, ctrlCursor)
+			if ec != ecOK {
+				return dst, ec
+			}
 
 			// Fetch the uncompressed streams' lengths
 			if hdr == 0 {
@@ -180,7 +228,7 @@ func (d *Decoder) decode(uncompressedLen uint64, ctrlCursor int, dst []byte, src
 				}
 			} else {
 				var ulens [streamCount]uint64
-				ansBufferSize := uint64(0)
+				entropyBufferSize := uint64(0)
 
 				for i := stridType(0); i < streamCount; i++ {
 					var uLen uint64
@@ -189,19 +237,19 @@ func (d *Decoder) decode(uncompressedLen uint64, ctrlCursor int, dst []byte, src
 						return dst, ec
 					}
 					ulens[i] = uLen
-					if hdr&(1<<i) != 0 {
-						ansBufferSize += uLen
+					if entropyMode := EntropyMode((hdr >> (i * 4)) & 0x0f); entropyMode != EntropyNone {
+						entropyBufferSize += uLen
 					}
 				}
-				if uint64(cap(d.ansbuf)) < ansBufferSize+padSize {
+				if uint64(cap(d.entbuf)) < entropyBufferSize+padSize {
 					// ensure the output is appropriately padded:
-					d.ansbuf = make([]byte, ansBufferSize, ansBufferSize+padSize)
+					d.entbuf = make([]byte, entropyBufferSize, entropyBufferSize+padSize)
 				}
-				ansOffs := uint64(0)
+				entOffs := uint64(0)
 
 				for i := stridType(0); i < streamCount; i++ {
 					uLen := ulens[i]
-					if hdr&(1<<i) == 0 {
+					if entropyMode := EntropyMode((hdr >> (i * 4)) & 0x0f); entropyMode == EntropyNone {
 						d.pack[i].data = d.padStream(i, src[dataCursor:dataCursor+uLen])
 						dataCursor += uLen
 					} else {
@@ -210,26 +258,65 @@ func (d *Decoder) decode(uncompressedLen uint64, ctrlCursor int, dst []byte, src
 						if ec != ecOK {
 							return dst, ec
 						}
-						ans := src[dataCursor : dataCursor+cLen]
-						dataCursor += cLen
+						switch entropyMode {
+						case EntropyANS32:
+							ans := src[dataCursor : dataCursor+cLen]
+							dataCursor += cLen
 
-						encoded, ec := ansDecodeTable(&d.anstab, ans)
-						if ec != ecOK {
-							return dst, ec
-						}
+							encoded, ec := ansDecodeTable(&d.anstab, ans)
+							if ec != ecOK {
+								return dst, ec
+							}
 
-						buf := d.ansbuf[ansOffs:ansOffs]
-						d.pack[i].data, ec = ansDecodeExplicit(encoded, &d.anstab, int(uLen), buf)
-						if ec != ecOK {
-							return dst, ec
+							buf := d.entbuf[entOffs:entOffs]
+							d.pack[i].data, ec = ans32DecodeExplicit(encoded, &d.anstab, int(uLen), buf)
+							if ec != ecOK {
+								return dst, ec
+							}
+							entOffs += uLen
+
+						case EntropyANS1:
+							ans := src[dataCursor : dataCursor+cLen]
+							dataCursor += cLen
+
+							encoded, ec := ansDecodeTable(&d.anstab, ans)
+							if ec != ecOK {
+								return dst, ec
+							}
+
+							buf := d.entbuf[entOffs:entOffs]
+							d.pack[i].data, ec = ans1DecodeExplicit(encoded, &d.anstab, int(uLen), buf)
+							if ec != ecOK {
+								return dst, ec
+							}
+							entOffs += uLen
+
+						case EntropyANSNibble:
+							ansNib := src[dataCursor : dataCursor+cLen]
+							dataCursor += cLen
+
+							encoded, ec := ansNibbleDecodeTable(&d.ansnibtab, ansNib)
+							if ec != ecOK {
+								return dst, ec
+							}
+
+							buf := d.entbuf[entOffs:entOffs]
+							d.pack[i].data, ec = ansNibbleDecodeExplicit(encoded, &d.ansnibtab, int(uLen), buf)
+							if ec != ecOK {
+								return dst, ec
+							}
+							entOffs += uLen
+
+						default:
+							panic("unrecognized entropy mode")
 						}
-						ansOffs += uLen
 					}
 				}
 			}
 
 			d.lastOffs = -initLastOffset
 			dst, ec = decompressIguana(dst, &d.pack, &d.lastOffs)
+
 			if ec != ecOK {
 				return dst, ec
 			}

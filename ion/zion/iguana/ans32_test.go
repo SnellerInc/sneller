@@ -19,10 +19,10 @@ import (
 	"testing"
 )
 
-func TestANS(t *testing.T) {
+func TestANS32(t *testing.T) {
 	in := []byte("test message 123 test message 456")
 
-	var enc ANSEncoder
+	var enc ANS32Encoder
 	ans, err := enc.Encode(in)
 	if err != nil {
 		t.Error(err)
@@ -32,7 +32,7 @@ func TestANS(t *testing.T) {
 	lenANS := len(ans)
 	ratio := 100.0 * (1.0 - float64(lenANS)/float64(lenIn))
 	t.Logf("ANS input size: %d, output size %d, compression ratio %f%%\n", lenIn, lenANS, ratio)
-	dec, err := ANSDecode(ans, lenIn)
+	dec, err := ANS32Decode(ans, lenIn)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -49,15 +49,15 @@ func TestANS(t *testing.T) {
 	}
 }
 
-func FuzzANSRoundtrip(f *testing.F) {
+func FuzzANS32Roundtrip(f *testing.F) {
 	f.Fuzz(func(t *testing.T, ref []byte) {
 		refLen := len(ref)
-		var enc ANSEncoder
+		var enc ANS32Encoder
 		compressed, err := enc.Encode(ref)
 		if err != nil {
 			return // when would this fail?
 		}
-		decompressed, err := ANSDecode(compressed, refLen)
+		decompressed, err := ANS32Decode(compressed, refLen)
 		if err != nil {
 			t.Fatalf("round-trip failed: %s", err)
 		}

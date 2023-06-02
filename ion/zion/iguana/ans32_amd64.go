@@ -31,13 +31,13 @@ func init() {
 	}
 
 	if cpu.X86.HasAVX512 {
-		ansCompress = ansCompressAVX512Generic
-		ansDecompress = ansDecompressAVX512Generic
-		ansDecodeTable = ansDecodeTableAVX512Generic
-	}
+		ans32Compress = ans32CompressAVX512Generic
+		ans32Decompress = ans32DecompressAVX512Generic
+		ansDecodeFullTable = ansDecodeFullTableAVX512Generic
 
-	if cpu.X86.HasAVX512VBMI {
-		ansDecompress = ansDecompressAVX512VBMI
+		if cpu.X86.HasAVX512VBMI {
+			ans32Decompress = ans32DecompressAVX512VBMI
+		}
 	}
 }
 
@@ -48,9 +48,9 @@ const (
 	ansCoreFlagExpandReverse
 )
 
-func ansCompressAVX512Generic(enc *ANSEncoder) {
+func ans32CompressAVX512Generic(enc *ANS32Encoder) {
 	for {
-		if r := ansCompressCoreAVX512Generic(enc); r == 0 {
+		if r := ans32CompressCoreAVX512Generic(enc); r == 0 {
 			return
 		} else {
 			// At least one of the buffers has insufficient capacity
@@ -65,13 +65,13 @@ func ansCompressAVX512Generic(enc *ANSEncoder) {
 }
 
 //go:noescape
-func ansDecompressAVX512VBMI(dst []byte, dstLen int, src []byte, tab *ANSDenseTable) ([]byte, errorCode)
+func ans32DecompressAVX512VBMI(dst []byte, dstLen int, src []byte, tab *ANSDenseTable) ([]byte, errorCode)
 
 //go:noescape
-func ansDecompressAVX512Generic(dst []byte, dstLen int, src []byte, tab *ANSDenseTable) ([]byte, errorCode)
+func ans32DecompressAVX512Generic(dst []byte, dstLen int, src []byte, tab *ANSDenseTable) ([]byte, errorCode)
 
 //go:noescape
-func ansDecodeTableAVX512Generic(tab *ANSDenseTable, src []byte) ([]byte, errorCode)
+func ans32CompressCoreAVX512Generic(enc *ANS32Encoder) ansCoreFlags
 
 //go:noescape
-func ansCompressCoreAVX512Generic(enc *ANSEncoder) ansCoreFlags
+func ansDecodeFullTableAVX512Generic(tab *ANSDenseTable, src []byte) ([]byte, errorCode)

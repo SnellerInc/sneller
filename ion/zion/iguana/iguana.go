@@ -15,23 +15,35 @@
 // Package iguana implements a Lizard-derived compression/decompression pipeline
 package iguana
 
+// EncodingMode specifies what structural compression should be applied to the compressor's input.
 type EncodingMode byte
 
 const (
-	EncodingRaw       EncodingMode = iota
-	EncodingIguana                 = 1 << 0
-	EncodingANS                    = 1 << 1
-	EncodingIguanaANS              = EncodingIguana | EncodingANS
+	EncodingRaw    EncodingMode = iota   // No structural compression is applied
+	EncodingIguana              = 1 << 0 // Iguana structural compression is applied
+)
+
+// EntropyMode specifies what entropy compression should be applied to the results of the selected structural compressor.
+type EntropyMode byte
+
+const (
+	EntropyNone      EntropyMode = iota // No entropy compression is applied
+	EntropyANS32                        // Vectorized, 32-way interleaved 8-bit rANS entropy compression should be applied
+	EntropyANS1                         // Scalar, one-way 8-bit rANS entropy compression should be applied
+	EntropyANSNibble                    // Scalar, one-way 4-bit rANS entropy compression should be applied
 )
 
 const (
-	DefaultANSThreshold = 1.0
+	DefaultEntropyRejectionThreshold = 1.0
+	entropyInitialBufferSize         = 256 * 1024
 )
 
 type EncodingRequest struct {
-	Src                   []byte
-	Mode                  EncodingMode
-	ANSRejectionThreshold float32
+	Src                       []byte
+	EncMode                   EncodingMode
+	EntMode                   EntropyMode
+	EntropyRejectionThreshold float32
+	EnableSecondaryResolver   bool
 }
 
 // header byte

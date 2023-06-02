@@ -44,11 +44,13 @@ const (
 )
 
 const (
-	cmdCopyRaw        byte = 0x00
-	cmdDecodeIguana   byte = 0x01
-	cmdDecodeANS      byte = 0x02
-	lastCommandMarker byte = 0x80
-	cmdMask                = ^lastCommandMarker
+	cmdCopyRaw         byte = 0x00
+	cmdDecodeIguana    byte = 0x01
+	cmdDecodeANS32     byte = 0x02
+	cmdDecodeANS1      byte = 0x03
+	cmdDecodeANSNibble byte = 0x04
+	lastCommandMarker  byte = 0x80
+	cmdMask                 = ^lastCommandMarker
 )
 
 const (
@@ -58,16 +60,17 @@ const (
 
 	// turn this on to get a much more expensive
 	// (but optimal) matcher
-	forceOptimalMatching = false
+	forceOptimalMatching = !false
 )
 
 type encodingStation struct {
-	dst               []byte
-	ctrl              []byte
-	lastCommandOffset int
-	ans               ANSEncoder
-	ctx               encodingContext
-
+	dst                []byte
+	ctrl               []byte
+	lastCommandOffset  int
+	ans32              ANS32Encoder
+	ans1               ANS1Encoder
+	ansnib             ANSNibbleEncoder
+	ctx                encodingContext
 	ustreams, cstreams [streamCount][]byte
 }
 
@@ -75,8 +78,8 @@ type Encoder struct {
 	es encodingStation
 }
 
-func (e *Encoder) Compress(src []byte, dst []byte, ansRejectionThreshold float32) ([]byte, error) {
-	return e.CompressComposite(dst, []EncodingRequest{{Src: src, Mode: EncodingIguanaANS, ANSRejectionThreshold: ansRejectionThreshold}})
+func (e *Encoder) Compress(src []byte, dst []byte, entropyRejectionThreshold float32) ([]byte, error) {
+	return e.CompressComposite(dst, []EncodingRequest{{Src: src, EncMode: EncodingIguana, EntMode: EntropyANS32, EntropyRejectionThreshold: entropyRejectionThreshold, EnableSecondaryResolver: false}})
 }
 
 func (e *Encoder) CompressComposite(dst []byte, reqs []EncodingRequest) ([]byte, error) {
@@ -203,30 +206,37 @@ func (es *encodingStation) encode(reqs []EncodingRequest) ([]byte, error) {
 		} else if srcLen == 0 {
 			continue
 		}
-		switch req.Mode {
+		switch req.EncMode {
 
 		case EncodingRaw:
-			if err := es.encodeRaw(req.Src); err != nil {
-				return nil, err
-			}
-
-		case EncodingANS:
-			if err := es.encodeANS(req.Src, req.ANSRejectionThreshold); err != nil {
-				return nil, err
+			switch req.EntMode {
+			case EntropyNone:
+				if err := es.encodeRaw(req.Src); err != nil {
+					return nil, err
+				}
+			case EntropyANS32:
+				if err := es.encodeANS32(&req); err != nil {
+					return nil, err
+				}
+			case EntropyANS1:
+				if err := es.encodeANS1(&req); err != nil {
+					return nil, err
+				}
+			case EntropyANSNibble:
+				if err := es.encodeANSNibble(&req); err != nil {
+					return nil, err
+				}
+			default:
+				return nil, fmt.Errorf("unrecognized entropy mode %02x", req.EntMode)
 			}
 
 		case EncodingIguana:
-			if err := es.encodeIguana(req.Src, 0.0); err != nil {
-				return nil, err
-			}
-
-		case EncodingIguanaANS:
-			if err := es.encodeIguana(req.Src, req.ANSRejectionThreshold); err != nil {
+			if err := es.encodeIguana(&req); err != nil {
 				return nil, err
 			}
 
 		default:
-			return nil, fmt.Errorf("unrecognized mode %02x", req.Mode)
+			return nil, fmt.Errorf("unrecognized encoding mode %02x", req.EncMode)
 		}
 	}
 
@@ -246,19 +256,19 @@ func (es *encodingStation) encodeRaw(src []byte) error {
 	return nil
 }
 
-func (es *encodingStation) encodeANS(src []byte, threshold float32) error {
-	ans, err := es.ans.Encode(src)
+func (es *encodingStation) encodeANS32(req *EncodingRequest) error {
+	ans, err := es.ans32.Encode(req.Src)
 	if err != nil {
 		return err
 	}
-	srcLen := uint64(len(src))
+	srcLen := uint64(len(req.Src))
 	lenANS := uint64(len(ans))
-	if ratio := float64(lenANS) / float64(srcLen); ratio >= float64(threshold) {
+	if ratio := float64(lenANS) / float64(srcLen); ratio >= float64(req.EntropyRejectionThreshold) {
 		es.appendControlCommand(cmdCopyRaw)
 		es.appendControlVarUint(srcLen)
-		es.dst = append(es.dst, src...)
+		es.dst = append(es.dst, req.Src...)
 	} else {
-		es.appendControlCommand(cmdDecodeANS)
+		es.appendControlCommand(cmdDecodeANS32)
 		es.appendControlVarUint(srcLen)
 		es.appendControlVarUint(lenANS)
 		es.dst = append(es.dst, ans...)
@@ -266,17 +276,57 @@ func (es *encodingStation) encodeANS(src []byte, threshold float32) error {
 	return nil
 }
 
-func (es *encodingStation) encodeIguana(src []byte, threshold float32) error {
-	if len(src) < (minLength + hashbytes) {
+func (es *encodingStation) encodeANS1(req *EncodingRequest) error {
+	ans, err := es.ans1.Encode(req.Src)
+	if err != nil {
+		return err
+	}
+	srcLen := uint64(len(req.Src))
+	lenANS := uint64(len(ans))
+	if ratio := float64(lenANS) / float64(srcLen); ratio >= float64(req.EntropyRejectionThreshold) {
+		es.appendControlCommand(cmdCopyRaw)
+		es.appendControlVarUint(srcLen)
+		es.dst = append(es.dst, req.Src...)
+	} else {
+		es.appendControlCommand(cmdDecodeANS1)
+		es.appendControlVarUint(srcLen)
+		es.appendControlVarUint(lenANS)
+		es.dst = append(es.dst, ans...)
+	}
+	return nil
+}
+
+func (es *encodingStation) encodeANSNibble(req *EncodingRequest) error {
+	ans, err := es.ansnib.Encode(req.Src)
+	if err != nil {
+		return err
+	}
+	srcLen := uint64(len(req.Src))
+	lenANS := uint64(len(ans))
+	if ratio := float64(lenANS) / float64(srcLen); ratio >= float64(req.EntropyRejectionThreshold) {
+		es.appendControlCommand(cmdCopyRaw)
+		es.appendControlVarUint(srcLen)
+		es.dst = append(es.dst, req.Src...)
+	} else {
+		es.appendControlCommand(cmdDecodeANSNibble)
+		es.appendControlVarUint(srcLen)
+		es.appendControlVarUint(lenANS)
+		es.dst = append(es.dst, ans...)
+	}
+	return nil
+}
+
+func (es *encodingStation) encodeIguana(req *EncodingRequest) error {
+	if len(req.Src) < (minLength + hashbytes) {
 		// we need enough bytes to actually produce a hash-chain match
 		// within the preceding minLength bytes
-		return es.encodeRaw(src)
+		return es.encodeRaw(req.Src)
 	}
 	ec := &es.ctx
-	ec.src = src
+	ec.src = req.Src
 	ec.encodeIguanaHashChains()
 
-	hdr := byte(0)
+	hdr := uint64(0)
 	es.ustreams = [streamCount][]byte{ec.tokens, ec.offsets16, ec.offsets24, ec.varLitLen, ec.varMatchLen, ec.literals}
 	totalsize := 0
 	for i := range es.cstreams {
@@ -286,31 +336,78 @@ func (es *encodingStation) encodeIguana(src []byte, threshold float32) error {
 		totalsize += len(es.ustreams[i])
 	}
 
-	if threshold > 0.0 {
+	if req.EntropyRejectionThreshold > 0.0 {
 		for i := 0; i < int(streamCount); i++ {
-			// ANS-compress the stream
-			cs, err := es.ans.Encode(es.ustreams[i])
-			if err != nil {
-				return err
-			}
-			csLen := len(cs)
-			if ratio := float64(csLen) / float64(len(es.ustreams[i])); ratio < float64(threshold) {
-				hdr |= (1 << i)
-				totalsize -= len(es.ustreams[i])
-				totalsize += len(cs)
-				es.cstreams[i] = append(es.cstreams[i][:0], cs...)
+			switch req.EntMode {
+			case EntropyANS32:
+				// ANS32-compress the stream
+				cs, err := es.ans32.Encode(es.ustreams[i])
+				if err != nil {
+					return err
+				}
+				csLen := len(cs)
+				if ratio := float64(csLen) / float64(len(es.ustreams[i])); ratio < float64(req.EntropyRejectionThreshold) {
+					hdr |= (uint64(EntropyANS32) << (i * 4))
+					totalsize -= len(es.ustreams[i])
+					totalsize += len(cs)
+					es.cstreams[i] = append(es.cstreams[i][:0], cs...)
+					break
+				}
+				if !req.EnableSecondaryResolver {
+					break
+				}
+				fallthrough // Resort to the scalar ANS version
+
+			case EntropyANS1:
+				// ANS1-compress the stream
+				cs, err := es.ans1.Encode(es.ustreams[i])
+				if err != nil {
+					return err
+				}
+				csLen := len(cs)
+				if ratio := float64(csLen) / float64(len(es.ustreams[i])); ratio < float64(req.EntropyRejectionThreshold) {
+					hdr |= (uint64(EntropyANS1) << (i * 4))
+					totalsize -= len(es.ustreams[i])
+					totalsize += len(cs)
+					es.cstreams[i] = append(es.cstreams[i][:0], cs...)
+					break
+				}
+				if !req.EnableSecondaryResolver {
+					break
+				}
+				fallthrough // Last ditch attempt
+
+			case EntropyANSNibble:
+				// ANSNibble-compress the stream
+				cs, err := es.ansnib.Encode(es.ustreams[i])
+				if err != nil {
+					return err
+				}
+				csLen := len(cs)
+				if ratio := float64(csLen) / float64(len(es.ustreams[i])); ratio < float64(req.EntropyRejectionThreshold) {
+					hdr |= (uint64(EntropyANSNibble) << (i * 4))
+					totalsize -= len(es.ustreams[i])
+					totalsize += len(cs)
+					es.cstreams[i] = append(es.cstreams[i][:0], cs...)
+				}
+
+			case EntropyNone:
+				// Doing nothing is equivalent to a failed entropy compression
+
+			default:
+				panic("unrecognized entropy encoding")
 			}
 		}
 	}
 	// if we didn't compress anything, emit a copy command
 	// (assume each stream consumes at least 1 varint byte
 	// and the header includes 1 extra control byte)
-	if totalsize+int(streamCount)+1 >= len(src) {
-		return es.encodeRaw(src)
+	if totalsize+int(streamCount)+1 >= len(req.Src) {
+		return es.encodeRaw(req.Src)
 	}
 
 	es.appendControlCommand(cmdDecodeIguana)
-	es.appendControlByte(hdr)
+	es.appendControlVarUint(hdr)
 
 	// Append the uncompressed streams' lengths
 	for i := 0; i < int(streamCount); i++ {
@@ -319,7 +416,7 @@ func (es *encodingStation) encodeIguana(src []byte, threshold float32) error {
 
 	// Append streams' data and compressed lengths
 	for i := 0; i < int(streamCount); i++ {
-		if hdr&(1<<i) == 0 {
+		if entropyMode := EntropyMode((hdr >> (i * 4)) & 0x0f); entropyMode == EntropyNone {
 			es.dst = append(es.dst, es.ustreams[i]...)
 		} else {
 			es.appendControlVarUint(uint64(len(es.cstreams[i])))

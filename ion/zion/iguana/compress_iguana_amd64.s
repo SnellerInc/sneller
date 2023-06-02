@@ -19,8 +19,8 @@
 #include "../../../internal/asmutils/bc_constant.h"
 
 
-// func pickBestMatchCD(ec *encodingContext, src []byte, candidates []uint32) matchDescriptor
-TEXT ·pickBestMatchCD(SB), NOSPLIT | NOFRAME, $0-56
+// func pickBestMatchAVX512CD(ec *encodingContext, src []byte, candidates []uint32) matchDescriptor
+TEXT ·pickBestMatchAVX512CD(SB), NOSPLIT | NOFRAME, $0-56
     MOVQ            candidates_len+40(FP), R15                          // R15 := uint64{candidates.Len}
     MOVQ            ec+0(FP), BX                                        // BX  := uint64{ec}
     TESTQ           R15, R15

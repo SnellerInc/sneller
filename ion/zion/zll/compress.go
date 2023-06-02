@@ -133,7 +133,7 @@ func (a BucketAlgo) Compress(src, dst []byte) ([]byte, error) {
 	switch a {
 	case CompressIguanaV0:
 		enc := iguanaEnc()
-		dst, err = enc.Compress(src, dst, iguana.DefaultANSThreshold)
+		dst, err = enc.Compress(src, dst, iguana.DefaultEntropyRejectionThreshold)
 		dropIguanaEnc(enc)
 	case CompressZstd:
 		dst = enc.EncodeAll(src, dst)

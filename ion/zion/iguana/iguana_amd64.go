@@ -23,11 +23,16 @@ import (
 )
 
 func init() {
-	if cpu.X86.HasAVX512CD {
-		pickBestMatch = pickBestMatchCD
-	}
-	if cpu.X86.HasAVX512VBMI2 && cpu.X86.HasAVX512VBMI {
-		decompressIguana = decompressIguanaVBMI2
+	if cpu.X86.HasAVX512 {
+		decompressIguana = decompressIguanaAVX512Generic
+
+		if cpu.X86.HasAVX512VBMI2 && cpu.X86.HasAVX512VBMI {
+			decompressIguana = decompressIguanaAVX512VBMI2
+		}
+
+		if cpu.X86.HasAVX512CD {
+			pickBestMatch = pickBestMatchAVX512CD
+		}
 	}
 }
 
@@ -37,7 +42,10 @@ const offsSliceHeaderCap = unsafe.Offsetof(reflect.SliceHeader{}.Cap)   //lint:i
 const sizeSliceHeader = unsafe.Sizeof(reflect.SliceHeader{})            //lint:ignore U1000 used in assembly
 
 //go:noescape
-func decompressIguanaVBMI2(dst []byte, streams *streamPack, lastOffs *int) ([]byte, errorCode)
+func decompressIguanaAVX512Generic(dst []byte, streams *streamPack, lastOffs *int) ([]byte, errorCode)
 
 //go:noescape
-func pickBestMatchCD(ec *encodingContext, src []byte, candidates []uint32) matchDescriptor
+func decompressIguanaAVX512VBMI2(dst []byte, streams *streamPack, lastOffs *int) ([]byte, errorCode)
+
+//go:noescape
+func pickBestMatchAVX512CD(ec *encodingContext, src []byte, candidates []uint32) matchDescriptor

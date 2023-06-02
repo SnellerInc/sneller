@@ -19,25 +19,25 @@
 #include "../../../internal/asmutils/bc_constant.h"
 
 
-// func ansCompressCoreAVX512Generic(enc *ANSEncoder) ansCoreFlags
-TEXT ·ansCompressCoreAVX512Generic(SB), NOSPLIT | NOFRAME, $0-8
+// func ans32CompressCoreAVX512Generic(enc *ANS32Encoder) ansCoreFlags
+TEXT ·ans32CompressCoreAVX512Generic(SB), NOSPLIT | NOFRAME, $0-8
     MOVQ            enc+0(FP), R15                                  // R15 := uint64{enc}
     VBROADCASTI32X4 CONST_GET_PTR(consts_enc_byte_in_word_inverter, 0), Y24 // Y24 := uint8{consts_enc_byte_in_word_inverter}
     VPXORD          Y0, Y0, Y0                                      // Z0  := {0*}
     VMOVDQU32       CONST_GET_PTR(consts_enc_composite_transformer, 0), Z25
     VPTERNLOGD      $0xff, Z1, Z1, Z1                               // Z1  := {-1*}
-    MOVQ            (ANSEncoder_src+const_offsSliceHeaderLen)(R15), R14 // R14 := uint64{src.Len}
-    MOVQ            (ANSEncoder_src+const_offsSliceHeaderData)(R15), SI // SI  := uint64{src.Data}
-    VMOVDQU32       ANSEncoder_state+0(R15), Z26            // Z26 := uint32{state[15..0]}
+    MOVQ            (ANS32Encoder_src+const_offsSliceHeaderLen)(R15), R14 // R14 := uint64{src.Len}
+    MOVQ            (ANS32Encoder_src+const_offsSliceHeaderData)(R15), SI // SI  := uint64{src.Data}
+    VMOVDQU32       ANS32Encoder_state+0(R15), Z26            // Z26 := uint32{state[15..0]}
     VPSRLD          $20, Z1, Z23                                    // Z23 := uint32{0x0fff times 16}
-    VMOVDQU32       ANSEncoder_state+64(R15), Z27           // Z27 := uint32{state[31..16]}
-    MOVQ            ANSEncoder_stats(R15), BX               // BX  := uint64{enc.stats}
-    MOVQ            (ANSEncoder_bufFwd+const_offsSliceHeaderData)(R15), R12
-    MOVQ            (ANSEncoder_bufRev+const_offsSliceHeaderData)(R15), R13
-    MOVQ            (ANSEncoder_bufFwd+const_offsSliceHeaderLen)(R15), AX
-    MOVQ            (ANSEncoder_bufRev+const_offsSliceHeaderLen)(R15), DX
-    MOVQ            (ANSEncoder_bufFwd+const_offsSliceHeaderCap)(R15), R10
-    MOVQ            (ANSEncoder_bufRev+const_offsSliceHeaderCap)(R15), R11
+    VMOVDQU32       ANS32Encoder_state+64(R15), Z27           // Z27 := uint32{state[31..16]}
+    MOVQ            ANS32Encoder_stats(R15), BX               // BX  := uint64{enc.stats}
+    MOVQ            (ANS32Encoder_bufFwd+const_offsSliceHeaderData)(R15), R12
+    MOVQ            (ANS32Encoder_bufRev+const_offsSliceHeaderData)(R15), R13
+    MOVQ            (ANS32Encoder_bufFwd+const_offsSliceHeaderLen)(R15), AX
+    MOVQ            (ANS32Encoder_bufRev+const_offsSliceHeaderLen)(R15), DX
+    MOVQ            (ANS32Encoder_bufFwd+const_offsSliceHeaderCap)(R15), R10
+    MOVQ            (ANS32Encoder_bufRev+const_offsSliceHeaderCap)(R15), R11
     ADDQ            AX, R12                                         // R12 := uint64{fwdCursor}
     ADDQ            DX, R13                                         // R13 := uint64{revCursor}
     SUBQ            AX, R10                                         // R10 := uint64{#bufFwd bytes available for store}
@@ -155,19 +155,19 @@ done:
     SUBQ            $64, R11                                        // EFLAGS.CF==1 <=> there is not enough space in bufRev
     JB              out_of_rev_buffer                               // There is not enough space in bufRev
     XORL            AX, AX
-    VMOVDQU32       Z26, ANSEncoder_state+0(R15)            // Update ANSEncoder.state[15..0]
-    VMOVDQU32       Z27, ANSEncoder_state+64(R15)           // Update ANSEncoder.state[31..16]
-    MOVQ            AX, (ANSEncoder_src+const_offsSliceHeaderLen)(R15) // Update enc.src.Len
+    VMOVDQU32       Z26, ANS32Encoder_state+0(R15)            // Update ANSEncoder.state[15..0]
+    VMOVDQU32       Z27, ANS32Encoder_state+64(R15)           // Update ANSEncoder.state[31..16]
+    MOVQ            AX, (ANS32Encoder_src+const_offsSliceHeaderLen)(R15) // Update enc.src.Len
     MOVL            AX, ret+8(FP)                                   // Indicate the processing has completed and no restart is necessary
     VPSHUFB         Z3, Z2, Z2                                      // Z2 := uint32{byte_reversed_state[15-i]} for i in 15..0
     VMOVDQU32       Z27, (R13)                                      // Flush state[31..16]
     ADDQ            $64, R13
     VMOVDQU32       Z2, (R12)                                       // Flush byte_reversed_state[0..15]
     ADDQ            $64, R12
-    SUBQ            (ANSEncoder_bufRev+const_offsSliceHeaderData)(R15), R13 // R13 := uint64{new len(bufRev)}
-    SUBQ            (ANSEncoder_bufFwd+const_offsSliceHeaderData)(R15), R12 // R12 := uint64{new len(bufFwd)}
-    MOVQ            R13, (ANSEncoder_bufRev+const_offsSliceHeaderLen)(R15)  // Update enc.bufRev.Len
-    MOVQ            R12, (ANSEncoder_bufFwd+const_offsSliceHeaderLen)(R15)  // Update enc.bufFwd.Len
+    SUBQ            (ANS32Encoder_bufRev+const_offsSliceHeaderData)(R15), R13 // R13 := uint64{new len(bufRev)}
+    SUBQ            (ANS32Encoder_bufFwd+const_offsSliceHeaderData)(R15), R12 // R12 := uint64{new len(bufFwd)}
+    MOVQ            R13, (ANS32Encoder_bufRev+const_offsSliceHeaderLen)(R15)  // Update enc.bufRev.Len
+    MOVQ            R12, (ANS32Encoder_bufFwd+const_offsSliceHeaderLen)(R15)  // Update enc.bufFwd.Len
     RET
 
 
@@ -205,24 +205,24 @@ out_of_rev_buffer:
     // fallback
 
 out_of_buffer_common:
-    VMOVDQU32       Z26, ANSEncoder_state+0(R15)            // Update ANSEncoder.state[15..0]
-    MOVQ            (ANSEncoder_src+const_offsSliceHeaderLen)(R15), AX // AX := uint64{src.Len}
-    VMOVDQU32       Z27, ANSEncoder_state+64(R15)           // Update ANSEncoder.state[31..16]
-    SUBQ            (ANSEncoder_bufFwd+const_offsSliceHeaderData)(R15), R12 // R12 := uint64{new len(bufFwd)}
-    SUBQ            (ANSEncoder_bufRev+const_offsSliceHeaderData)(R15), R13 // R13 := uint64{new len(bufRev)}
-    MOVQ            R12, (ANSEncoder_bufFwd+const_offsSliceHeaderLen)(R15)  // Update enc.bufFwd.Len
+    VMOVDQU32       Z26, ANS32Encoder_state+0(R15)            // Update ANSEncoder.state[15..0]
+    MOVQ            (ANS32Encoder_src+const_offsSliceHeaderLen)(R15), AX // AX := uint64{src.Len}
+    VMOVDQU32       Z27, ANS32Encoder_state+64(R15)           // Update ANSEncoder.state[31..16]
+    SUBQ            (ANS32Encoder_bufFwd+const_offsSliceHeaderData)(R15), R12 // R12 := uint64{new len(bufFwd)}
+    SUBQ            (ANS32Encoder_bufRev+const_offsSliceHeaderData)(R15), R13 // R13 := uint64{new len(bufRev)}
+    MOVQ            R12, (ANS32Encoder_bufFwd+const_offsSliceHeaderLen)(R15)  // Update enc.bufFwd.Len
     SUBQ            R14, AX             // AX := uint64{the number of consumed enc.src bytes}
     LEAQ            32(R14), DX         // DX := uint64{the last valid input offset if arrived at this point through the "loop" path}
-    MOVQ            R13, (ANSEncoder_bufRev+const_offsSliceHeaderLen)(R15)  // Update enc.bufRev.Len
+    MOVQ            R13, (ANS32Encoder_bufRev+const_offsSliceHeaderLen)(R15)  // Update enc.bufRev.Len
     LEAQ            (R14)(AX*1), DI     // DI := uint64{the last valid input offset if arrived at this point through the "fetch_partial" path}
     CMPQ            AX, $32             // EFLAGS.CF==1 <=> arrived at this point through the "fetch_partial" path
     CMOVQCS         DI, DX              // DX := uint64{the last valid input offset}
-    MOVQ            DX, (ANSEncoder_src+const_offsSliceHeaderLen)(R15) // update src.Len
+    MOVQ            DX, (ANS32Encoder_src+const_offsSliceHeaderLen)(R15) // update src.Len
     RET
 
 
-// func ansDecompressAVX512VBMI(dst []byte, dstLen int, src []byte, tab *ANSDenseTable) ([]byte, errorCode)
-TEXT ·ansDecompressAVX512VBMI(SB), NOSPLIT | NOFRAME, $0-64
+// func ans32DecompressAVX512VBMI(dst []byte, dstLen int, src []byte, tab *ANSDenseTable) ([]byte, errorCode)
+TEXT ·ans32DecompressAVX512VBMI(SB), NOSPLIT | NOFRAME, $0-64
     MOVL            $(const_ansWordM - 1), AX                       // AX  := uint32{ansWordM - 1}
     MOVQ            src_base+32(FP), SI                             // SI  := uint64{src.Data}
     MOVQ            src_len+40(FP), DX                              // DX  := uint64{src.Len}
@@ -365,8 +365,8 @@ handle_short_input:
     RET
 
 
-// func ansDecompressAVX512Generic(dst []byte, dstLen int, src []byte, tab *ANSDenseTable) ([]byte, errorCode)
-TEXT ·ansDecompressAVX512Generic(SB), NOSPLIT | NOFRAME, $0-64
+// func ans32DecompressAVX512Generic(dst []byte, dstLen int, src []byte, tab *ANSDenseTable) ([]byte, errorCode)
+TEXT ·ans32DecompressAVX512Generic(SB), NOSPLIT | NOFRAME, $0-64
     MOVL            $(const_ansWordM - 1), AX                       // AX  := uint32{ansWordM - 1}
     MOVQ            src_base+32(FP), SI                             // SI  := uint64{src.Data}
     MOVQ            src_len+40(FP), DX                              // DX  := uint64{src.Len}
@@ -514,8 +514,8 @@ handle_short_input:
     RET
 
 
-// func ansDecodeTableAVX512Generic(tab *ANSDenseTable, src []byte) ([]byte, errorCode)
-TEXT ·ansDecodeTableAVX512Generic(SB), NOSPLIT | NOFRAME, $0-32
+// func ansDecodeFullTableAVX512Generic(tab *ANSDenseTable, src []byte) ([]byte, errorCode)
+TEXT ·ansDecodeFullTableAVX512Generic(SB), NOSPLIT | NOFRAME, $0-32
     MOVQ            src_base+8(FP), SI                              // SI  := uint64{src.Data}
     MOVQ            src_len+16(FP), R12                             // R12 := uint64{src.Len}
     MOVL            $0x07070707, AX                                 // AX  := uintt32{0x07070707}
