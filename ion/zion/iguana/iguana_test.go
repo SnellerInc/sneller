@@ -140,6 +140,9 @@ func testRoundtrip(t *testing.T, src []byte) {
 			t.Fatal("wrote garbage to the end of the buffer?")
 		}
 	}
+	if len(src) != len(ret) {
+		t.Errorf("len(src) = %d; len(ret) = %d", len(src), len(ret))
+	}
 	if !bytes.Equal(src, ret) {
 		// print the diff of the hexdumps
 		delta, ok := tests.Diff(hex.Dump(src), hex.Dump(ret))

@@ -15,13 +15,9 @@
 package iguana
 
 import (
+	"encoding/binary"
 	"fmt"
-	"math"
 	"math/bits"
-
-	"github.com/SnellerInc/sneller/ints"
-
-	"golang.org/x/exp/slices"
 )
 
 const (
@@ -34,13 +30,6 @@ const (
 	varUIntThreshold1B = 254
 	varUIntThreshold3B = 254 * 254
 	varUIntThreshold4B = 254 * 254 * 254
-)
-
-const (
-	costToken    = 1
-	costOffs16   = 2
-	costOffs24   = 3
-	costInfinite = math.MaxInt32
 )
 
 const (
@@ -57,10 +46,6 @@ const (
 	iguanaChunkSize = 32
 	minOffset       = iguanaChunkSize
 	minLength       = iguanaChunkSize
-
-	// turn this on to get a much more expensive
-	// (but optimal) matcher
-	forceOptimalMatching = !false
 )
 
 type encodingStation struct {
@@ -100,7 +85,6 @@ type encodingContext struct {
 	literals    []byte
 
 	// The compressor's state
-	pendingLiterals   []byte
 	currentOffset     uint32
 	lastEncodedOffset uint32
 
@@ -108,73 +92,106 @@ type encodingContext struct {
 }
 
 const (
-	hunksize  = 16 // selected to be friendly to assembly
-	chainbits = 19 // selected empirically; seems to work better than 16
-	hashbytes = 3  // bytes necessary to hash data
+	chainbits = 17 // selected empirically; roughly equiv. to 18, 19
+	hashbytes = 5  // selected empirically; better than 4, 6, 7, 8
+	histsize  = 4  //
 )
 
-type hunk struct {
-	offsets [hunksize]uint32
-	next    uint32
-	valid   int8
-}
-
-func (h *hunk) entries() []uint32 {
-	return h.offsets[:h.valid]
+type hashEntry struct {
+	history [histsize]int32
 }
 
 // matchtable is a table of match chains
 // that is optimized for fast lookups
 type matchtable struct {
-	chains [1 << chainbits]uint32
-	hunks  []hunk
+	entries [1 << chainbits]hashEntry
 }
 
-func (m *matchtable) pos(c0, c1, c2 byte) uint {
-	return (uint(c0) << (chainbits - 8)) |
-		(uint(c1) << (chainbits - 8 - 8)) |
-		(uint(c2) & ((1 << (chainbits - 8 - 8)) - 1))
-}
-
-func (m *matchtable) reset(wantcap int) {
-	m.hunks = slices.Grow(m.hunks[:0], (wantcap*2)/hunksize)
-	for i := range m.chains {
-		m.chains[i] = 0
+func (m *matchtable) reset() {
+	for i := range m.entries {
+		m.entries[i] = hashEntry{}
 	}
 }
 
-func (m *matchtable) next(h *hunk) *hunk {
-	if h.next == 0 {
-		return nil
+func (m *matchtable) hash(seq []byte) uint32 {
+	u := binary.LittleEndian.Uint64(seq)
+	// multiply the low-order bits by a large prime
+	// depending on the number of bytes we want to consider:
+	switch hashbytes {
+	case 4:
+		u = (u << 32) * 2654435761
+	case 5:
+		u = (u << 24) * 889523592379
+	case 6:
+		u = (u << 16) * 227718039650203
+	case 7:
+		u = (u << 8) * 58295818150454627
+	case 8:
+		u = u * 0xcf1bbcdcb7a56463
 	}
-	return &m.hunks[^h.next]
+	return uint32(u >> (64 - chainbits))
 }
 
-func (m *matchtable) chain(seq []byte) *hunk {
-	e := m.chains[m.pos(seq[0], seq[1], seq[2])]
-	if e == 0 {
-		return nil
+func (m *matchtable) insert(src []byte, pos int32) {
+	ent := &m.entries[m.hash(src[pos:])]
+	switch histsize {
+	case 4:
+		ent.history[0], ent.history[1], ent.history[2], ent.history[3] = pos, ent.history[0], ent.history[1], ent.history[2]
+	case 3:
+		ent.history[0], ent.history[1], ent.history[2] = pos, ent.history[0], ent.history[1]
+	case 2:
+		ent.history[0], ent.history[1] = pos, ent.history[0]
+	case 1:
+		ent.history[0] = pos
+	default:
+		copy(ent.history[1:], ent.history[:])
+		ent.history[0] = pos
 	}
-	return &m.hunks[^e]
 }
 
-func (m *matchtable) insert(seq []byte, pos uint32) {
-	j := m.pos(seq[0], seq[1], seq[2])
-	e := m.chains[j]
-	if e == 0 || m.hunks[^e].valid == hunksize {
-		// grow
-		idx := len(m.hunks)
-		m.hunks = append(m.hunks, hunk{})
-		h := &m.hunks[idx]
-		h.offsets[0] = pos
-		h.valid = 1
-		h.next = e
-		m.chains[j] = ^uint32(idx)
-		return
+// return (position, length) of the best saved match for src[pos:]
+func (m *matchtable) bestMatch(src []byte, pos int32) (int32, int32) {
+	ent := &m.entries[m.hash(src[pos:])]
+	// start with the hottest match
+	p, mlen := ent.history[0], lcp(src, ent.history[0], pos)
+	for i := 1; i < histsize; i++ {
+		cpos := ent.history[i]
+		if cpos == 0 {
+			break // empty entry
+		}
+		// see if prev is a better match;
+		// penalize the match length by one
+		// if the match distance is >=64kB
+		clen := lcp(src, cpos, pos)
+		if clen > mlen && isLegal(pos-cpos, clen) {
+			p, mlen = cpos, clen
+		}
 	}
-	h := &m.hunks[^e]
-	h.offsets[h.valid] = pos
-	h.valid++
+	return p, mlen
+}
+
+// longest-common-prefix of src[lo:] and src[:hi] where lo < hi
+func lcp(src []byte, lo, hi int32) int32 {
+	matched := int32(0)
+	// fast path:
+	for len(src)-int(hi+matched) >= 8 {
+		// bounds-check hint:
+		_ = src[lo+matched : lo+matched+8]
+		_ = src[hi+matched : hi+matched+8]
+
+		lobits := binary.LittleEndian.Uint64(src[lo+matched:])
+		hibits := binary.LittleEndian.Uint64(src[hi+matched:])
+		delta := lobits ^ hibits
+		if delta == 0 {
+			matched += 8
+			continue
+		}
+		return matched + int32(bits.TrailingZeros64(delta)/8)
+	}
+	for len(src)-int(hi+matched) > 0 && src[lo+matched] == src[hi+matched] {
+		matched++
+	}
+	return matched
 }
 
 func (ec *encodingContext) reset() {
@@ -185,7 +202,6 @@ func (ec *encodingContext) reset() {
 	ec.varLitLen = ec.varLitLen[:0]
 	ec.varMatchLen = ec.varMatchLen[:0]
 	ec.literals = ec.literals[:0]
-	ec.pendingLiterals = ec.pendingLiterals[:0]
 	ec.currentOffset = 0
 	ec.lastEncodedOffset = 0
 }
@@ -324,7 +340,7 @@ func (es *encodingStation) encodeIguana(req *EncodingRequest) error {
 	}
 	ec := &es.ctx
 	ec.src = req.Src
-	ec.encodeIguanaHashChains()
+	ec.compressSrc()
 
 	hdr := uint64(0)
 	es.ustreams = [streamCount][]byte{ec.tokens, ec.offsets16, ec.offsets24, ec.varLitLen, ec.varMatchLen, ec.literals}
@@ -484,150 +500,101 @@ func appendUint16(s []byte, v uint32) []byte {
 	panic(fmt.Sprintf("%d is out of the uint16 range", v))
 }
 
-type matchDescriptor struct {
-	start  uint32
-	length uint32
-	cost   int32
-}
-
-func clamp(buf []byte, maxlen int) []byte {
-	if len(buf) > maxlen {
-		return buf[:maxlen]
+func (ec *encodingContext) bestMatchAt(src []byte, litpos, pos int32) (targetpos, matchpos, matchlen int32) {
+	// first try last encoded offset
+	if p := pos - int32(ec.lastEncodedOffset); p < pos {
+		matchpos = p
+		matchlen = lcp(src, p, pos)
 	}
-	return buf
+	// then, try the hash table (must beat lastEncodedOffset by 2 bytes or more)
+	if mp, mlen := ec.table.bestMatch(src, pos); isLegal(pos-mp, mlen) && mlen-matchlen > 1 {
+		matchpos = mp
+		matchlen = mlen
+	}
+	targetpos = pos
+	// try to extend the match backwards,
+	// but not beyond the end of the previous match
+	// and not beyond the first minOffset bytes of data
+	for matchpos > 0 && src[matchpos-1] == src[targetpos-1] && targetpos > litpos && targetpos > minOffset {
+		matchpos--
+		targetpos--
+		matchlen++
+	}
+	// don't ask the decoder to implicitly write past
+	// the end of the target buffer; it must be safe
+	// for the final write of this match to be 32 bytes
+	const lomask = minLength - 1
+	if targetpos+((matchlen+lomask)&^lomask) > int32(len(src)) {
+		matchlen &^= lomask
+	}
+	return targetpos, matchpos, matchlen
 }
 
-func (ec *encodingContext) encodeIguanaHashChains() {
+func (ec *encodingContext) compressSrc() {
+	const skipStep = 2
 	src := ec.src
-	srcLen := len(src)
-	if srcLen < minOffset {
+	if len(src) < minOffset {
 		panic("satisfying this constraint should have been ensured by the caller")
 	}
-	last := srcLen - minOffset // last allowed match position
-
-	ec.table.reset(len(src))
+	ec.table.reset()
+	last := int32(len(src) - minOffset) // last allowed match position
 	ec.lastEncodedOffset = 0
-
-	// encode the very first possible match position
-	prefix := clamp(src, minOffset)
-	ec.currentOffset = uint32(len(prefix))
-	ec.pendingLiterals = append(ec.pendingLiterals, prefix...)
-	ec.table.insert(prefix, 0)
+	pos := int32(minOffset) // current match search position
+	litpos := int32(0)
+	ec.table.insert(src, 0)
 
 	// search for matches up to *and including*
 	// the last allowed match position
-	for ec.currentOffset <= uint32(last) {
-		seq := src[ec.currentOffset:]
-		curmatch := matchDescriptor{cost: costInfinite}
-		for h := ec.table.chain(seq); h != nil; h = ec.table.next(h) {
-			maybe := pickBestMatch(ec, src, h.entries())
-			if maybe.cost < curmatch.cost {
-				curmatch = maybe
+	for pos <= last {
+		targetpos, matchpos, matchlen := ec.bestMatchAt(src, litpos, pos)
+		// see if the very next byte would produce a longer match;
+		// if so, then we should use that instead rather than breaking
+		// up a large potential match
+		if pos < last {
+			tp1, mp1, mlen1 := ec.bestMatchAt(src, litpos, pos+1)
+			// turns out that comparing raw match lengths
+			// performs *better* in practice than the pure "cost"
+			if mlen1 > matchlen {
+				targetpos, matchpos, matchlen = tp1, mp1, mlen1
 			}
 		}
-		if curmatch.cost >= 0 {
-			ec.pendingLiterals = append(ec.pendingLiterals, seq[0])
-			if ec.currentOffset > minOffset {
-				start := ec.currentOffset - minOffset + 1
-				ec.table.insert(src[start:], start)
+		// validity assertions:
+		if targetpos+matchlen > int32(len(src)) {
+			panic("pos + matchlen overflows src")
+		}
+		if litpos > targetpos {
+			panic("litpos > pos?")
+		}
+		if targetpos-matchpos < minOffset {
+			panic("pos - matchpos < minOffset")
+		}
+		if matchlen >= 4 {
+			ec.emit(src[litpos:targetpos], uint32(targetpos-matchpos), uint32(matchlen))
+			// add new possible matches to the hash table,
+			// but only those than have not yet been inserted:
+			for i := int32(0); i < (targetpos+matchlen)-pos; i += skipStep {
+				ec.table.insert(src, pos-minOffset+i+1)
 			}
-			ec.currentOffset++
+			pos = targetpos + matchlen // position is advanced equal to the match length
+			litpos = pos               // start of current literal is replaced
 		} else {
-			if ec.currentOffset+ints.AlignUp32(curmatch.length, minLength) > uint32(len(src)) {
-				// make sure we don't implicitly ask the decoder
-				// to write past the end of the target buffer
-				curmatch.length = ints.AlignDown32(curmatch.length, minLength)
-			}
-			clamp := curmatch.length
-			if clamp > minOffset && !forceOptimalMatching {
-				// if we get a match longer than minOffset,
-				// then by definition we are inserting a repetition
-				// (i.e. we are extending the current position forward),
-				// which means inserting the repetition into the match table
-				// duplicates a substring that's already in the table
-				//
-				// it is much *faster* to avoid inserting the duplicate
-				// substring into the table, but it also decreases the compression
-				// ratio slightly because we end up encoding larger (longer)
-				// match-offset+length descriptors than we would otherwise
-				clamp = minOffset
-			}
-			for i := uint32(0); i < clamp; i++ {
-				start := ec.currentOffset - minOffset + i + 1
-				ec.table.insert(src[start:], start)
-			}
-			ec.emit(&curmatch)
-			ec.currentOffset += curmatch.length
+			pos += skipStep
+			ec.table.insert(src, pos-minOffset)
 		}
 	}
-
-	// Flush the pendingLiterals buffer and append the non-compressed part of the input
-	ec.literals = append(append(ec.literals, ec.pendingLiterals...), src[ec.currentOffset:]...)
-	ec.pendingLiterals = ec.pendingLiterals[:0]
+	// flush remaining literals
+	ec.literals = append(ec.literals, src[litpos:]...)
 }
 
-func (ec *encodingContext) costVarUInt(v uint32) int32 {
-	// The cost of a VarUInt is the number of bytes its encoding requires
-	if v < varUIntThreshold1B {
-		return 1
-	} else if v < varUIntThreshold3B {
-		return 3
-	} else if v < varUIntThreshold4B {
-		return 4
-	} else {
-		// Should never happen by design
-		panic(fmt.Sprintf("%d is out of the VarUint range", v))
-	}
+// isLegal returns the legality of an offset+length pair
+func isLegal(offs, length int32) bool {
+	return offs <= maxUint16 || length > maxShortMatchLen
 }
 
-func (ec *encodingContext) cost(offs uint32, length uint32) int32 {
-	// The cost is the sum of all emission costs (what we pay) minus the length of the covered match (what we get).
-	if offs < minOffset {
-		return costInfinite // The offset must be at least the size of a vector register used for match copying
-	}
-	c := costToken - int32(length)
-	litLen := len(ec.pendingLiterals)
-
-	if offs == ec.lastEncodedOffset || offs <= maxUint16 {
-		if offs != ec.lastEncodedOffset {
-			c += costOffs16
-		}
-		if litLen >= maxShortLitLen {
-			c += ec.costVarUInt(uint32(litLen) - maxShortLitLen)
-		}
-		if length >= maxShortMatchLen {
-			c += ec.costVarUInt(length - maxShortMatchLen)
-		}
-		return c
-	} else {
-		if length <= maxShortMatchLen {
-			return costInfinite // Lenths < 16 an offs >= 2^16 are not encodable with the current token constellation...
-		}
-		if litLen > 0 { // Offsets >= 2^16 cannot carry literals, so a flush must be done first
-			c += costToken
-			if litLen >= maxShortLitLen {
-				c += ec.costVarUInt(uint32(litLen) - maxShortLitLen)
-			}
-		}
-		c += costOffs24
-		if length >= (lastLongOffset + mmLongOffsets) {
-			c += ec.costVarUInt(length - (lastLongOffset + mmLongOffsets))
-		}
-		return c
-	}
-}
-
-func (ec *encodingContext) emit(m *matchDescriptor) {
-	// Flush the pending literals, if any
-	litLen := len(ec.pendingLiterals)
-	if litLen > 0 {
-		ec.literals = append(ec.literals, ec.pendingLiterals...)
-		ec.pendingLiterals = ec.pendingLiterals[:0]
-	}
-
-	matchLen := m.length
-	offs := ec.currentOffset - m.start
-
+// emit lit+match+offset triple
+func (ec *encodingContext) emit(lit []byte, offs, matchLen uint32) {
+	ec.literals = append(ec.literals, lit...)
+	litLen := len(lit)
 	if offs == ec.lastEncodedOffset || offs <= maxUint16 {
 		token := byte(0x80)
 		if offs != ec.lastEncodedOffset {
@@ -665,7 +632,7 @@ func (ec *encodingContext) emit(m *matchDescriptor) {
 
 		if matchLen <= maxShortMatchLen {
 			// Should not happen by design, as the cost estimator assigns an infinite cost to this case.
-			panic("Lenths < 16 an offs >= 2^16 are not encodable with the current token constellation")
+			panic("Lengths < 16 and offs > 2^16 are not encodable with the current token constellation")
 		}
 
 		ec.offsets24 = appendUint24(ec.offsets24, offs)
@@ -684,41 +651,8 @@ func (ec *encodingContext) emit(m *matchDescriptor) {
 	ec.lastEncodedOffset = offs
 }
 
-var pickBestMatch func(ec *encodingContext, src []byte, candidates []uint32) matchDescriptor = pickBestMatchReference
-
 func init() {
 	if minLength < minOffset {
 		panic("minLength must not be less than minOffs")
 	}
-}
-
-func pickBestMatchReference(ec *encodingContext, src []byte, candidates []uint32) matchDescriptor {
-	match := matchDescriptor{cost: costInfinite} // Use the worst possible match as the first candidate
-	n := uint32(len(src))
-	cLen := len(candidates)
-
-	for i := cLen - 1; i >= 0; i-- {
-		start := candidates[i]
-		if start >= ec.currentOffset {
-			panic("should never happen")
-		}
-		offs := ec.currentOffset - start
-		if offs < minOffset {
-			panic("should never happen")
-		}
-
-		length := uint32(0)
-		for ec.currentOffset+length < n && src[start+length] == src[ec.currentOffset+length] {
-			length++
-		}
-		cost := ec.cost(offs, length)
-		if cost < match.cost {
-			// A cheaper match has been found, so it becomes the current optimum.
-			match.start = start
-			match.length = length
-			match.cost = cost
-		}
-	}
-
-	return match
 }

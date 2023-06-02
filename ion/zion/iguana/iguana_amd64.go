@@ -29,10 +29,6 @@ func init() {
 		if cpu.X86.HasAVX512VBMI2 && cpu.X86.HasAVX512VBMI {
 			decompressIguana = decompressIguanaAVX512VBMI2
 		}
-
-		if cpu.X86.HasAVX512CD {
-			pickBestMatch = pickBestMatchAVX512CD
-		}
 	}
 }
 
@@ -46,6 +42,3 @@ func decompressIguanaAVX512Generic(dst []byte, streams *streamPack, lastOffs *in
 
 //go:noescape
 func decompressIguanaAVX512VBMI2(dst []byte, streams *streamPack, lastOffs *int) ([]byte, errorCode)
-
-//go:noescape
-func pickBestMatchAVX512CD(ec *encodingContext, src []byte, candidates []uint32) matchDescriptor
