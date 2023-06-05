@@ -22,6 +22,7 @@ import (
 	"io/fs"
 	"path"
 	"runtime/trace"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -417,6 +418,25 @@ type dbtable struct {
 	db, table string
 }
 
+// hasUpdates check for
+func (q *QueueRunner) hasUpdates(lst *queueBatch) bool {
+	root, err := q.Owner.Root()
+	if err != nil {
+		return true
+	}
+	pre := root.Prefix()
+	for i := range lst.inputs {
+		dst := lst.inputs[i].Path()
+		// this is imprecise, but realistically anything written
+		// to the cache bucket named 'definition.json' is probably
+		// worth looking for...
+		if strings.HasPrefix(dst, pre) && strings.HasSuffix(dst, "/definition.json") {
+			return true
+		}
+	}
+	return false
+}
+
 // set dst.inputs to a list of items
 // gathered from the queue using the
 // provided batching parameters
@@ -504,9 +524,10 @@ func (q *QueueRunner) Run(in Queue) error {
 	curb := 0
 	// for waiting for previous batches to complete
 	var wg sync.WaitGroup
+	forceUpdate := false
 readloop:
 	for {
-		if time.Since(lastRefresh) > q.tableRefresh() {
+		if forceUpdate || time.Since(lastRefresh) > q.tableRefresh() {
 			err := q.updateDefs(&ts)
 			if err != nil {
 				q.logf("updating table definitions: %s", err)
@@ -517,6 +538,7 @@ readloop:
 				wg.Wait() // everything should be idle
 				q.finishUpdates(&ts)
 			}
+			forceUpdate = false
 			lastRefresh = time.Now()
 		}
 		curbatch := &batches[curb&1]
@@ -529,6 +551,7 @@ readloop:
 			}
 			return err
 		}
+		forceUpdate = q.hasUpdates(curbatch)
 		// wait for the previous runBatches call to complete,
 		// then launch a new one
 		wg.Wait()
