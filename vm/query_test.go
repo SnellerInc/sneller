@@ -219,7 +219,7 @@ func benchPath(b *testing.B, qt queryTest) {
 	b.Run(qt.name, func(b *testing.B) {
 		if query == nil {
 			root := os.DirFS(filepath.Dir(qt.path))
-			name := filepath.Base(qt.path)
+			name := filepath.ToSlash(filepath.Base(qt.path))
 			f, err := root.Open(name)
 			if err != nil {
 				b.Fatal(err)
@@ -329,6 +329,7 @@ func findQueries(dir, suffix string, symlink bool) ([]queryTest, error) {
 			return nil
 		}
 
+		path = filepath.ToSlash(path)
 		name := strings.TrimPrefix(path, prefix)
 		name = strings.TrimSuffix(name, suffix)
 		name = strings.ReplaceAll(name, "/", "-")
