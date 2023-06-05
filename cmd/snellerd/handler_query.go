@@ -344,7 +344,7 @@ func (s *server) queryHandler(w http.ResponseWriter, r *http.Request) {
 		s.logger.Printf("tenant %s query ID %s %q execution failed (check): %v", tenantID, queryID, redacted, err)
 		if deadlined && isTimeout(err) {
 			s.logger.Printf("tenant %s query ID %s killing tenant worker %s due to timeout", tenantID, queryID, id)
-			s.manager.Quit(id)
+			s.manager.Quit(id, key)
 		}
 		return
 	}

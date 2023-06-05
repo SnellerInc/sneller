@@ -430,7 +430,6 @@ func TestExec(t *testing.T) {
 		},
 	}
 	curfds := nfds()
-	cachefills := atomic.LoadInt32(&evictcount)
 	for i := range subqueries {
 		t.Run(fmt.Sprintf("split-case-%d", i), func(t *testing.T) {
 			count := subqueries[i].count
@@ -444,30 +443,10 @@ func TestExec(t *testing.T) {
 			t.Errorf("after sub-test: now %d file descriptors open", now)
 		}
 	}
-	if f := atomic.LoadInt32(&evictcount) - cachefills; f != 3 {
-		// if /tmp is being used for other tests
-		// via 'go test ./...' then the number of
-		// evicts/fills becomes unreliable, so we
-		// can't make this a hard error
-		t.Logf("expected 6 cache fills; found %d (%d - %d)", f, atomic.LoadInt32(&evictcount), cachefills)
-	}
 
 	// test cancelation via closing of the returned status socket
 	t.Run("cancel", func(t *testing.T) {
 		testCancel(t, m)
-	})
-
-	// test that using the wrong key causes an
-	// error to be returned
-	t.Run("authorize", func(t *testing.T) {
-		tree := mkplan(t, query)
-		_, badkey := randpair()
-		_, err := m.Do(id, badkey, tree, tnproto.OutputRaw, there)
-		if err == nil {
-			t.Error("expected error, got none")
-		} else if !strings.Contains(err.Error(), "key mismatch") {
-			t.Errorf("expected error to contains %q, got %q", "key mismatch", err.Error())
-		}
 	})
 
 	t.Logf("before stop: %d fds", nfds())

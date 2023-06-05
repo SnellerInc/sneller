@@ -68,6 +68,8 @@ package tenant
 
 import (
 	"bufio"
+	"encoding/base64"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
@@ -85,6 +87,8 @@ import (
 	"github.com/SnellerInc/sneller/plan"
 	"github.com/SnellerInc/sneller/tenant/tnproto"
 	"github.com/SnellerInc/sneller/usock"
+
+	"github.com/dchest/siphash"
 )
 
 const (
@@ -163,7 +167,7 @@ type Manager struct {
 
 	done chan struct{}
 	lock sync.Mutex // guards live
-	live map[tnproto.ID]*child
+	live map[procID]*child
 
 	eventfd *os.File
 
@@ -393,13 +397,31 @@ func (c *child) proxyExec(peer net.Conn) error {
 	return tnproto.ProxyExec(c.ctl, peer)
 }
 
+func (p *procID) cacheDir() string {
+	// use the first 16 bytes of the key as
+	// the siphash seed; use the tenant ID
+	// plus the remaining 16 bytes of the key
+	// as the buffer to hash
+	var buf [tnproto.KeySize + tnproto.IDSize - 16]byte
+	k0 := binary.LittleEndian.Uint64(p.kid[:8])
+	k1 := binary.LittleEndian.Uint64(p.kid[8:16])
+	n := copy(buf[:], p.tid[:])
+	copy(buf[n:], p.kid[16:])
+	h0, h1 := siphash.Hash128(k0, k1, buf[:])
+
+	// encode 16-byte hash value in base64
+	binary.LittleEndian.PutUint64(buf[:], h0)
+	binary.LittleEndian.PutUint64(buf[8:], h1)
+	return base64.URLEncoding.EncodeToString(buf[:16])
+}
+
 // background goroutine launched for each child;
 // responsible for calling os.Process.Wait()
 // and then removing it from the manager map
 //
 // NOTE: *nothing else* should call c.Wait();
 // otherwise this call to Wait() can panic
-func (m *Manager) reap(c *child, id tnproto.ID) {
+func (m *Manager) reap(c *child, pid procID) {
 	// proc.Wait should never return an error
 	// unless the child wasn't started, etc.
 	state, err := c.proc.Wait()
@@ -417,9 +439,9 @@ func (m *Manager) reap(c *child, id tnproto.ID) {
 	// and re-creates the cache directory,
 	// so it's fine if we ended up racing
 	// and don't remove the cache directory here
-	if m.live != nil && m.live[id] == c {
-		delete(m.live, id)
-		os.RemoveAll(m.cacheDir(id))
+	if m.live != nil && m.live[pid] == c {
+		delete(m.live, pid)
+		os.RemoveAll(m.cacheDir(pid))
 		if !c.cg.IsZero() {
 			c.cg.Remove()
 		}
@@ -502,8 +524,8 @@ func (m *Manager) Serve() error {
 	}
 }
 
-func (m *Manager) cacheDir(id tnproto.ID) string {
-	return filepath.Join(m.CacheDir, id.String())
+func (m *Manager) cacheDir(pid procID) string {
+	return filepath.Join(m.CacheDir, pid.cacheDir())
 }
 
 func (m *Manager) clean(dir string) error {
@@ -545,11 +567,12 @@ func panicLog(id tnproto.ID, l *log.Logger) (*os.File, error) {
 }
 
 func (m *Manager) launch(id tnproto.ID, key tnproto.Key) (*child, error) {
+	pid := procID{id, key}
 	// make sure the tenant's cache directory
 	// is created and empty
 	// (we are doing this under m.lock, so
 	// we shouldn't be racing against anything else)
-	if err := m.clean(m.cacheDir(id)); err != nil {
+	if err := m.clean(m.cacheDir(pid)); err != nil {
 		return nil, err
 	}
 	local, remote, err := usock.SocketPair()
@@ -578,7 +601,7 @@ func (m *Manager) launch(id tnproto.ID, key tnproto.Key) (*child, error) {
 	// immediately following the tenant id
 	cmd := exec.Command(m.execPath, append(m.execArgs, "-t", id.String(), "-c", "3", "-e", "4")...)
 	// note: sandboxing will override
-	cmd.Env = m.envfn(m.cacheDir(id), id)
+	cmd.Env = m.envfn(m.cacheDir(pid), id)
 	cmd.Stdin = nil
 	if m.logger == nil {
 		cmd.Stdout = os.Stderr
@@ -608,7 +631,7 @@ func (m *Manager) launch(id tnproto.ID, key tnproto.Key) (*child, error) {
 				return nil, err
 			}
 		}
-		err = m.sandboxStart(cmd, cg, m.cacheDir(id))
+		err = m.sandboxStart(cmd, cg, m.cacheDir(pid))
 	} else {
 		if m.Sandbox {
 			m.warnOnce.Do(func() {
@@ -632,20 +655,23 @@ func (m *Manager) launch(id tnproto.ID, key tnproto.Key) (*child, error) {
 	}, nil
 }
 
+type procID struct {
+	tid tnproto.ID
+	kid tnproto.Key
+}
+
 // get acquires the handle to a child process,
 // exec-ing the tenant associated with 'id'
 // if it has not been started yet
 func (m *Manager) get(id tnproto.ID, key tnproto.Key) (*child, error) {
+	pid := procID{id, key}
 	// make sure background processes are initialized
 	m.init()
 	m.lock.Lock()
 	defer m.lock.Unlock()
 	if m.live != nil {
-		c, ok := m.live[id]
+		c, ok := m.live[pid]
 		if ok {
-			if c.key != key {
-				return nil, fmt.Errorf("key mismatch, possible compromised tenant: %s", id)
-			}
 			c.touched = time.Now()
 			return c, nil
 		}
@@ -655,10 +681,10 @@ func (m *Manager) get(id tnproto.ID, key tnproto.Key) (*child, error) {
 		return nil, err
 	}
 	if m.live == nil {
-		m.live = make(map[tnproto.ID]*child)
+		m.live = make(map[procID]*child)
 	}
-	m.live[id] = c
-	go m.reap(c, id)
+	m.live[pid] = c
+	go m.reap(c, pid)
 	return c, nil
 }
 
@@ -704,13 +730,13 @@ func (m *Manager) Do(id tnproto.ID, key tnproto.Key, t *plan.Tree, ofmt tnproto.
 // or false if the signal could not be sent
 // (either because no such tenant was running
 // or because signal(2) failed).
-func (m *Manager) Quit(id tnproto.ID) bool {
+func (m *Manager) Quit(id tnproto.ID, key tnproto.Key) bool {
 	m.lock.Lock()
 	defer m.lock.Unlock()
 	if m.live == nil {
 		return false
 	}
-	c, ok := m.live[id]
+	c, ok := m.live[procID{id, key}]
 	return ok && c.proc.Signal(syscall.SIGQUIT) == nil
 }
 
