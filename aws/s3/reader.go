@@ -290,17 +290,24 @@ func (r *Reader) open(k *aws.SigningKey, bucket, object string, contents bool) (
 	if err != nil {
 		return nil, err
 	}
-	if res.StatusCode == 404 {
-		return res.Body, &fs.PathError{
+	if res.StatusCode != 200 {
+		var inner error
+		switch res.StatusCode {
+		case 404:
+			inner = fs.ErrNotExist
+		case 403:
+			inner = fs.ErrPermission
+		default:
+			// NOTE: we can't extractMessage() here, because HEAD
+			// errors do not produce a response with an error message
+			inner = fmt.Errorf("s3.Open: %s returned %s", req.Method, res.Status)
+		}
+		err := &fs.PathError{
 			Op:   "open",
 			Path: "s3://" + bucket + "/" + object,
-			Err:  fs.ErrNotExist,
+			Err:  inner,
 		}
-	}
-	if res.StatusCode != 200 {
-		// NOTE: we can't extractMessage() here, because HEAD
-		// errors do not produce a response with an error message
-		return res.Body, fmt.Errorf("s3.Open: %s returned %s", req.Method, res.Status)
+		return res.Body, err
 	}
 	if res.ContentLength < 0 {
 		return res.Body, fmt.Errorf("s3.Open: content length %d invalid", res.ContentLength)

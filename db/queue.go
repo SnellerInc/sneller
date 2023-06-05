@@ -530,6 +530,12 @@ readloop:
 		if forceUpdate || time.Since(lastRefresh) > q.tableRefresh() {
 			err := q.updateDefs(&ts)
 			if err != nil {
+				if errors.Is(err, fs.ErrPermission) {
+					// If IAM is configured incorrectly, exit and wait
+					// for the configuration to be reloaded
+					// see #3033
+					return err
+				}
 				q.logf("updating table definitions: %s", err)
 				q.delay()
 				continue readloop
