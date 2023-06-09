@@ -574,16 +574,12 @@ func (ec *encodingContext) compressSrc() {
 	// search for matches up to *and including*
 	// the last allowed match position
 	for pos <= last {
-		mintarget := litpos
-		if mintarget < 5 {
-			mintarget = 5
-		}
-		targetpos, matchpos, matchlen := ec.bestMatchAt(src, mintarget, pos)
+		targetpos, matchpos, matchlen := ec.bestMatchAt(src, litpos, pos)
 		// see if the very next byte would produce a longer match;
 		// if so, then we should use that instead rather than breaking
 		// up a large potential match
 		if pos < last {
-			tp1, mp1, mlen1 := ec.bestMatchAt(src, mintarget, pos+1)
+			tp1, mp1, mlen1 := ec.bestMatchAt(src, litpos, pos+1)
 			// turns out that comparing raw match lengths
 			// performs *better* in practice than the pure "cost"
 			if mlen1 > matchlen {

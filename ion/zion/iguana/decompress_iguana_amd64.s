@@ -31,7 +31,7 @@
 
 // -------------------------------------------
 
-#define COPY_SINGLE_ITEM(slot_id, lbl_litcpy, lbl_litcpy_completed, lbl_matchcpy, lbl_matchcpy_completed)                                           \
+#define COPY_SINGLE_ITEM(slot_id, lbl_litcpy, lbl_litcpy_completed, lbl_match_loop)                                         \
     /* cycle 0 */                                                                                                                                   \
     VMOVDQU8        (SI), short_literal_register                    /* SIMDREG2 := the first short_literal_stride bytes of the literal */           \
     VPEXTRD         $(slot_id), X15, AX                             /* AX  := token[1].offset */                                                    \
@@ -50,27 +50,24 @@
                                                                                                                                                     \
 lbl_litcpy_completed:                                                                                                                               \
     /* cycle 3 */                                                                                                                                   \
-    VMOVDQU8        (DI)(R9*1), short_match_register                /* SIMDREG2 := the first short_match_stride bytes of the match */               \
     VPEXTRD         $(slot_id), X17, CX                             /* CX  := token[1].matchlen */                                                  \
                                                                                                                                                     \
     /* cycle 4 */                                                                                                                                   \
+lbl_match_loop:                                                                                                                                     \
+    VMOVDQU8        (DI)(R9*1), short_match_register                /* SIMDREG2 := the first short_match_stride bytes of the match */               \
     VMOVDQU8        short_match_register, (DI)                      /* Store the first match_copy_stride bytes of the match payload */              \
-    ADDQ            CX, DI                                          /* Optimistically assume the entire match has been copied */                    \
-    CMPL            CX, $short_match_stride                         /* Check if len(match) > short_match_stride */                                  \
-    JA              lbl_matchcpy                                    /* Handle the long match case */                                                \
+    ADDQ            $short_match_stride, DI                         /* dst offset += sizeof(ymm) */                                                 \
+    SUBQ            $short_match_stride, CX                         /* matchlen -= sizeof(ymm)   */                                                 \
+    JG              lbl_match_loop                                  /* continue while matchlen > 0 */                                               \
+    ADDQ            CX, DI                                          /* dst += matchlen (negative re-adjustment)*/                                   \
                                                                                                                                                     \
-lbl_matchcpy_completed:
 
 // -------------------------------------------
 
-#define COPY_SINGLE_ITEM_COMPLETERS(lbl_litcpy, lbl_litcpy_completed, lbl_matchcpy, lbl_matchcpy_completed)                                         \
+#define COPY_SINGLE_ITEM_COMPLETERS(lbl_litcpy, lbl_litcpy_completed)                                                                               \
 lbl_litcpy:                                                                                                                                         \
     CALL    copySingleLongLiteral<>(SB)                                                                                                             \
     JMP     lbl_litcpy_completed                                                                                                                    \
-                                                                                                                                                    \
-lbl_matchcpy:                                                                                                                                       \
-    CALL    copySingleLongMatch<>(SB)                                                                                                               \
-    JMP     lbl_matchcpy_completed
 
 // -------------------------------------------
 //
@@ -361,10 +358,10 @@ varmatchlen_decoded:
     // Z31 := uint8{0x20*}
 
 loop_4x:
-    COPY_SINGLE_ITEM(0, copy_long_literal0, copy_long_literal0_completed, copy_long_match0, copy_long_match0_completed)
-    COPY_SINGLE_ITEM(1, copy_long_literal1, copy_long_literal1_completed, copy_long_match1, copy_long_match1_completed)
-    COPY_SINGLE_ITEM(2, copy_long_literal2, copy_long_literal2_completed, copy_long_match2, copy_long_match2_completed)
-    COPY_SINGLE_ITEM(3, copy_long_literal3, copy_long_literal3_completed, copy_long_match3, copy_long_match3_completed)
+    COPY_SINGLE_ITEM(0, copy_long_literal0, copy_long_literal0_completed, copy_match0_loop)
+    COPY_SINGLE_ITEM(1, copy_long_literal1, copy_long_literal1_completed, copy_match1_loop)
+    COPY_SINGLE_ITEM(2, copy_long_literal2, copy_long_literal2_completed, copy_match2_loop)
+    COPY_SINGLE_ITEM(3, copy_long_literal3, copy_long_literal3_completed, copy_match3_loop)
 
     // Rewind the opcode queue
     VALIGND         $4, Z15, Z0, Z15                // Skip the first 4 entries, part 1
@@ -384,7 +381,7 @@ check_loop_1x:
     JZ              no_more_tokens
 
 loop_1x:
-    COPY_SINGLE_ITEM(0, copy_long_literal_f0, copy_long_literal_f0_completed, copy_long_match_f0, copy_long_match_f0_completed)
+    COPY_SINGLE_ITEM(0, copy_long_literal_f0, copy_long_literal_f0_completed, copy_f0_loop)
 
     // Rewind the opcode queue
     VALIGND         $1, Z15, Z0, Z15                // Skip the first entry, part 1
@@ -597,11 +594,11 @@ decode_wide_varmatchlen:
 
     // Copy completers
 
-    COPY_SINGLE_ITEM_COMPLETERS(copy_long_literal0, copy_long_literal0_completed, copy_long_match0, copy_long_match0_completed)
-    COPY_SINGLE_ITEM_COMPLETERS(copy_long_literal1, copy_long_literal1_completed, copy_long_match1, copy_long_match1_completed)
-    COPY_SINGLE_ITEM_COMPLETERS(copy_long_literal2, copy_long_literal2_completed, copy_long_match2, copy_long_match2_completed)
-    COPY_SINGLE_ITEM_COMPLETERS(copy_long_literal3, copy_long_literal3_completed, copy_long_match3, copy_long_match3_completed)
-    COPY_SINGLE_ITEM_COMPLETERS(copy_long_literal_f0, copy_long_literal_f0_completed, copy_long_match_f0, copy_long_match_f0_completed)
+    COPY_SINGLE_ITEM_COMPLETERS(copy_long_literal0, copy_long_literal0_completed)
+    COPY_SINGLE_ITEM_COMPLETERS(copy_long_literal1, copy_long_literal1_completed)
+    COPY_SINGLE_ITEM_COMPLETERS(copy_long_literal2, copy_long_literal2_completed)
+    COPY_SINGLE_ITEM_COMPLETERS(copy_long_literal3, copy_long_literal3_completed)
+    COPY_SINGLE_ITEM_COMPLETERS(copy_long_literal_f0, copy_long_literal_f0_completed)
 
 
 // -------------------------------------------
@@ -894,10 +891,10 @@ varmatchlen_decoded:
     // Z31 := uint8{0x20*}
 
 loop_4x:
-    COPY_SINGLE_ITEM(0, copy_long_literal0, copy_long_literal0_completed, copy_long_match0, copy_long_match0_completed)
-    COPY_SINGLE_ITEM(1, copy_long_literal1, copy_long_literal1_completed, copy_long_match1, copy_long_match1_completed)
-    COPY_SINGLE_ITEM(2, copy_long_literal2, copy_long_literal2_completed, copy_long_match2, copy_long_match2_completed)
-    COPY_SINGLE_ITEM(3, copy_long_literal3, copy_long_literal3_completed, copy_long_match3, copy_long_match3_completed)
+    COPY_SINGLE_ITEM(0, copy_long_literal0, copy_long_literal0_completed, match_loop0)
+    COPY_SINGLE_ITEM(1, copy_long_literal1, copy_long_literal1_completed, match_loop1)
+    COPY_SINGLE_ITEM(2, copy_long_literal2, copy_long_literal2_completed, match_loop2)
+    COPY_SINGLE_ITEM(3, copy_long_literal3, copy_long_literal3_completed, match_loop3)
 
     // Rewind the opcode queue
     VALIGND         $4, Z15, Z0, Z15                // Skip the first 4 entries, part 1
@@ -917,7 +914,7 @@ check_loop_1x:
     JZ              no_more_tokens
 
 loop_1x:
-    COPY_SINGLE_ITEM(0, copy_long_literal_f0, copy_long_literal_f0_completed, copy_long_match_f0, copy_long_match_f0_completed)
+    COPY_SINGLE_ITEM(0, copy_long_literal_f0, copy_long_literal_f0_completed, match_loop_f0)
 
     // Rewind the opcode queue
     VALIGND         $1, Z15, Z0, Z15                // Skip the first entry, part 1
@@ -1192,11 +1189,11 @@ decode_wide_varmatchlen:
 
     // Copy completers
 
-    COPY_SINGLE_ITEM_COMPLETERS(copy_long_literal0, copy_long_literal0_completed, copy_long_match0, copy_long_match0_completed)
-    COPY_SINGLE_ITEM_COMPLETERS(copy_long_literal1, copy_long_literal1_completed, copy_long_match1, copy_long_match1_completed)
-    COPY_SINGLE_ITEM_COMPLETERS(copy_long_literal2, copy_long_literal2_completed, copy_long_match2, copy_long_match2_completed)
-    COPY_SINGLE_ITEM_COMPLETERS(copy_long_literal3, copy_long_literal3_completed, copy_long_match3, copy_long_match3_completed)
-    COPY_SINGLE_ITEM_COMPLETERS(copy_long_literal_f0, copy_long_literal_f0_completed, copy_long_match_f0, copy_long_match_f0_completed)
+    COPY_SINGLE_ITEM_COMPLETERS(copy_long_literal0, copy_long_literal0_completed)
+    COPY_SINGLE_ITEM_COMPLETERS(copy_long_literal1, copy_long_literal1_completed)
+    COPY_SINGLE_ITEM_COMPLETERS(copy_long_literal2, copy_long_literal2_completed)
+    COPY_SINGLE_ITEM_COMPLETERS(copy_long_literal3, copy_long_literal3_completed)
+    COPY_SINGLE_ITEM_COMPLETERS(copy_long_literal_f0, copy_long_literal_f0_completed)
 
 
 // -------------------------------------------
@@ -1225,29 +1222,6 @@ loop:
     RET
 
 // -------------------------------------------
-
-TEXT copySingleLongMatch<>(SB), NOSPLIT | NOFRAME, $0-0
-    // cycle 0
-    SUBQ            CX, DI                                              // Restore the original DI value, spoiled by the optimistic path
-    SUBQ            $short_match_stride, CX                             // Adjust the numbers of match bytes to be copied
-
-loop:
-    // cycle 1
-    VMOVDQU8        short_match_stride(DI)(R9*1), long_match_register   // SIMDREG2 := the next long_match_stride bytes of the match
-
-    // cycle 2
-    VMOVDQU8        long_match_register, short_match_stride(DI)         // Store the next long_match_stride bytes of the match
-    ADDQ            $long_match_stride, DI                              // Adjust the dst.Data cursor
-    SUBQ            $long_match_stride, CX                              // Adjust the numbers of match bytes to be copied
-    JA              loop
-
-    // cycle 3
-    LEAQ            short_match_stride(DI)(CX*1), DI                    // Out of bounds, correct dst.Data cursor
-    RET
-
-
-// -------------------------------------------
-
 
 CONST_DATA_U32(consts_uint24_expander_vbmi2,  (0*4),  $0x020100ff)
 CONST_DATA_U32(consts_uint24_expander_vbmi2,  (1*4),  $0x050403ff)
