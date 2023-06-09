@@ -419,7 +419,7 @@ func decompressIguanaReference(dst []byte, streams *streamPack, lastOffset *int)
 			lastOffs = -int(x)
 		}
 		match := len(dst) + lastOffs
-		dst = iguanaWildCopy(dst, dst[match:match+matchLen])
+		dst = iguanaWildCopy(dst, match, matchLen)
 	}
 
 	// last literals
@@ -437,18 +437,23 @@ func decompressIguanaReference(dst []byte, streams *streamPack, lastOffset *int)
 	return dst, ecOK
 }
 
-func iguanaWildCopy(dst []byte, match []byte) []byte {
-	// Emulates the SIMD register-wide copies
-	for {
-		n := len(match)
-		if n == 0 {
-			break
+// append dst[pos:pos+matchlen] to dst
+// taking care to obey overlapped copy semantics
+func iguanaWildCopy(dst []byte, pos, matchlen int) []byte {
+	if pos+matchlen <= len(dst) {
+		// non-overlapped match: just a regular copy
+		return append(dst, dst[pos:pos+matchlen]...)
+	}
+	// slow path: overlapped match;
+	// can't copy in units larger than offset distance
+	for matchlen > 0 {
+		dist := len(dst) - pos
+		if matchlen < dist {
+			dist = matchlen
 		}
-		rem := ints.Min(iguanaChunkSize, n)
-		var tmp [iguanaChunkSize]byte
-		copy(tmp[:], match[:rem])
-		dst = append(dst, tmp[:rem]...)
-		match = match[rem:]
+		dst = append(dst, dst[pos:pos+dist]...)
+		pos += dist
+		matchlen -= dist
 	}
 	return dst
 }

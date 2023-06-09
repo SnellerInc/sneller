@@ -167,11 +167,7 @@ func match(src []byte, minto, from, to int32) (targetpos, matchpos, matchlen int
 	if matchpos >= targetpos {
 		panic("uh oh")
 	}
-	dist := targetpos - matchpos
-	if dist < minOffset && matchlen > dist {
-		matchlen = dist
-	}
-	if !isLegal(dist, matchlen) {
+	if !isLegal(targetpos-matchpos, matchlen) {
 		return 0, 0, 0
 	}
 	return targetpos, matchpos, matchlen
@@ -524,23 +520,12 @@ func appendUint16(s []byte, v uint32) []byte {
 	panic(fmt.Sprintf("%d is out of the uint16 range", v))
 }
 
-func clamp(from, to int32, matchlen int32) int32 {
-	if (to-from) < minOffset && matchlen > minOffset {
-		matchlen = (to - from)
-	}
-	return matchlen
-}
-
 func (ec *encodingContext) bestMatchAt(src []byte, litpos, pos int32) (targetpos, matchpos, matchlen int32) {
 	// first try last encoded offset
 	targetpos = pos
 	if p := pos - int32(ec.lastEncodedOffset); p < pos {
 		matchpos = p
 		matchlen = lcp(src, p, pos)
-		if dist := (pos - matchpos); dist < minOffset && matchlen > dist {
-			// clamp match distance
-			matchlen = dist
-		}
 	}
 	// then, try the hash table (must beat lastEncodedOffset by 2 bytes or more)
 	if tp, mp, mlen := ec.table.bestMatch(src, litpos, pos); mlen-matchlen > 1 {
@@ -548,13 +533,32 @@ func (ec *encodingContext) bestMatchAt(src []byte, litpos, pos int32) (targetpos
 		matchpos = mp
 		matchlen = mlen
 	}
+
+	// if the end of the match is within one register distance
+	// of the end of the buffer, then we need to make sure
+	// this copy can be performed safely:
+	if targetpos+matchlen > int32(len(src))-minOffset {
+		if targetpos-matchpos >= minOffset {
+			// common case: fast arithmetic
+			const lomask = minOffset - 1
+			if targetpos+(matchlen+lomask)&^lomask > int32(len(src)) {
+				matchlen &^= lomask
+			}
+		} else {
+			// rare case: long overlapping match
+			movsize := targetpos - matchpos
+			tailpos := matchlen - (matchlen % movsize)
+			end := int32(len(src))
+			if targetpos+tailpos+minOffset > end {
+				safedist := (end - minOffset) - targetpos
+				matchlen = (safedist / movsize) * movsize
+			}
+		}
+	}
+
 	// don't ask the decoder to implicitly write past
 	// the end of the target buffer; it must be safe
 	// for the final write of this match to be 32 bytes
-	const lomask = minLength - 1
-	if targetpos+((matchlen+lomask)&^lomask) > int32(len(src)) {
-		matchlen &^= lomask
-	}
 	return targetpos, matchpos, matchlen
 }
 
@@ -592,9 +596,6 @@ func (ec *encodingContext) compressSrc() {
 		}
 		if litpos > targetpos {
 			panic("litpos > pos?")
-		}
-		if targetpos-matchpos < minOffset && matchlen > (targetpos-matchpos) {
-			panic("pos - matchpos < minOffset && matchlen > (targetpos - matchpos)")
 		}
 		if matchlen >= 4 {
 			ec.emit(src[litpos:targetpos], uint32(targetpos-matchpos), uint32(matchlen))

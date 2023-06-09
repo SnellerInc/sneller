@@ -50,14 +50,17 @@
                                                                                                                                                     \
 lbl_litcpy_completed:                                                                                                                               \
     /* cycle 3 */                                                                                                                                   \
-    VPEXTRD         $(slot_id), X17, CX                             /* CX  := token[1].matchlen */                                                  \
+    MOVQ            $-32, BX                                        /* BX := -stride = -sizeof(ymm) */                                              \
+    VPEXTRD         $(slot_id), X17, CX                             /* CX := token[1].matchlen */                                                   \
+    CMPQ            R9, BX                                                                                                                          \
+    CMOVQGT         R9, BX                                          /* BX := max(-32, offs) */                                                      \
                                                                                                                                                     \
     /* cycle 4 */                                                                                                                                   \
 lbl_match_loop:                                                                                                                                     \
     VMOVDQU8        (DI)(R9*1), short_match_register                /* SIMDREG2 := the first short_match_stride bytes of the match */               \
     VMOVDQU8        short_match_register, (DI)                      /* Store the first match_copy_stride bytes of the match payload */              \
-    ADDQ            $short_match_stride, DI                         /* dst offset += sizeof(ymm) */                                                 \
-    SUBQ            $short_match_stride, CX                         /* matchlen -= sizeof(ymm)   */                                                 \
+    SUBQ            BX, DI                                          /* dst offset += sizeof(ymm) */                                                 \
+    ADDQ            BX, CX                                          /* matchlen -= sizeof(ymm)   */                                                 \
     JG              lbl_match_loop                                  /* continue while matchlen > 0 */                                               \
     ADDQ            CX, DI                                          /* dst += matchlen (negative re-adjustment)*/                                   \
                                                                                                                                                     \
