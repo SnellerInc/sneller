@@ -149,25 +149,49 @@ func (m *matchtable) insert(src []byte, pos int32) {
 	}
 }
 
-// return (position, length) of the best saved match for src[pos:]
-func (m *matchtable) bestMatch(src []byte, pos int32) (int32, int32) {
+// produce a legal match position, target position, and length
+// or (0, 0, 0) if no such match can be created
+//
+// caller should guarantee [from] < [to] and [minto] <= [to]
+//
+// match guarantees [matchpos] < [targetpos] and [targetpos] >= [minto]
+func match(src []byte, minto, from, to int32) (targetpos, matchpos, matchlen int32) {
+	targetpos = to
+	matchpos = from
+	matchlen = lcp(src, matchpos, targetpos)
+	for matchpos > 0 && src[matchpos-1] == src[targetpos-1] && targetpos > minto {
+		matchpos--
+		targetpos--
+		matchlen++
+	}
+	if matchpos >= targetpos {
+		panic("uh oh")
+	}
+	dist := targetpos - matchpos
+	if dist < minOffset && matchlen > dist {
+		matchlen = dist
+	}
+	if !isLegal(dist, matchlen) {
+		return 0, 0, 0
+	}
+	return targetpos, matchpos, matchlen
+}
+
+// return (target, position, length) of the best saved match for src[pos:]
+func (m *matchtable) bestMatch(src []byte, litmin, pos int32) (int32, int32, int32) {
 	ent := &m.entries[m.hash(src[pos:])]
-	// start with the hottest match
-	p, mlen := ent.history[0], lcp(src, ent.history[0], pos)
+	t, p, mlen := match(src, litmin, ent.history[0], pos)
 	for i := 1; i < histsize; i++ {
 		cpos := ent.history[i]
 		if cpos == 0 {
 			break // empty entry
 		}
-		// see if prev is a better match;
-		// penalize the match length by one
-		// if the match distance is >=64kB
-		clen := lcp(src, cpos, pos)
-		if clen > mlen && isLegal(pos-cpos, clen) {
-			p, mlen = cpos, clen
+		altt, altp, altlen := match(src, litmin, ent.history[i], pos)
+		if altlen > mlen {
+			t, p, mlen = altt, altp, altlen
 		}
 	}
-	return p, mlen
+	return t, p, mlen
 }
 
 // longest-common-prefix of src[lo:] and src[:hi] where lo < hi
@@ -500,25 +524,29 @@ func appendUint16(s []byte, v uint32) []byte {
 	panic(fmt.Sprintf("%d is out of the uint16 range", v))
 }
 
+func clamp(from, to int32, matchlen int32) int32 {
+	if (to-from) < minOffset && matchlen > minOffset {
+		matchlen = (to - from)
+	}
+	return matchlen
+}
+
 func (ec *encodingContext) bestMatchAt(src []byte, litpos, pos int32) (targetpos, matchpos, matchlen int32) {
 	// first try last encoded offset
+	targetpos = pos
 	if p := pos - int32(ec.lastEncodedOffset); p < pos {
 		matchpos = p
 		matchlen = lcp(src, p, pos)
+		if dist := (pos - matchpos); dist < minOffset && matchlen > dist {
+			// clamp match distance
+			matchlen = dist
+		}
 	}
 	// then, try the hash table (must beat lastEncodedOffset by 2 bytes or more)
-	if mp, mlen := ec.table.bestMatch(src, pos); isLegal(pos-mp, mlen) && mlen-matchlen > 1 {
+	if tp, mp, mlen := ec.table.bestMatch(src, litpos, pos); mlen-matchlen > 1 {
+		targetpos = tp
 		matchpos = mp
 		matchlen = mlen
-	}
-	targetpos = pos
-	// try to extend the match backwards,
-	// but not beyond the end of the previous match
-	// and not beyond the first minOffset bytes of data
-	for matchpos > 0 && src[matchpos-1] == src[targetpos-1] && targetpos > litpos && targetpos > minOffset {
-		matchpos--
-		targetpos--
-		matchlen++
 	}
 	// don't ask the decoder to implicitly write past
 	// the end of the target buffer; it must be safe
@@ -539,19 +567,23 @@ func (ec *encodingContext) compressSrc() {
 	ec.table.reset()
 	last := int32(len(src) - minOffset) // last allowed match position
 	ec.lastEncodedOffset = 0
-	pos := int32(minOffset) // current match search position
+	pos := int32(5) // current match search position
 	litpos := int32(0)
 	ec.table.insert(src, 0)
 
 	// search for matches up to *and including*
 	// the last allowed match position
 	for pos <= last {
-		targetpos, matchpos, matchlen := ec.bestMatchAt(src, litpos, pos)
+		mintarget := litpos
+		if mintarget < 5 {
+			mintarget = 5
+		}
+		targetpos, matchpos, matchlen := ec.bestMatchAt(src, mintarget, pos)
 		// see if the very next byte would produce a longer match;
 		// if so, then we should use that instead rather than breaking
 		// up a large potential match
 		if pos < last {
-			tp1, mp1, mlen1 := ec.bestMatchAt(src, litpos, pos+1)
+			tp1, mp1, mlen1 := ec.bestMatchAt(src, mintarget, pos+1)
 			// turns out that comparing raw match lengths
 			// performs *better* in practice than the pure "cost"
 			if mlen1 > matchlen {
@@ -565,21 +597,21 @@ func (ec *encodingContext) compressSrc() {
 		if litpos > targetpos {
 			panic("litpos > pos?")
 		}
-		if targetpos-matchpos < minOffset {
-			panic("pos - matchpos < minOffset")
+		if targetpos-matchpos < minOffset && matchlen > (targetpos-matchpos) {
+			panic("pos - matchpos < minOffset && matchlen > (targetpos - matchpos)")
 		}
 		if matchlen >= 4 {
 			ec.emit(src[litpos:targetpos], uint32(targetpos-matchpos), uint32(matchlen))
 			// add new possible matches to the hash table,
 			// but only those than have not yet been inserted:
-			for i := int32(0); i < (targetpos+matchlen)-pos; i += skipStep {
-				ec.table.insert(src, pos-minOffset+i+1)
+			for i := int32(targetpos); i < (targetpos+matchlen) && i < last; i += skipStep {
+				ec.table.insert(src, i)
 			}
 			pos = targetpos + matchlen // position is advanced equal to the match length
 			litpos = pos               // start of current literal is replaced
 		} else {
+			ec.table.insert(src, pos)
 			pos += skipStep
-			ec.table.insert(src, pos-minOffset)
 		}
 	}
 	// flush remaining literals
