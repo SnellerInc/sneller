@@ -24,6 +24,8 @@ import (
 
 func init() {
 	if cpu.X86.HasAVX512 {
+		bestMatchAccel = bestMatchAVX512
+
 		decompressIguana = decompressIguanaAVX512Generic
 
 		if cpu.X86.HasAVX512VBMI2 && cpu.X86.HasAVX512VBMI {
@@ -36,6 +38,9 @@ const offsSliceHeaderData = unsafe.Offsetof(reflect.SliceHeader{}.Data) //lint:i
 const offsSliceHeaderLen = unsafe.Offsetof(reflect.SliceHeader{}.Len)   //lint:ignore U1000 used in assembly
 const offsSliceHeaderCap = unsafe.Offsetof(reflect.SliceHeader{}.Cap)   //lint:ignore U1000 used in assembly
 const sizeSliceHeader = unsafe.Sizeof(reflect.SliceHeader{})            //lint:ignore U1000 used in assembly
+
+//go:noescape
+func bestMatchAVX512(src []byte, litmin, pos int32, hist *[4]int32) (int32, int32, int32)
 
 //go:noescape
 func decompressIguanaAVX512Generic(dst []byte, streams *streamPack, lastOffs *int) ([]byte, errorCode)

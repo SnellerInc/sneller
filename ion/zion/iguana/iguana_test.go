@@ -95,6 +95,9 @@ func TestRoundtrip(t *testing.T) {
 		for i := range buf {
 			testRoundtrip(t, buf[i:])
 		}
+		for i := range buf {
+			testRoundtrip(t, buf[:i])
+		}
 	})
 }
 

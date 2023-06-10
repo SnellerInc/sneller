@@ -173,9 +173,22 @@ func match(src []byte, minto, from, to int32) (targetpos, matchpos, matchlen int
 	return targetpos, matchpos, matchlen
 }
 
+// assembly-accelerated bestMatch implementation
+var bestMatchAccel func(src []byte, litmin, pos int32, hist *[histsize]int32) (int32, int32, int32)
+
 // return (target, position, length) of the best saved match for src[pos:]
 func (m *matchtable) bestMatch(src []byte, litmin, pos int32) (int32, int32, int32) {
+	// set this to true to cross-check the assembly
+	const checkAssembly = false
+
 	ent := &m.entries[m.hash(src[pos:])]
+	var ft, fp, fmlen int32
+	if bestMatchAccel != nil {
+		ft, fp, fmlen = bestMatchAccel(src, litmin, pos, &ent.history)
+		if !checkAssembly {
+			return ft, fp, fmlen
+		}
+	}
 	t, p, mlen := match(src, litmin, ent.history[0], pos)
 	for i := 1; i < histsize; i++ {
 		cpos := ent.history[i]
@@ -185,6 +198,14 @@ func (m *matchtable) bestMatch(src []byte, litmin, pos int32) (int32, int32, int
 		altt, altp, altlen := match(src, litmin, ent.history[i], pos)
 		if altlen > mlen {
 			t, p, mlen = altt, altp, altlen
+		}
+	}
+	if checkAssembly && bestMatchAccel != nil {
+		if mlen == 0 {
+			t, p = 0, 0
+		}
+		if t != ft || p != fp || mlen != fmlen {
+			panic("bestMatchAccel and reference implementation disagree")
 		}
 	}
 	return t, p, mlen
