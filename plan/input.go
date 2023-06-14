@@ -135,7 +135,8 @@ func (i *Input) Filter(e expr.Node) *Input {
 		Fields: i.Fields,
 	}
 
-	// sort blocks so we can compact descriptors during visiting
+	// sort blocks so we can compact descriptors during visiting;
+	// blocks are sorted first by descriptor and then by offset
 	slices.SortFunc(i.Blocks, func(a, b blockfmt.Block) bool {
 		if a.Index == b.Index {
 			return a.Offset < b.Offset
@@ -143,20 +144,31 @@ func (i *Input) Filter(e expr.Node) *Input {
 		return a.Index < b.Index
 	})
 
-	// TODO: do this in a more efficient way
-	keep := func(idx, start, end int) {
-		for j := range i.Blocks {
-			b := &i.Blocks[j]
-			if b.Index > idx {
-				return
+	// add all the blocks for descriptor [idx] as [newidx]
+	// that overlap with the range [start, end);
+	// this is guaranteed to be called with monotonically
+	// increasing [idx] and start+end ranges
+	blockidx := 0
+	byindex := func(b blockfmt.Block, val int) int { return b.Index - val }
+	keep := func(idx, newidx, start, end int) {
+		possible := i.Blocks[blockidx:]
+		next, match := slices.BinarySearchFunc(possible, idx, byindex)
+		for match && next < len(possible) && possible[next].Index == idx {
+			b := possible[next]
+			if start > b.Offset {
+				next++
+				continue
 			}
-			if b.Index == idx && start <= b.Offset && b.Offset < end {
-				ret.Blocks = append(ret.Blocks, blockfmt.Block{
-					Index:  idx,
-					Offset: b.Offset,
-				})
+			if end <= b.Offset {
+				break
 			}
+			ret.Blocks = append(ret.Blocks, blockfmt.Block{
+				Index:  newidx,
+				Offset: b.Offset,
+			})
+			next++
 		}
+		blockidx += next
 	}
 
 	// for each descriptor, copy out only the matching blocks,
@@ -169,7 +181,7 @@ func (i *Input) Filter(e expr.Node) *Input {
 			} else if start < end {
 				ret.Descs = append(ret.Descs, i.Descs[j])
 			}
-			keep(j, start, end)
+			keep(j, d, start, end)
 		})
 	}
 	return ret
