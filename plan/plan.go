@@ -439,12 +439,6 @@ func (l *Leaf) exec(dst vm.QuerySink, src *Input, ep *ExecParams) error {
 			}
 			partvals[i] = c.Datum()
 		}
-	}
-	// apply any last-minute filtering
-	if filt != nil {
-		src = src.Filter(filt)
-	}
-	if len(partvals) > 0 {
 		groups, ok := src.Partition(l.OnEqual)
 		if !ok {
 			return fmt.Errorf("cannot partition on %T %v", src, l.OnEqual)
@@ -453,6 +447,10 @@ func (l *Leaf) exec(dst vm.QuerySink, src *Input, ep *ExecParams) error {
 		if src == nil {
 			return dst.Close()
 		}
+	}
+	// apply any last-minute filtering
+	if filt != nil {
+		src = src.Filter(filt)
 	}
 	err := ep.Runner.Run(dst, src, ep)
 	if errors.Is(err, io.EOF) {
