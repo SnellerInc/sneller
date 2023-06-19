@@ -1,3 +1,4 @@
+## benchmark: true
 SELECT
   ARRAY_SIZE(x) AS size
 FROM

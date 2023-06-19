@@ -45,6 +45,13 @@ var symLinkFlag = flag.Bool("symlink", true, "whether to crawl tests using symbo
 
 var traceBytecodeFlag = flag.Bool("trace", false, "print bytecode on stdout")
 
+type queryKind uint8
+
+const (
+	testQueryKind queryKind = iota
+	benchQueryKind
+)
+
 type benchTable struct {
 	buf   []byte
 	count int64
@@ -141,6 +148,7 @@ func benchInput(b *testing.B, sel *expr.Query, inbuf []byte, rows int) {
 	err = plan.Exec(&plan.ExecParams{
 		Plan:   tree,
 		Output: io.Discard,
+		Runner: env,
 	})
 	if err != nil {
 		b.Fatal(err)
@@ -253,7 +261,7 @@ func benchPath(b *testing.B, qt queryTest) {
 
 func BenchmarkTestQueries(b *testing.B) {
 	for _, dir := range []string{"./testdata/queries/", "./testdata/benchmarks/"} {
-		bench, err := findQueries(dir, ".bench", *symLinkFlag)
+		bench, err := findQueries(dir, benchQueryKind, *symLinkFlag)
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -271,7 +279,7 @@ func BenchmarkTestQueries(b *testing.B) {
 // as quickly as possible, tests are
 // run in parallel.
 func TestQueries(t *testing.T) {
-	test, err := findQueries("./testdata/queries/", ".test", *symLinkFlag)
+	test, err := findQueries("./testdata/queries/", testQueryKind, *symLinkFlag)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -307,7 +315,39 @@ type queryTest struct {
 	name, path string
 }
 
-func findQueries(dir, suffix string, symlink bool) ([]queryTest, error) {
+func matchQueryMarker(path string, markerName string, markerValue string) bool {
+	tci, err := testquery.ReadCaseFromFile(path)
+	if err != nil {
+		return false
+	}
+
+	return tci.Tags[markerName] == markerValue
+}
+
+func matchQueryFile(path string, kind queryKind) bool {
+	testQuerySuffix := ".test"
+	benchQuerySuffix := ".bench"
+
+	switch kind {
+	case testQueryKind:
+		// Files that have '.test' suffix are always tested
+		return strings.HasSuffix(path, testQuerySuffix)
+
+	case benchQueryKind:
+		// Files that have '.test' suffix are only benchmarked if they have a benchmark marker
+		if strings.HasSuffix(path, testQuerySuffix) {
+			return matchQueryMarker(path, "benchmark", "true")
+		}
+		// Files that have '.bench' suffix are always benchmarked
+		if strings.HasSuffix(path, benchQuerySuffix) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func findQueries(dir string, kind queryKind, symlink bool) ([]queryTest, error) {
 	var tests []queryTest
 
 	rootdir := filepath.Clean(dir)
@@ -325,13 +365,14 @@ func findQueries(dir, suffix string, symlink bool) ([]queryTest, error) {
 			path, _ = filepath.EvalSymlinks(path)
 			return filepath.WalkDir(path, walker)
 		}
-		if !strings.HasSuffix(d.Name(), suffix) {
+
+		path = filepath.ToSlash(path)
+		if !matchQueryFile(path, kind) {
 			return nil
 		}
 
-		path = filepath.ToSlash(path)
 		name := strings.TrimPrefix(path, prefix)
-		name = strings.TrimSuffix(name, suffix)
+		name = name[0:strings.LastIndex(name, ".")]
 		name = strings.ReplaceAll(name, "/", "-")
 
 		t := queryTest{

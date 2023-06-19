@@ -1,3 +1,4 @@
+## benchmark: true
 SELECT
   '!PREFIX-LITERAL!' || a || b || '!SUFFIX-LITERAL!' AS out
 FROM

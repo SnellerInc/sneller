@@ -1,3 +1,4 @@
+## benchmark: true
 #go test -run=TestQueries/0037-contains-cs
 
 SELECT str, (str LIKE '%KSK%') AS match

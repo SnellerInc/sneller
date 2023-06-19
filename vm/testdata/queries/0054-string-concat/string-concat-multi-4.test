@@ -1,3 +1,4 @@
+## benchmark: true
 SELECT
   a || b || c || d AS abcd
 FROM

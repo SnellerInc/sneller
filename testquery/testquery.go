@@ -27,6 +27,7 @@ import (
 	"math"
 	"math/bits"
 	"math/rand"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -815,7 +816,7 @@ func (q *Case) Execute(flags RunFlags) error {
 // input and output strings into a test case
 func parseCase(queryStr []string, inputsStr [][]string, outputStr []string, tags map[string]string) (tci *Case, err error) {
 
-	// stripInlineComment removes comment from **correctly** formated line.
+	// stripInlineComment removes comment from **correctly** formatted line.
 	// For example: stripInlineComment(`{"x": 5} # sample data`) => `{"x": 5}`
 	stripInlineComment := func(line []byte) []byte {
 		pos := bytes.LastIndexByte(line, '}')
@@ -919,6 +920,16 @@ func ReadCase(r io.Reader) (qtc *Case, err error) {
 	return parseCase(queryStr, inputsStr, outputStr, spec.Tags)
 }
 
+func ReadCaseFromFile(path string) (qtc *Case, err error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+
+	defer file.Close()
+	return ReadCase(file)
+}
+
 type benchmarkSettings struct {
 	Symbolizeprob float64 // symbolize probability: 0=never, 1=always
 }
@@ -926,7 +937,7 @@ type benchmarkSettings struct {
 // ReadBenchmark reads a benchmark specification.
 //
 // Benchmark may contain either SQL query (text) and sample
-// input (ND-JSON) separarted with '---'.
+// input (ND-JSON) separated with '---'.
 //
 // Alternatively, it may contain only an SQL query. But
 // then the FROM part has to be a string which is treated
@@ -956,12 +967,13 @@ func ReadBenchmark(root fs.FS, r io.Reader) (*expr.Query, *benchmarkSettings, []
 
 	var input []byte
 	switch n := len(spec.Sections); n {
-	case 1: // only query
+	case 1:
+		// only query
 		sel := query.Body.(*expr.Select)
 		table := sel.From.(*expr.Table)
 		file, ok := table.Expr.(expr.String)
 		if !ok {
-			return nil, nil, nil, fmt.Errorf("benchark without input part has to refer an external JSONRL file")
+			return nil, nil, nil, fmt.Errorf("benchmark without input part has to refer an external JSONRL file")
 		}
 
 		f, err := root.Open(string(file))
@@ -978,11 +990,14 @@ func ReadBenchmark(root fs.FS, r io.Reader) (*expr.Query, *benchmarkSettings, []
 		// The testing framework expects path 'input'
 		table.Expr = expr.Ident("input")
 
-	case 2: // query and inline input
+	case 2, 3:
+		// query and inline input - note only the first input data is used,
+		// output data would only be used by when testing this file, if the
+		// benchmark file is compatible with a regular test case.
 		input = part2bytes(spec.Sections[1])
 
 	default:
-		return nil, nil, nil, fmt.Errorf("expected at most two parts of benchmark, got %d", n)
+		return nil, nil, nil, fmt.Errorf("expected at most 3 parts of benchmark, got %d", n)
 	}
 
 	bs := &benchmarkSettings{
