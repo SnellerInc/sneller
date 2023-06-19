@@ -185,6 +185,7 @@ func testFilter(t testing.TB, f *Filter, si *SparseIndex, run func(filt string, 
 	run(sprintf("timestamp < %s or timestamp > %s", minute(1), minute(1)), [][2]int{{0, 60}})
 	run(sprintf("timestamp < %s or timestamp > %s", minute(30), minute(30)), [][2]int{{0, 60}})
 	run(sprintf("timestamp < %s or timestamp >= %s", minute(1), minute(59)), [][2]int{{0, 1}, {59, 60}})
+	run(sprintf("timestamp < %s or (timestamp >= %s and timestamp < %s)", minute(59), minute(1), minute(58)), [][2]int{{0, 59}})
 	run(sprintf("!(timestamp < %s) or !(timestamp >= %s)", minute(1), minute(59)), [][2]int{{0, 60}})
 	run(sprintf("!(timestamp < %s or timestamp >= %s)", minute(1), minute(59)), [][2]int{{1, 59}})
 	run(sprintf("timestamp = %s", minute(1)), [][2]int{{1, 2}})
