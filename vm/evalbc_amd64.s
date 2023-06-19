@@ -8055,6 +8055,433 @@ done:
 
   NEXT_ADVANCE(BC_SLOT_SIZE*5)
 
+// Array iterator is a construct that can be used to iterate arrays where
+// numeric values are expected. It iterates over all items, and masks out
+// all arrays that contain non-numeric values.
+//
+// Inputs:
+//   K1 - global predicate (only updated)
+//   K2 - loop predicate (contains next valid lanes)
+//   Z20:Z21 - array offset and end
+//
+// Registers used by the iterator:
+//   K1 - global predicate, contains which lanes are valid
+//   K2 - loop predicate, contains next lanes to process
+//   K3 - value predicate, which contains lanes that are valid
+//   K5 - value predicate, which contains lanes that are 64-bit integers (other lanes are floats)
+//   K4 - temporary register clobbered by the iterator
+//
+//   Z0:Z9   - user registers, not touched
+//   Z10:Z11 - 64-bit values per lane
+//   Z12:Z19 - registers used by the iterator - never use!
+//   Z20:Z21 - current array offset and end (end means the first invalid byte offset)
+//   Z25:Z31 - constants used by the iterator
+#define BL_NUMERIC_ARRAY_ITERATOR_BEGIN()                                                                             \
+  VPBROADCASTD CONSTD_1(), Z25                         /* Z25 <- dword(1)                                          */ \
+  VPSLLD $1, Z25, Z26                                  /* Z26 <- dword(2)                                          */ \
+  VPSLLD $3, Z25, Z27                                  /* Z27 <- dword(8)                                          */ \
+  VPBROADCASTD CONSTD_0x0F(), Z28                      /* Z28 <- dword(0x0F)                                       */ \
+  VPXORD X29, X29, X29                                 /* Z29 <- dword(0)                                          */ \
+  VBROADCASTI32X4 CONST_GET_PTR(bswap64, 0), Z30       /* Z30 <- constant(bswap64)                                 */ \
+                                                                                                                      \
+  KMOVW K2, K3                                                                                                        \
+  VPXORD X16, X16, X16                                                                                                \
+  VPGATHERDD 0(VIRT_BASE)(Z20*1), K3, Z16              /* Z16 <- hdr32 of next values                              */ \
+  VPXORD X10, X10, X10                                                                                                \
+  VPXORD X11, X11, X11                                                                                                \
+                                                                                                                      \
+array_iterator_loop:                                                                                                  \
+  KMOVW K2, K3                                                                                                        \
+  KSHIFTRW $8, K2, K4                                                                                                 \
+  VPGATHERDQ 1(VIRT_BASE)(Y20*1), K3, Z10              /* Z10 <- value content (low)                               */ \
+                                                                                                                      \
+  VEXTRACTI32X8 $1, Z20, Y15                                                                                          \
+  VPSRLD $4, Z16, Z17                                  /* Z17 <- value tag (with garbage)                          */ \
+  VPGATHERDQ 1(VIRT_BASE)(Y15*1), K4, Z11              /* Z11 <- value content (high)                              */ \
+                                                                                                                      \
+  VPANDD Z28, Z17, Z17                                 /* Z17 <- value tag                                         */ \
+                                                                                                                      \
+  VPANDD.Z Z28, Z16, K2, Z16                           /* Z16 <- value length                                      */ \
+  VPSUBD.Z Z26, Z17, K2, Z17                           /* Z17 <- value tag adjusted: uint(0), sint(1), float(2)    */ \
+                                                                                                                      \
+  VPCMPUD $VPCMP_IMM_LE, Z26, Z17, K2, K3              /* K3  <- lanes that are numeric                            */ \
+  VPADDD Z25, Z20, Z20                                 /* Z20 <- advance offsets by ION header byte (1 byte)       */ \
+  VPCMPUD $VPCMP_IMM_LE, Z27, Z16, K3, K3              /* K3  <- lanes that are valid uint, sint, or float         */ \
+                                                                                                                      \
+  VPADDD.Z Z16, Z20, K3, Z20                           /* Z20 <- advance offsets by content length (0 to 8 bytes)  */ \
+  VPSUBD Z16, Z27, Z16                                 /* Z16 <- (8 - value length)                                */ \
+  KANDNW K2, K3, K4                                    /* K4  <- lanes that are invalid                            */ \
+  VPSLLD $3, Z16, Z16                                  /* Z16 <- (8 - value_length) * 8                            */ \
+  VPCMPUD $VPCMP_IMM_LT, Z21, Z20, K3, K2              /* K2  <- lanes that still have additional values (content) */ \
+  KANDNW K1, K4, K1                                    /* K1  <- keep only resulting lanes holding valid values    */ \
+  KMOVW K2, K4                                                                                                        \
+                                                                                                                      \
+  VEXTRACTI32X8 $1, Z16, Y15                                                                                          \
+  VPMOVZXDQ Y16, Z14                                   /* Z14 <- count of bits to discard extra bytes (low)        */ \
+  VPMOVZXDQ Y15, Z15                                   /* Z15 <- count of bits to discard extra bytes (high)       */ \
+                                                                                                                      \
+  VPGATHERDD 0(VIRT_BASE)(Z20*1), K4, Z16              /* Z16 <- hdr32 of next values (free gather)                */ \
+  VPCMPEQD Z25, Z17, K3, K4                            /* K4  <- negative integers (all)                           */ \
+                                                                                                                      \
+  VPSLLVQ Z14, Z10, Z10                                /* Z10 <- value content without garbage (low)               */ \
+  VPSLLVQ Z15, Z11, Z11                                /* Z11 <- value content without garbage (high)              */ \
+  KSHIFTRW $8, K4, K5                                  /* K5  <- negative integers (high)                          */ \
+                                                                                                                      \
+  VPSHUFB Z30, Z10, Z10                                /* Z10 <- value content byteswapped (low)                   */ \
+  VPSHUFB Z30, Z11, Z11                                /* Z11 <- value content byteswapped (high)                  */ \
+                                                                                                                      \
+  VPSUBQ Z11, Z29, K5, Z11                             /* Z11 <- value content bytes (integers or floats) (high)   */ \
+  VPCMPUD $VPCMP_IMM_LE, Z25, Z17, K3, K5              /* K5  <- signed or unsigned integers (all)                 */ \
+  VPSUBQ Z10, Z29, K4, Z10                             /* Z10 <- value content bytes (integers or floats) (low)    */
+
+#define BL_NUMERIC_ARRAY_ITERATOR_CONV_TO_F64()                                                                       \
+  KSHIFTRW $8, K5, K6                                  /* K6 <- signed or unsigned integers (high)     */             \
+  VCVTQQ2PD Z10, K5, Z10                               /* Z10 <- value content as 64-bit floats (low)  */             \
+  VCVTQQ2PD Z11, K6, Z11                               /* Z11 <- value content as 64-bit floats (high) */
+
+#define BL_NUMERIC_ARRAY_ITERATOR_END()                                                                               \
+  KTESTW K2, K2                                                                                                       \
+  JNZ array_iterator_loop
+
+// Implementation of an iterator that iterates two vectors at the same time
+//
+// Inputs:
+//   K1 - global predicate (only updated)
+//   K2 - loop predicate (contains next valid lanes)
+//   Z20:Z21 - array A offset and end
+//   Z22:Z23 - array B offset and end
+//
+// Registers used by the iterator:
+//   K1 - global predicate, contains which lanes are valid
+//   K2 - loop predicate, contains next lanes to process
+//   K3 - value predicate, which contains lanes that are valid
+//   K5 - value predicate, which contains A lanes that are 64-bit integers (other lanes are floats)
+//   K6 - value predicate, which contains B lanes that are 64-bit integers (other lanes are floats)
+//   K4 - temporary register clobbered by the iterator
+//
+//   Z0:Z9   - user registers, not touched
+//   Z10:Z11 - 64-bit values per A lane
+//   Z12:Z13 - 64-bit values per B lane
+//   Z14:Z19 - registers used by the iterator - never use!
+//   Z20:Z21 - current A array offset and end (end means the first invalid byte offset)
+//   Z22:Z23 - current B array offset and end (end means the first invalid byte offset)
+//   Z25:Z31 - constants used by the iterator
+#define BL_NUMERIC_TWO_ARRAY_ITERATOR_BEGIN()                                                                         \
+  VPBROADCASTD CONSTD_1(), Z25                         /* Z25 <- dword(1)                                          */ \
+  VPSLLD $1, Z25, Z26                                  /* Z26 <- dword(2)                                          */ \
+  VPSLLD $3, Z25, Z27                                  /* Z27 <- dword(8)                                          */ \
+  VPBROADCASTD CONSTD_0x0F(), Z28                      /* Z28 <- dword(0x0F)                                       */ \
+  VPXORD X29, X29, X29                                 /* Z29 <- dword(0)                                          */ \
+  VBROADCASTI32X4 CONST_GET_PTR(bswap64, 0), Z30       /* Z30 <- constant(bswap64)                                 */ \
+                                                                                                                      \
+  KMOVW K2, K3                                                                                                        \
+  VPXORD X16, X16, X16                                                                                                \
+  VPGATHERDD 0(VIRT_BASE)(Z20*1), K3, Z16              /* Z16 <- hdr32 of next A values                            */ \
+  KMOVW K2, K3                                                                                                        \
+  VPXORD X18, X18, X18                                                                                                \
+  VPGATHERDD 0(VIRT_BASE)(Z22*1), K3, Z18              /* Z18 <- hdr32 of next B values                            */ \
+  VPXORD X10, X10, X10                                                                                                \
+  VPXORD X11, X11, X11                                                                                                \
+  VPXORD X12, X12, X12                                                                                                \
+  VPXORD X13, X13, X13                                                                                                \
+                                                                                                                      \
+array_iterator_loop:                                                                                                  \
+  KMOVW K2, K3                                                                                                        \
+  KSHIFTRW $8, K2, K4                                                                                                 \
+  VPGATHERDQ 1(VIRT_BASE)(Y20*1), K3, Z10              /* Z10 <- A value content (low)                             */ \
+                                                                                                                      \
+  KMOVW K2, K3                                                                                                        \
+  VPSRLD $4, Z16, Z17                                  /* Z17 <- A value tag (with garbage)                        */ \
+  VPSRLD $4, Z18, Z19                                  /* Z19 <- B value tag (with garbage)                        */ \
+  KSHIFTRW $8, K2, K4                                                                                                 \
+  VPGATHERDQ 1(VIRT_BASE)(Y22*1), K3, Z12              /* Z12 <- B value content (low)                             */ \
+                                                                                                                      \
+  VEXTRACTI32X8 $1, Z20, Y15                                                                                          \
+  VPANDD Z28, Z17, Z17                                 /* Z17 <- A value tag                                       */ \
+  VPANDD Z28, Z19, Z19                                 /* Z19 <- B value tag                                       */ \
+  VPANDD.Z Z28, Z16, K2, Z16                           /* Z16 <- A value length                                    */ \
+  VPANDD.Z Z28, Z18, K2, Z18                           /* Z18 <- B value length                                    */ \
+  VPGATHERDQ 1(VIRT_BASE)(Y15*1), K4, Z11              /* Z11 <- value content (high)                              */ \
+                                                                                                                      \
+  KSHIFTRW $8, K2, K4                                                                                                 \
+  VEXTRACTI32X8 $1, Z22, Y15                                                                                          \
+  VPSUBD.Z Z26, Z17, K2, Z17                           /* Z17 <- A value tag adjusted: uint(0), sint(1), float(2)  */ \
+  VPSUBD.Z Z26, Z19, K2, Z19                           /* Z19 <- B value tag adjusted: uint(0), sint(1), float(2)  */ \
+  VPCMPUD $VPCMP_IMM_LE, Z26, Z17, K2, K3              /* K3  <- lanes that are numeric (A)                        */ \
+  VPGATHERDQ 1(VIRT_BASE)(Y15*1), K4, Z13              /* Z13 <- value content (high)                              */ \
+                                                                                                                      \
+  VPCMPUD $VPCMP_IMM_LE, Z26, Z19, K3, K3              /* K3  <- lanes that are numeric (A and B)                  */ \
+  VPADDD Z25, Z20, Z20                                 /* Z20 <- advance A offsets by ION header byte (1 byte)     */ \
+  VPCMPUD $VPCMP_IMM_LE, Z27, Z16, K3, K3              /* K3  <- lanes that are valid uint, sint, or float         */ \
+  VPADDD Z25, Z22, Z22                                 /* Z22 <- advance B offsets by ION header byte (1 byte)     */ \
+  VPCMPUD $VPCMP_IMM_LE, Z27, Z18, K3, K3              /* K3  <- lanes that are valid uint, sint, or float         */ \
+                                                                                                                      \
+  VPADDD.Z Z16, Z20, K3, Z20                           /* Z20 <- advance A offsets by content length (0 to 8 bytes)*/ \
+  VPADDD.Z Z18, Z22, K3, Z22                           /* Z22 <- advance B offsets by content length (0 to 8 bytes)*/ \
+                                                                                                                      \
+  VPSUBD Z16, Z27, Z16                                 /* Z16 <- (8 - A_value_length)                              */ \
+  VPSUBD Z18, Z27, Z18                                 /* Z18 <- (8 - B_value_length)                              */ \
+  KANDNW K2, K3, K4                                    /* K4  <- lanes that are invalid                            */ \
+                                                                                                                      \
+  VPSLLD $3, Z16, Z16                                  /* Z16 <- (8 - A_value_length) * 8                          */ \
+  VPCMPUD $VPCMP_IMM_LT, Z21, Z20, K3, K2              /* K2  <- lanes that still have additional values (A)       */ \
+  VPSLLD $3, Z18, Z18                                  /* Z18 <- (8 - B_value_length) * 8                          */ \
+  VPCMPUD $VPCMP_IMM_LT, Z23, Z22, K2, K2              /* K2  <- lanes that still have additional values (A and B) */ \
+  KANDNW K1, K4, K1                                    /* K1  <- keep only resulting lanes holding valid values    */ \
+                                                                                                                      \
+  KMOVW K2, K4                                                                                                        \
+  VPMOVZXDQ Y16, Z14                                   /* Z15 <- A count of bits to discard extra bytes (low)      */ \
+  VEXTRACTI32X8 $1, Z16, Y15                                                                                          \
+  VPGATHERDD 0(VIRT_BASE)(Z20*1), K4, Z16              /* Z16 <- hdr32 of next A values (free gather)              */ \
+                                                                                                                      \
+  VPMOVZXDQ Y15, Z15                                   /* Z15 <- A count of bits to discard extra bytes (high)     */ \
+  VPSLLVQ Z14, Z10, Z10                                /* Z10 <- A value content without garbage (low)             */ \
+  VPSLLVQ Z15, Z11, Z11                                /* Z11 <- A value content without garbage (high)            */ \
+  VEXTRACTI32X8 $1, Z18, Y15                                                                                          \
+                                                                                                                      \
+  KMOVW K2, K4                                                                                                        \
+  VPMOVZXDQ Y18, Z14                                   /* Z14 <- B count of bits to discard extra bytes (low)      */ \
+  VPMOVZXDQ Y15, Z15                                   /* Z15 <- B count of bits to discard extra bytes (high)     */ \
+  VPSLLVQ Z14, Z12, Z12                                /* Z12 <- B value content without garbage (low)             */ \
+  VPSLLVQ Z15, Z13, Z13                                /* Z13 <- B value content without garbage (high)            */ \
+  VPGATHERDD 0(VIRT_BASE)(Z22*1), K4, Z18              /* Z18 <- hdr32 of next B values (free gather)              */ \
+                                                                                                                      \
+  VPCMPEQD Z25, Z17, K3, K4                            /* K4  <- A negative integers (all)                         */ \
+  VPSHUFB Z30, Z10, Z10                                /* Z10 <- A value content byteswapped (low)                 */ \
+  KSHIFTRW $8, K4, K5                                  /* K5  <- A negative integers (high)                        */ \
+  VPSHUFB Z30, Z11, Z11                                /* Z11 <- A value content byteswapped (high)                */ \
+  VPSUBQ Z10, Z29, K4, Z10                             /* Z10 <- A value content bytes (integers or floats) (low)  */ \
+  VPSUBQ Z11, Z29, K5, Z11                             /* Z11 <- A value content bytes (integers or floats) (high) */ \
+                                                                                                                      \
+  VPCMPEQD Z25, Z19, K3, K4                            /* K4  <- B negative integers (all)                         */ \
+  VPSHUFB Z30, Z12, Z12                                /* Z10 <- A value content byteswapped (low)                 */ \
+  KSHIFTRW $8, K4, K5                                  /* K5  <- B negative integers (high)                        */ \
+  VPSHUFB Z30, Z13, Z13                                /* Z11 <- B value content byteswapped (high)                */ \
+  VPSUBQ Z12, Z29, K4, Z12                             /* Z12 <- B value content bytes (integers or floats) (low)  */ \
+  VPSUBQ Z13, Z29, K5, Z13                             /* Z13 <- B value content bytes (integers or floats) (high) */ \
+                                                                                                                      \
+  VPCMPUD $VPCMP_IMM_LE, Z25, Z17, K3, K5              /* K5  <- A signed or unsigned integers (all)               */ \
+  VPCMPUD $VPCMP_IMM_LE, Z25, Z19, K3, K6              /* K6  <- B signed or unsigned integers (all)               */
+
+#define BL_NUMERIC_TWO_ARRAY_ITERATOR_CONV_TO_F64()                                                                   \
+  VCVTQQ2PD Z10, K5, Z10                               /* Z10 <- A value content as 64-bit floats (low)            */ \
+  KSHIFTRW $8, K5, K5                                  /* K5  <- A signed or unsigned integers (high)              */ \
+  VCVTQQ2PD Z12, K6, Z12                               /* Z12 <- B value content as 64-bit floats (low)            */ \
+  KSHIFTRW $8, K6, K6                                  /* K6  <- B signed or unsigned integers (high)              */ \
+                                                                                                                      \
+  VCVTQQ2PD Z11, K5, Z11                               /* Z11 <- A value content as 64-bit floats (high)           */ \
+  VCVTQQ2PD Z13, K6, Z13                               /* Z13 <- B value content as 64-bit floats (high)           */
+
+#define BL_NUMERIC_TWO_ARRAY_ITERATOR_END()                                                                           \
+  KTESTW K2, K2                                                                                                       \
+  JNZ array_iterator_loop
+
+// f64[0].k[1] = arraysum(s[2]).k[3]
+TEXT bcarraysum(SB), NOSPLIT|NOFRAME, $0
+  BC_UNPACK_2xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R8))
+  BC_LOAD_SLICE_FROM_SLOT(OUT(Z20), OUT(Z21), IN(BX))  // Z20:Z21 <- array offset and byte-length
+  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
+
+  VPTESTMD Z21, Z21, K1, K2                            // K2 <- arrays having non-zero length (arrays to process)
+  VPADDD Z20, Z21, Z21                                 // Z21 <- end of the array
+
+  VXORPD X0, X0, X0                                    // Z0 <- accumulator (low)
+  VXORPD X1, X1, X1                                    // Z1 <- accumulator (high)
+
+  KTESTW K2, K2
+  JZ done
+
+  BL_NUMERIC_ARRAY_ITERATOR_BEGIN()
+    BL_NUMERIC_ARRAY_ITERATOR_CONV_TO_F64()
+    KSHIFTRW $8, K3, K4                                // K4 <- valid values (high)
+    VADDPD Z10, Z0, K3, Z0                             // Z0 <- accumulate valid 64-bit floats (low)
+    VADDPD Z11, Z1, K4, Z1                             // Z1 <- accumulate valid 64-bit floats (high)
+  BL_NUMERIC_ARRAY_ITERATOR_END()
+
+done:
+  BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
+  BC_STORE_F64_TO_SLOT(IN(Z0), IN(Z1), IN(DX))
+  BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
+
+  NEXT_ADVANCE(BC_SLOT_SIZE*4)
+
+// f64[0].k[1] = vectorinnerproduct(s[2], s[3]).k[4]
+TEXT bcvectorinnerproduct(SB), NOSPLIT|NOFRAME, $0
+  BC_UNPACK_3xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(CX), OUT(R8))
+
+  BC_LOAD_SLICE_FROM_SLOT(OUT(Z20), OUT(Z21), IN(BX))  // Z20:Z21 <- A array offset and byte-length
+  BC_LOAD_SLICE_FROM_SLOT(OUT(Z22), OUT(Z23), IN(CX))  // Z22:Z23 <- B array offset and byte-length
+  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
+
+  VPTESTMD Z21, Z21, K1, K2                            // K2 <- arrays having non-zero length (arrays to process) (A)
+  VPADDD Z20, Z21, Z21                                 // Z21 <- end of A array
+
+  VPTESTMD Z23, Z23, K2, K2                            // K2 <- arrays having non-zero length (arrays to process) (A and B)
+  VPADDD Z22, Z23, Z23                                 // Z23 <- end of B array
+
+  VXORPD X0, X0, X0                                    // Z0 <- accumulator (low)
+  VXORPD X1, X1, X1                                    // Z1 <- accumulator (high)
+
+  KTESTW K2, K2
+  JZ done
+
+  BL_NUMERIC_TWO_ARRAY_ITERATOR_BEGIN()
+    BL_NUMERIC_TWO_ARRAY_ITERATOR_CONV_TO_F64()
+    KSHIFTRW $8, K3, K4                                // K4 <- valid values (high)
+    VFMADD231PD Z12, Z10, K3, Z0                       // Z0 <- Z0 + A * B (low)
+    VFMADD231PD Z13, Z11, K4, Z1                       // Z1 <- Z1 + A * B (high)
+  BL_NUMERIC_TWO_ARRAY_ITERATOR_END()
+
+done:
+  BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
+  BC_STORE_F64_TO_SLOT(IN(Z0), IN(Z1), IN(DX))
+  BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
+
+  NEXT_ADVANCE(BC_SLOT_SIZE*5)
+
+// f64[0].k[1] = vectorl1distance(s[2], s[3]).k[4]
+TEXT bcvectorl1distance(SB), NOSPLIT|NOFRAME, $0
+  BC_UNPACK_3xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(CX), OUT(R8))
+
+  BC_LOAD_SLICE_FROM_SLOT(OUT(Z20), OUT(Z21), IN(BX))  // Z20:Z21 <- A array offset and byte-length
+  BC_LOAD_SLICE_FROM_SLOT(OUT(Z22), OUT(Z23), IN(CX))  // Z22:Z23 <- B array offset and byte-length
+  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
+
+  VPTESTMD Z21, Z21, K1, K2                            // K2 <- arrays having non-zero length (arrays to process) (A)
+  VPADDD Z20, Z21, Z21                                 // Z21 <- end of A array
+
+  VPTESTMD Z23, Z23, K2, K2                            // K2 <- arrays having non-zero length (arrays to process) (A and B)
+  VPADDD Z22, Z23, Z23                                 // Z23 <- end of B array
+
+  VXORPD X0, X0, X0                                    // Z0 <- accumulator (low)
+  VXORPD X1, X1, X1                                    // Z1 <- accumulator (high)
+  VBROADCASTSD CONSTF64_SIGN_BIT(), Z2                 // Z2 <- float64 sign bit
+
+  KTESTW K2, K2
+  JZ done
+
+  BL_NUMERIC_TWO_ARRAY_ITERATOR_BEGIN()
+    BL_NUMERIC_TWO_ARRAY_ITERATOR_CONV_TO_F64()
+    KSHIFTRW $8, K3, K4                                // K4 <- valid values (high)
+    VSUBPD.Z Z12, Z10, K3, Z10                         // Z10 <- A - B (low)
+    VSUBPD.Z Z13, Z11, K4, Z11                         // Z11 <- A - B (high)
+    VANDNPD Z10, Z2, Z10                               // Z10 <- abs(A - B) (low)
+    VANDNPD Z11, Z2, Z11                               // Z11 <- abs(A - B) (high)
+    VADDPD Z10, Z0, K3, Z0                             // Z0 <- Z0 + abs(A - B) (low)
+    VADDPD Z11, Z1, K4, Z1                             // Z1 <- Z1 + abs(A - B) (high)
+  BL_NUMERIC_TWO_ARRAY_ITERATOR_END()
+
+done:
+  BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
+  BC_STORE_F64_TO_SLOT(IN(Z0), IN(Z1), IN(DX))
+  BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
+
+  NEXT_ADVANCE(BC_SLOT_SIZE*5)
+
+// f64[0].k[1] = vectorl2distance(s[2], s[3]).k[4]
+TEXT bcvectorl2distance(SB), NOSPLIT|NOFRAME, $0
+  BC_UNPACK_3xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(CX), OUT(R8))
+
+  BC_LOAD_SLICE_FROM_SLOT(OUT(Z20), OUT(Z21), IN(BX))  // Z20:Z21 <- A array offset and byte-length
+  BC_LOAD_SLICE_FROM_SLOT(OUT(Z22), OUT(Z23), IN(CX))  // Z22:Z23 <- B array offset and byte-length
+  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
+
+  VPTESTMD Z21, Z21, K1, K2                            // K2 <- arrays having non-zero length (arrays to process) (A)
+  VPADDD Z20, Z21, Z21                                 // Z21 <- end of A array
+
+  VPTESTMD Z23, Z23, K2, K2                            // K2 <- arrays having non-zero length (arrays to process) (A and B)
+  VPADDD Z22, Z23, Z23                                 // Z23 <- end of B array
+
+  VXORPD X0, X0, X0                                    // Z0 <- accumulator (low)
+  VXORPD X1, X1, X1                                    // Z1 <- accumulator (high)
+
+  KTESTW K2, K2
+  JZ done
+
+  BL_NUMERIC_TWO_ARRAY_ITERATOR_BEGIN()
+    BL_NUMERIC_TWO_ARRAY_ITERATOR_CONV_TO_F64()
+    KSHIFTRW $8, K3, K4                                // K4 <- valid values (high)
+    VSUBPD.Z Z12, Z10, K3, Z10                         // Z10 <- A - B (low)
+    VSUBPD.Z Z13, Z11, K4, Z11                         // Z11 <- A - B (high)
+    VFMADD231PD Z10, Z10, K3, Z0                       // Z0 <- Z0 + (A - B)^2 (low)
+    VFMADD231PD Z11, Z11, K4, Z1                       // Z1 <- Z1 + (A - B)^2 (high)
+  BL_NUMERIC_TWO_ARRAY_ITERATOR_END()
+
+  VSQRTPD Z0, Z0                                       // Z0 <- calculated l2 distance (low)
+  VSQRTPD Z1, Z1                                       // Z1 <- calculated l2 distance (high)
+
+done:
+  BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
+  BC_STORE_F64_TO_SLOT(IN(Z0), IN(Z1), IN(DX))
+  BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
+
+  NEXT_ADVANCE(BC_SLOT_SIZE*5)
+
+// f64[0].k[1] = vectorcosinedistance(s[2], s[3]).k[4]
+TEXT bcvectorcosinedistance(SB), NOSPLIT|NOFRAME, $0
+  BC_UNPACK_3xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(CX), OUT(R8))
+
+  BC_LOAD_SLICE_FROM_SLOT(OUT(Z20), OUT(Z21), IN(BX))  // Z20:Z21 <- A array offset and byte-length
+  BC_LOAD_SLICE_FROM_SLOT(OUT(Z22), OUT(Z23), IN(CX))  // Z22:Z23 <- B array offset and byte-length
+  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
+
+  VPTESTMD Z21, Z21, K1, K2                            // K2 <- arrays having non-zero length (arrays to process) (A)
+  VPADDD Z20, Z21, Z21                                 // Z21 <- end of A array
+
+  VPTESTMD Z23, Z23, K2, K2                            // K2 <- arrays having non-zero length (arrays to process) (A and B)
+  VPADDD Z22, Z23, Z23                                 // Z23 <- end of B array
+
+  VXORPD X0, X0, X0                                    // Z0 <- accumulator (low)
+  VXORPD X1, X1, X1                                    // Z1 <- accumulator (high)
+
+  VXORPD X2, X2, X2                                    // Z2 <- accumulator (low)
+  VXORPD X3, X3, X3                                    // Z3 <- accumulator (high)
+
+  VXORPD X4, X4, X4                                    // Z4 <- accumulator (low)
+  VXORPD X5, X5, X5                                    // Z5 <- accumulator (high)
+
+  KTESTW K2, K2
+  JZ done
+
+  BL_NUMERIC_TWO_ARRAY_ITERATOR_BEGIN()
+    BL_NUMERIC_TWO_ARRAY_ITERATOR_CONV_TO_F64()
+    KSHIFTRW $8, K3, K4                                // K4 <- valid values (high)
+    VFMADD231PD Z12, Z10, K3, Z0                       // Z0 <- Z0 + A * B (low)
+    VFMADD231PD Z13, Z11, K4, Z1                       // Z1 <- Z1 + A * B (high)
+    VFMADD231PD Z10, Z10, K3, Z2                       // Z2 <- Z2 + A * A (low)
+    VFMADD231PD Z11, Z11, K4, Z3                       // Z3 <- Z3 + A * A (high)
+    VFMADD231PD Z12, Z12, K3, Z4                       // Z4 <- Z4 + B * B (low)
+    VFMADD231PD Z13, Z13, K4, Z5                       // Z5 <- Z5 + B * B (high)
+  BL_NUMERIC_TWO_ARRAY_ITERATOR_END()
+
+  // Compute `cosine_similarity(a, b)`
+  KSHIFTRW $8, K1, K2
+  VMULPD Z4, Z2, Z2
+  VMULPD Z5, Z3, Z3
+
+  VXORPD X5, X5, X5
+  VBROADCASTSD CONSTF64_1(), Z4
+
+  VSQRTPD Z2, Z2
+  VSQRTPD Z3, Z3
+
+  VCMPPD $VCMP_IMM_GT_OQ, Z5, Z2, K1, K3
+  VCMPPD $VCMP_IMM_GT_OQ, Z5, Z3, K2, K4
+
+  VDIVPD Z2, Z0, Z0
+  VDIVPD Z3, Z1, Z1
+
+  // Compute `cosine_distance(a, b)`, which is equal to `1 - cosine_similarity(a, b)`
+  VSUBPD.Z Z0, Z4, K3, Z0
+  VSUBPD.Z Z1, Z4, K4, Z1
+
+done:
+  BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
+  BC_STORE_F64_TO_SLOT(IN(Z0), IN(Z1), IN(DX))
+  BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
+
+  NEXT_ADVANCE(BC_SLOT_SIZE*5)
+
 // String Instructions
 // -------------------
 

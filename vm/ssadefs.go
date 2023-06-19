@@ -395,6 +395,12 @@ const (
 	sobjectsize // built-in function SIZE()
 	sarraysize
 	sarrayposition
+	sarraysum
+
+	svectorinnerproduct
+	svectorl1distance
+	svectorl2distance
+	svectorcosinedistance
 
 	sboxmask  // box a mask
 	sboxint   // box an integer
@@ -1088,6 +1094,12 @@ var _ssainfo = [_ssamax]ssaopinfo{
 	sobjectsize:    {text: "objectsize", argtypes: []ssatype{stValue, stBool}, rettype: stIntMasked, bc: opobjectsize},
 	sarraysize:     {text: "arraysize", argtypes: []ssatype{stList, stBool}, rettype: stInt, bc: oparraysize},
 	sarrayposition: {text: "arrayposition", argtypes: []ssatype{stList, stValue, stBool}, rettype: stIntMasked, bc: oparrayposition},
+	sarraysum:      {text: "arraysum", argtypes: []ssatype{stList, stBool}, rettype: stFloatMasked, bc: oparraysum},
+
+	svectorinnerproduct:   {text: "vectorinnerproduct", argtypes: []ssatype{stList, stList, stBool}, rettype: stFloatMasked, bc: opvectorinnerproduct},
+	svectorl1distance:     {text: "vectorl1distance", argtypes: []ssatype{stList, stList, stBool}, rettype: stFloatMasked, bc: opvectorl1distance},
+	svectorl2distance:     {text: "vectorl2distance", argtypes: []ssatype{stList, stList, stBool}, rettype: stFloatMasked, bc: opvectorl2distance},
+	svectorcosinedistance: {text: "vectorcosinedistance", argtypes: []ssatype{stList, stList, stBool}, rettype: stFloatMasked, bc: opvectorcosinedistance},
 
 	saggmergestate: {
 		text:     "aggmergestate",

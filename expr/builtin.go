@@ -222,6 +222,12 @@ const (
 	ArrayContains
 	ArraySize
 	ArrayPosition
+	ArraySum
+
+	VectorInnerProduct   // sql:INNER_PRODUCT
+	VectorL1Distance     // sql:L1_DISTANCE
+	VectorL2Distance     // sql:L2_DISTANCE
+	VectorCosineDistance // sql:COSINE_DISTANCE
 
 	TableGlob
 	TablePattern
@@ -686,6 +692,31 @@ func checkArrayPosition(h Hint, args []Node) error {
 		return errtype(args[0], "first argument to ARRAY_POSITION must be a list")
 	}
 	return nil
+}
+
+func checkArraySum(h Hint, args []Node) error {
+	if len(args) != 1 {
+		return errsyntaxf("ARRAY_SUM expects one argument, but found %d", len(args))
+	}
+	if !TypeOf(args[0], h).AnyOf(ListType) {
+		return errtype(args[0], "first argument to ARRAY_SUM must be a list")
+	}
+	return nil
+}
+
+func checkVectorOp(funcName string) func(h Hint, args []Node) error {
+	return func(h Hint, args []Node) error {
+		if len(args) != 2 {
+			return errsyntaxf("%s expects two arguments, but found %d", funcName, len(args))
+		}
+		if !TypeOf(args[0], h).AnyOf(ListType) {
+			return errtype(args[0], "first argument to %s must be a list", funcName)
+		}
+		if !TypeOf(args[1], h).AnyOf(ListType) {
+			return errtype(args[1], "second argument to %s must be a list", funcName)
+		}
+		return nil
+	}
 }
 
 func checkTableGlob(h Hint, args []Node) error {
@@ -1159,6 +1190,12 @@ var builtinInfo = [maxBuiltin]binfo{
 	ArraySize:     {check: checkArraySize, ret: NumericType | MissingType},
 	ArrayContains: {check: checkArrayContains, ret: LogicalType | MissingType},
 	ArrayPosition: {check: checkArrayPosition, ret: NumericType | MissingType},
+	ArraySum:      {check: checkArraySum, ret: FloatType | MissingType},
+
+	VectorInnerProduct:   {check: checkVectorOp("INNER_PRODUCT"), ret: FloatType | MissingType},
+	VectorL1Distance:     {check: checkVectorOp("L1_DISTANCE"), ret: FloatType | MissingType},
+	VectorL2Distance:     {check: checkVectorOp("L2_DISTANCE"), ret: FloatType | MissingType},
+	VectorCosineDistance: {check: checkVectorOp("COSINE_DISTANCE"), ret: FloatType | MissingType},
 
 	InSubquery:        {check: checkInSubquery, private: true, ret: LogicalType},
 	InReplacement:     {check: checkInReplacement, private: true, ret: LogicalType},

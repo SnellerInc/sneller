@@ -1743,6 +1743,41 @@ Compatibility notice: `ARRAY_POSITION()` can be used to match `NULL`
 values, for example `ARRAY_POSITION([1, 2, NULL], NULL)` would yield
 `3`. `MISSING` values cannot be matched nor stored in lists.
 
+#### `ARRAY_SUM`
+
+`ARRAY_SUM(list)` returns the sum of all numeric values of the `list`
+or `MISSING` if `list` doesn't evaluate to a list. Empty lists return
+sum of `0`.
+
+Please note that the current implementation of `ARRAY_SUM()` function
+first converts all values to 64-bit floats and then performs the sum.
+Large integers not representable as 64-bit floats will be rounded to
+even, and all additions will be rounded as well.
+
+#### `INNER_PRODUCT`
+
+`INNER_PRODUCT(a, b)` returns inner product of two vectors `a` and `b`
+or `MISSING` if `a` or `b` doesn't evaluate to a list having only
+numeric values.
+
+#### `L1_DISTANCE`
+
+`L1_DISTANCE(a, b)` returns the L1 (Manhattan) distance between two
+vectors `a` and `b` or `MISSING` if `a` or `b` doesn't evaluate to
+a list having only numeric values.
+
+#### `L2_DISTANCE`
+
+`L2_DISTANCE(a, b)` returns the L2 (Euclidean) distance between two
+vectors `a` and `b` or `MISSING` if `a` or `b` doesn't evaluate to
+a list having only numeric values.
+
+#### `COSINE_DISTANCE`
+
+`COSINE_DISTANCE(a, b)` returns the cosine distance between two
+vectors `a` and `b` or `MISSING` if `a` or `b` doesn't evaluate to
+a list having only numeric values.
+
 #### `OCTET_LENGTH`
 
 `OCTET_LENGTH(str)` returns the length of `str` in bytes or `MISSING`

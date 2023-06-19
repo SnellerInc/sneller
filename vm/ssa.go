@@ -2601,6 +2601,45 @@ func (p *prog) arrayPosition(array, item *value) *value {
 	return p.ssa3(sarrayposition, array, item, mask)
 }
 
+func (p *prog) arraySum(array *value) *value {
+	array = p.tolist(array)
+	mask := p.mask(array)
+
+	return p.ssa2(sarraysum, array, mask)
+}
+
+func (p *prog) vectorInnerProduct(a *value, b *value) *value {
+	a = p.tolist(a)
+	b = p.tolist(b)
+	mask := p.and(p.mask(a), p.mask(b))
+
+	return p.ssa3(svectorinnerproduct, a, b, mask)
+}
+
+func (p *prog) vectorL1Distance(a *value, b *value) *value {
+	a = p.tolist(a)
+	b = p.tolist(b)
+	mask := p.and(p.mask(a), p.mask(b))
+
+	return p.ssa3(svectorl1distance, a, b, mask)
+}
+
+func (p *prog) vectorL2Distance(a *value, b *value) *value {
+	a = p.tolist(a)
+	b = p.tolist(b)
+	mask := p.and(p.mask(a), p.mask(b))
+
+	return p.ssa3(svectorl2distance, a, b, mask)
+}
+
+func (p *prog) vectorCosineDistance(a *value, b *value) *value {
+	a = p.tolist(a)
+	b = p.tolist(b)
+	mask := p.and(p.mask(a), p.mask(b))
+
+	return p.ssa3(svectorcosinedistance, a, b, mask)
+}
+
 func emitNone(v *value, c *compilestate) {
 	// does nothing...
 }

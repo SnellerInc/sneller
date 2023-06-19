@@ -2,7 +2,7 @@ package expr
 
 // Code generated automatically; DO NOT EDIT
 
-var builtin2Name = [121]string{
+var builtin2Name = [126]string{
 	"CONCAT",                   // Concat
 	"TRIM",                     // Trim
 	"LTRIM",                    // Ltrim
@@ -110,6 +110,11 @@ var builtin2Name = [121]string{
 	"ARRAY_CONTAINS",           // ArrayContains
 	"ARRAY_SIZE",               // ArraySize
 	"ARRAY_POSITION",           // ArrayPosition
+	"ARRAY_SUM",                // ArraySum
+	"INNER_PRODUCT",            // VectorInnerProduct
+	"L1_DISTANCE",              // VectorL1Distance
+	"L2_DISTANCE",              // VectorL2Distance
+	"COSINE_DISTANCE",          // VectorCosineDistance
 	"TABLE_GLOB",               // TableGlob
 	"TABLE_PATTERN",            // TablePattern
 	"IN_SUBQUERY",              // InSubquery
@@ -348,6 +353,16 @@ func name2Builtin(s string) BuiltinOp {
 		return ArraySize
 	case "ARRAY_POSITION":
 		return ArrayPosition
+	case "ARRAY_SUM":
+		return ArraySum
+	case "INNER_PRODUCT":
+		return VectorInnerProduct
+	case "L1_DISTANCE":
+		return VectorL1Distance
+	case "L2_DISTANCE":
+		return VectorL2Distance
+	case "COSINE_DISTANCE":
+		return VectorCosineDistance
 	case "TABLE_GLOB":
 		return TableGlob
 	case "TABLE_PATTERN":
@@ -380,4 +395,4 @@ func name2Builtin(s string) BuiltinOp {
 	return Unspecified
 }
 
-// checksum: cb21fa727834c08d92dd0520ebfb3445
+// checksum: 5ab82de4e9716a9be1d64c0692e6674b

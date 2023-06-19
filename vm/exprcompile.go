@@ -981,6 +981,41 @@ func compilefuncaux(p *prog, b *expr.Builtin, args []expr.Node) (*value, error) 
 		}
 		return p.arrayPosition(v[0], v[1]), nil
 
+	case expr.ArraySum:
+		v, err := compileargs(p, args, compileExpression)
+		if err != nil {
+			return nil, err
+		}
+		return p.arraySum(v[0]), nil
+
+	case expr.VectorInnerProduct:
+		v, err := compileargs(p, args, compileExpression, compileExpression)
+		if err != nil {
+			return nil, err
+		}
+		return p.vectorInnerProduct(v[0], v[1]), nil
+
+	case expr.VectorL1Distance:
+		v, err := compileargs(p, args, compileExpression, compileExpression)
+		if err != nil {
+			return nil, err
+		}
+		return p.vectorL1Distance(v[0], v[1]), nil
+
+	case expr.VectorL2Distance:
+		v, err := compileargs(p, args, compileExpression, compileExpression)
+		if err != nil {
+			return nil, err
+		}
+		return p.vectorL2Distance(v[0], v[1]), nil
+
+	case expr.VectorCosineDistance:
+		v, err := compileargs(p, args, compileExpression, compileExpression)
+		if err != nil {
+			return nil, err
+		}
+		return p.vectorCosineDistance(v[0], v[1]), nil
+
 	case expr.Lower, expr.Upper:
 		vals, err := compileargs(p, args, compileString)
 		if err != nil {

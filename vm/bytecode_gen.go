@@ -278,6 +278,11 @@ var opinfo = [_maxbcop]bcopinfo{
 	opobjectsize:              {text: "objectsize", out: bcargs[2:4] /* {bcS, bcK} */, in: bcargs[9:11] /* {bcV, bcK} */},
 	oparraysize:               {text: "arraysize", out: bcargs[1:2] /* {bcS} */, in: bcargs[2:4] /* {bcS, bcK} */},
 	oparrayposition:           {text: "arrayposition", out: bcargs[2:4] /* {bcS, bcK} */, in: bcargs[66:69] /* {bcS, bcV, bcK} */},
+	oparraysum:                {text: "arraysum", out: bcargs[2:4] /* {bcS, bcK} */, in: bcargs[2:4] /* {bcS, bcK} */},
+	opvectorinnerproduct:      {text: "vectorinnerproduct", out: bcargs[2:4] /* {bcS, bcK} */, in: bcargs[1:4] /* {bcS, bcS, bcK} */},
+	opvectorl1distance:        {text: "vectorl1distance", out: bcargs[2:4] /* {bcS, bcK} */, in: bcargs[1:4] /* {bcS, bcS, bcK} */},
+	opvectorl2distance:        {text: "vectorl2distance", out: bcargs[2:4] /* {bcS, bcK} */, in: bcargs[1:4] /* {bcS, bcS, bcK} */},
+	opvectorcosinedistance:    {text: "vectorcosinedistance", out: bcargs[2:4] /* {bcS, bcK} */, in: bcargs[1:4] /* {bcS, bcS, bcK} */},
 	opCmpStrEqCs:              {text: "cmp_str_eq_cs", out: bcargs[3:4] /* {bcK} */, in: bcargs[22:25] /* {bcS, bcDictSlot, bcK} */},
 	opCmpStrEqCi:              {text: "cmp_str_eq_ci", out: bcargs[3:4] /* {bcK} */, in: bcargs[22:25] /* {bcS, bcDictSlot, bcK} */},
 	opCmpStrEqUTF8Ci:          {text: "cmp_str_eq_utf8_ci", out: bcargs[3:4] /* {bcK} */, in: bcargs[22:25] /* {bcS, bcDictSlot, bcK} */},
@@ -616,55 +621,60 @@ const (
 	opobjectsize              bcop = 272
 	oparraysize               bcop = 273
 	oparrayposition           bcop = 274
-	opCmpStrEqCs              bcop = 275
-	opCmpStrEqCi              bcop = 276
-	opCmpStrEqUTF8Ci          bcop = 277
-	opCmpStrFuzzyA3           bcop = 278
-	opCmpStrFuzzyUnicodeA3    bcop = 279
-	opHasSubstrFuzzyA3        bcop = 280
-	opHasSubstrFuzzyUnicodeA3 bcop = 281
-	opSkip1charLeft           bcop = 282
-	opSkip1charRight          bcop = 283
-	opSkipNcharLeft           bcop = 284
-	opSkipNcharRight          bcop = 285
-	opTrimWsLeft              bcop = 286
-	opTrimWsRight             bcop = 287
-	opTrim4charLeft           bcop = 288
-	opTrim4charRight          bcop = 289
-	opoctetlength             bcop = 290
-	opcharlength              bcop = 291
-	opSubstr                  bcop = 292
-	opSplitPart               bcop = 293
-	opContainsPrefixCs        bcop = 294
-	opContainsPrefixCi        bcop = 295
-	opContainsPrefixUTF8Ci    bcop = 296
-	opContainsSuffixCs        bcop = 297
-	opContainsSuffixCi        bcop = 298
-	opContainsSuffixUTF8Ci    bcop = 299
-	opContainsSubstrCs        bcop = 300
-	opContainsSubstrCi        bcop = 301
-	opContainsSubstrUTF8Ci    bcop = 302
-	opEqPatternCs             bcop = 303
-	opEqPatternCi             bcop = 304
-	opEqPatternUTF8Ci         bcop = 305
-	opContainsPatternCs       bcop = 306
-	opContainsPatternCi       bcop = 307
-	opContainsPatternUTF8Ci   bcop = 308
-	opIsSubnetOfIP4           bcop = 309
-	opDfaT6                   bcop = 310
-	opDfaT7                   bcop = 311
-	opDfaT8                   bcop = 312
-	opDfaT6Z                  bcop = 313
-	opDfaT7Z                  bcop = 314
-	opDfaT8Z                  bcop = 315
-	opDfaLZ                   bcop = 316
-	opAggTDigest              bcop = 317
-	opslower                  bcop = 318
-	opsupper                  bcop = 319
-	opaggapproxcount          bcop = 320
-	opaggslotapproxcount      bcop = 321
-	oppowuintf64              bcop = 322
-	_maxbcop                       = 323
+	oparraysum                bcop = 275
+	opvectorinnerproduct      bcop = 276
+	opvectorl1distance        bcop = 277
+	opvectorl2distance        bcop = 278
+	opvectorcosinedistance    bcop = 279
+	opCmpStrEqCs              bcop = 280
+	opCmpStrEqCi              bcop = 281
+	opCmpStrEqUTF8Ci          bcop = 282
+	opCmpStrFuzzyA3           bcop = 283
+	opCmpStrFuzzyUnicodeA3    bcop = 284
+	opHasSubstrFuzzyA3        bcop = 285
+	opHasSubstrFuzzyUnicodeA3 bcop = 286
+	opSkip1charLeft           bcop = 287
+	opSkip1charRight          bcop = 288
+	opSkipNcharLeft           bcop = 289
+	opSkipNcharRight          bcop = 290
+	opTrimWsLeft              bcop = 291
+	opTrimWsRight             bcop = 292
+	opTrim4charLeft           bcop = 293
+	opTrim4charRight          bcop = 294
+	opoctetlength             bcop = 295
+	opcharlength              bcop = 296
+	opSubstr                  bcop = 297
+	opSplitPart               bcop = 298
+	opContainsPrefixCs        bcop = 299
+	opContainsPrefixCi        bcop = 300
+	opContainsPrefixUTF8Ci    bcop = 301
+	opContainsSuffixCs        bcop = 302
+	opContainsSuffixCi        bcop = 303
+	opContainsSuffixUTF8Ci    bcop = 304
+	opContainsSubstrCs        bcop = 305
+	opContainsSubstrCi        bcop = 306
+	opContainsSubstrUTF8Ci    bcop = 307
+	opEqPatternCs             bcop = 308
+	opEqPatternCi             bcop = 309
+	opEqPatternUTF8Ci         bcop = 310
+	opContainsPatternCs       bcop = 311
+	opContainsPatternCi       bcop = 312
+	opContainsPatternUTF8Ci   bcop = 313
+	opIsSubnetOfIP4           bcop = 314
+	opDfaT6                   bcop = 315
+	opDfaT7                   bcop = 316
+	opDfaT8                   bcop = 317
+	opDfaT6Z                  bcop = 318
+	opDfaT7Z                  bcop = 319
+	opDfaT8Z                  bcop = 320
+	opDfaLZ                   bcop = 321
+	opAggTDigest              bcop = 322
+	opslower                  bcop = 323
+	opsupper                  bcop = 324
+	opaggapproxcount          bcop = 325
+	opaggslotapproxcount      bcop = 326
+	oppowuintf64              bcop = 327
+	_maxbcop                       = 328
 )
 
 type opreplace struct{ from, to bcop }
@@ -674,4 +684,4 @@ var patchAVX512Level2 []opreplace = []opreplace{
 	{from: opaggslotcountv2, to: opaggslotcount},
 }
 
-// checksum: 5ba254239494c520eec96f9a630547c6
+// checksum: 185c4f0d8b8e1ea7b35c055ac0549e58
