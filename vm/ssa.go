@@ -2667,10 +2667,7 @@ func emitDateDiffMQY(v *value, c *compilestate) {
 	)
 }
 
-// Simple aggregate operations
-func (p *prog) makeAggregateBoolOp(aggBoolOp, aggIntOp ssaop, v, filter *value, slot aggregateslot) *value {
-	mem := p.initMem()
-
+func (p *prog) prepareBoolAggregateOp(v, filter *value) (*value, *value, bool) {
 	// In general we have to coerce to BOOL, however, if the input is a boxed value we
 	// will just unbox BOOL to INT64 and use INT64 aggregation instead of converting such
 	// INT64 to BOOL. This saves us some instructions.
@@ -2681,14 +2678,26 @@ func (p *prog) makeAggregateBoolOp(aggBoolOp, aggIntOp ssaop, v, filter *value, 
 		if filter != nil {
 			mask = p.and(mask, filter)
 		}
-		return p.ssa3imm(aggIntOp, mem, intVal, mask, slot)
+		return intVal, mask, true
 	}
 
 	boolVal, mask := p.coerceBool(v)
 	if filter != nil {
 		mask = p.and(mask, filter)
 	}
-	return p.ssa3imm(aggBoolOp, mem, boolVal, mask, slot)
+
+	return boolVal, mask, false
+}
+
+// Simple aggregate operations
+func (p *prog) makeAggregateBoolOp(aggBoolOp, aggIntOp ssaop, v, filter *value, slot aggregateslot) *value {
+	mem := p.initMem()
+	val, mask, isInt := p.prepareBoolAggregateOp(v, filter)
+
+	if isInt {
+		return p.ssa3imm(aggIntOp, mem, val, mask, slot)
+	}
+	return p.ssa3imm(aggBoolOp, mem, val, mask, slot)
 }
 
 func (p *prog) makeAggregateOp(opF, opI ssaop, child, filter *value, slot aggregateslot) (v *value, fp bool) {
@@ -2806,12 +2815,12 @@ func (p *prog) aggregateMergeState(child *value, slot aggregateslot) *value {
 }
 
 // Slot aggregate operations
-func (p *prog) makeAggregateSlotBoolOp(op ssaop, mem, bucket, v, mask *value, slot aggregateslot) *value {
-	boolVal, m := p.coerceBool(v)
-	if mask != nil {
-		m = p.and(m, mask)
+func (p *prog) makeAggregateSlotBoolOp(aggBoolOp, aggIntOp ssaop, mem, bucket, v, filter *value, slot aggregateslot) *value {
+	val, mask, isInt := p.prepareBoolAggregateOp(v, filter)
+	if isInt {
+		return p.ssa4imm(aggIntOp, mem, bucket, val, mask, slot)
 	}
-	return p.ssa4imm(op, mem, bucket, boolVal, m, slot)
+	return p.ssa4imm(aggBoolOp, mem, bucket, val, mask, slot)
 }
 
 func (p *prog) makeAggregateSlotOp(opF, opI ssaop, mem, bucket, v, mask *value, offset aggregateslot) (rv *value, fp bool) {
@@ -2878,11 +2887,11 @@ func (p *prog) aggregateSlotXor(mem, bucket, value, mask *value, offset aggregat
 }
 
 func (p *prog) aggregateSlotBoolAnd(mem, bucket, value, mask *value, offset aggregateslot) *value {
-	return p.makeAggregateSlotBoolOp(saggslotandk, mem, bucket, value, mask, offset)
+	return p.makeAggregateSlotBoolOp(saggslotandk, saggslotandi, mem, bucket, value, mask, offset)
 }
 
 func (p *prog) aggregateSlotBoolOr(mem, bucket, value, mask *value, offset aggregateslot) *value {
-	return p.makeAggregateSlotBoolOp(saggslotork, mem, bucket, value, mask, offset)
+	return p.makeAggregateSlotBoolOp(saggslotork, saggslotori, mem, bucket, value, mask, offset)
 }
 
 func (p *prog) aggregateSlotEarliest(mem, bucket, value, mask *value, offset aggregateslot) *value {

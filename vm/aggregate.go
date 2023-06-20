@@ -879,7 +879,7 @@ func (q *Aggregate) compileAggregate(aggregates Aggregation) error {
 			}
 
 		case expr.OpBoolAnd, expr.OpBoolOr:
-			argv, err := p.compileAsBool(agg.Inner)
+			argv, err := compile(p, agg.Inner)
 			if err != nil {
 				return fmt.Errorf("don't know how to aggregate %q: %w", agg.Inner, err)
 			}

@@ -1,0 +1,29 @@
+# This tests the behavior of BOOL_AND() aggregation on fields that
+# are not MISSING, but neither BOOL. In this case the aggregation
+# should ignore these values and not default to FALSE.
+SELECT
+  BOOL_AND(a) AS a_and,
+  BOOL_AND(b) AS b_and
+FROM
+  input
+---
+{}
+{"a": true}
+{"a": true}
+{"a": 0}
+{"a": 1}
+{"a": "string"}
+{"a": 10.1}
+{"a": 0, "b": false}
+{"a": 0, "b": true}
+{"a": true}
+{"a": true}
+{"a": 0}
+{"a": 1}
+{"a": "string"}
+{"a": 10.1}
+{"b": false}
+{"b": true}
+{}
+---
+{"a_and": true, "b_and": false}

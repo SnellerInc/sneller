@@ -56,10 +56,10 @@ LIMIT
 {"category": "C", "a": false, "b": true, "c": true}
 {"category": "A", "a": true}
 {"category": "B", "a": true}
-{"category": "C", "b": true}
-{"category": "B", "b": true}
-{"category": "C", "c": true}
-{"category": "C", "c": true}
+{"category": "C", "a": 11, "b": true}
+{"category": "B", "a": 0, "b": true}
+{"category": "C", "a": "string", "c": true}
+{"category": "C", "b": "string", "c": true}
 ---
 {"category": "A", "a_and": true, "b_and": false, "c_and": false, "a_or": true, "b_or": true, "c_or": false}
 {"category": "B", "a_and": true, "b_and": false, "c_and": false, "a_or": true, "b_or": true, "c_or": true}

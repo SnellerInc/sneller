@@ -296,7 +296,7 @@ func NewHashAggregate(agg, windows Aggregation, by Selection, dst QuerySink) (*H
 			}
 
 		case expr.OpBoolAnd, expr.OpBoolOr:
-			argv, err := prog.compileAsBool(h.agg[i].Expr.Inner)
+			argv, err := compile(prog, h.agg[i].Expr.Inner)
 			if err != nil {
 				return nil, fmt.Errorf("don't know how to aggregate %q: %w", h.agg[i].Expr.Inner, err)
 			}

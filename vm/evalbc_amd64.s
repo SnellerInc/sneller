@@ -6499,7 +6499,7 @@ TEXT bcaggandk(SB), NOSPLIT|NOFRAME, $0
   BC_LOAD_RU16_FROM_SLOT(OUT(BX), IN(BX))
   BC_LOAD_RU16_FROM_SLOT(OUT(CX), IN(CX))
 
-  ORB CX, 8(VIRT_AGG_BUFFER)(DX*1)     // Mark this aggregation slot if we have non-null lanes
+  ORW CX, 8(VIRT_AGG_BUFFER)(DX*1)     // Mark this aggregation slot if we have non-null lanes
   ANDL CX, BX                          // BX <- Boolean values in non-null lanes
 
   XORL R8, R8                          // If CX != BX it means that at least one lane is active and that not all BOOLs
@@ -6518,7 +6518,7 @@ TEXT bcaggork(SB), NOSPLIT|NOFRAME, $0
   BC_LOAD_RU16_FROM_SLOT(OUT(BX), IN(BX))
   BC_LOAD_RU16_FROM_SLOT(OUT(CX), IN(CX))
 
-  ORB CX, 8(VIRT_AGG_BUFFER)(DX*1)     // Mark this aggregation slot if we have non-null lanes
+  ORW CX, 8(VIRT_AGG_BUFFER)(DX*1)     // Mark this aggregation slot if we have non-null lanes
 
   XORL R8, R8                          // If CX & BX != 0 it means that at least one lane is active and that not all BOOLs
   ANDL CX, BX                          // in active lanes are FALSE - this would result in TRUE if not already TRUE.
