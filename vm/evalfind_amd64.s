@@ -51,10 +51,12 @@ doit:
 
   // enter bytecode interpretation
   MOVQ    ·vmm+0(SB), VIRT_BASE
+  KMOVW   K1, K7
+  BC_CLEAR_SCRATCH(VIRT_PCREG)
+  BC_CLEAR_ERROR()
   MOVQ    bytecode_compiled(VIRT_BCPTR), VIRT_PCREG
   MOVQ    bytecode_vstack(VIRT_BCPTR), VIRT_VALUES
   ADDQ    R10, VIRT_VALUES                     // stack offset += rows out
-  KMOVW   K1, K7
   BC_INVOKE()
   JC      opcode_failed                        // break on error
 

@@ -1873,5 +1873,36 @@ func (p *prog) compileCast(c *expr.Cast) (*value, error) {
 }
 
 func (p *prog) checkTag(from *value, typ expr.TypeSet) *value {
-	return p.ssa2imm(schecktag, from, p.mask(from), uint16(typ))
+	primary := from.primary()
+	switch primary {
+	case stValue:
+		// boxed value? check the boxed value type tag
+		return p.ssa2imm(schecktag, from, p.mask(from), uint16(typ))
+	case stInt:
+		if typ&expr.IntegerType != 0 {
+			return from
+		}
+	case stFloat:
+		if typ&expr.FloatType != 0 {
+			return from
+		}
+	case stString:
+		if typ&expr.StringType != 0 {
+			return from
+		}
+	case stTime:
+		if typ&expr.TimeType != 0 {
+			return from
+		}
+	case stList:
+		if typ&expr.ListType != 0 {
+			return from
+		}
+	case stBool:
+		if typ&expr.BoolType != 0 {
+			return from
+		}
+	}
+	// default case: no match
+	return p.missing()
 }

@@ -561,7 +561,7 @@ func (p *prog) returnValue(v *value) {
 	info := &ssainfo[v.op]
 
 	// Return only accepts operations that actually return (terminate the execution).
-	if info.returnOp {
+	if info.returnOp || v.op == sinvalid {
 		p.ret = v
 		return
 	}

@@ -360,6 +360,7 @@ func (s *sortstateKtop) symbolize(st *symtab, aux *auxbindings) error {
 }
 
 func (s *sortstateKtop) bcfind(delims []vmref, rp *rowParams) ([]vRegData, error) {
+	s.findbc.prepare(rp)
 	return bcfind(s.parent, &s.findbc, delims, rp)
 }
 
