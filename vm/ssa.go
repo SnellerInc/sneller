@@ -22,6 +22,7 @@ import (
 	"math/bits"
 	"os"
 	"strconv"
+	"strings"
 
 	"golang.org/x/exp/slices"
 	"golang.org/x/sys/cpu"
@@ -4122,7 +4123,7 @@ func (p *prog) compile(dst *bytecode, st *symtab, callerName string) error {
 	dst.compiled = c.asm.grabCode()
 
 	reserve := c.asm.scratchuse + len(c.litbuf)
-	if reserve > PageSize {
+	if reserve > PageSize || strings.HasSuffix(callerName, "sort findbc") {
 		reserve = PageSize
 	}
 	dst.savedlit = c.litbuf

@@ -265,7 +265,7 @@ func symbolize(sort *Order, dst *prog, findbc *bytecode, st *symtab, aux *auxbin
 }
 
 func symbolizeLocal(sort *Order, dst *prog, findbc *bytecode, st *symtab, aux *auxbindings) error {
-	err := recompile(st, &sort.prog, dst, findbc, aux, "symbolizeLocal")
+	err := recompile(st, &sort.prog, dst, findbc, aux, "sort findbc")
 	if err != nil {
 		return fmt.Errorf("sortstate.symbolize(): %w", err)
 	}
@@ -284,7 +284,6 @@ func bcfind(sort *Order, findbc *bytecode, delims []vmref, rp *rowParams) (out [
 
 	findbc.ensureVStackSize(minimumVStackSize)
 	findbc.allocStacks()
-
 	findbc.prepare(rp)
 	err = evalfind(findbc, delims, len(sort.columns))
 	if err != nil {
@@ -360,7 +359,6 @@ func (s *sortstateKtop) symbolize(st *symtab, aux *auxbindings) error {
 }
 
 func (s *sortstateKtop) bcfind(delims []vmref, rp *rowParams) ([]vRegData, error) {
-	s.findbc.prepare(rp)
 	return bcfind(s.parent, &s.findbc, delims, rp)
 }
 
@@ -535,12 +533,17 @@ func (k *kheap) insert(fields [][]byte) *ion.Datum {
 	topdata := top.order
 	for i := range fields {
 		size := ion.SizeOf(topdata)
-		if k.fields[i].Compare(fields[i], topdata[:size]) < 0 {
+		dir := k.fields[i].Compare(fields[i], topdata[:size])
+		if dir > 0 {
+			break
+		}
+		if dir < 0 {
 			// overwrite
 			top.order = flatten(top.order[:0], fields)
 			heap.FixSlice(k.heaporder, 0, k.greater)
 			return &top.data
 		}
+		// dir == 0 -> continue; ignore if exactly equal
 		topdata = topdata[size:]
 	}
 	return nil
@@ -607,7 +610,8 @@ func (s *sortstateKtop) writeRows(delims []vmref, rp *rowParams) error {
 outer:
 	for rowID := 0; rowID < len(delims); rowID++ {
 		for j := 0; j < len(cols); j++ {
-			cols[j] = getdelim(fieldsView, rowID, j, len(cols)).mem()
+			delim := getdelim(fieldsView, rowID, j, len(cols))
+			cols[j] = delim.mem()
 			if len(cols[j]) == 0 {
 				continue outer // MISSING
 			}
