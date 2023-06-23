@@ -85,8 +85,5 @@ func (r replrw) Rewrite(e expr.Node) expr.Node {
 }
 
 func (r replrw) Walk(e expr.Node) expr.Rewriter {
-	if _, ok := e.(*expr.Builtin); ok {
-		return nil
-	}
 	return r
 }

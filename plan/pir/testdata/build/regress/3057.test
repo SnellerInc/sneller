@@ -1,0 +1,14 @@
+select word, inner_product(embedding, (select t2.embedding from table t2 where t2.word = 'simd' limit 1)) as distance
+from table
+order by distance desc
+limit 50 offset 1
+---
+WITH (
+	ITERATE table AS t2 FIELDS [embedding, word] WHERE word = 'simd'
+	LIMIT 1
+	PROJECT embedding AS embedding
+) AS REPLACEMENT(0)
+ITERATE table FIELDS [embedding, word]
+ORDER BY INNER_PRODUCT(embedding, SCALAR_REPLACEMENT(0)) DESC NULLS FIRST
+LIMIT 50 OFFSET 1
+PROJECT word AS word, INNER_PRODUCT(embedding, SCALAR_REPLACEMENT(0)) AS distance
