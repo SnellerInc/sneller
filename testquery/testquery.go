@@ -358,12 +358,12 @@ func (e *Env) Stat(t expr.Node, h *plan.Hints) (*plan.Input, error) {
 	if !ok {
 		return nil, fmt.Errorf("invalid input %q", string(id))
 	}
-	var blocks []blockfmt.Block
+	var blocks []int
 	tr := in.Trailer()
 	if tr != nil {
-		blocks = make([]blockfmt.Block, len(tr.Blocks))
+		blocks = make([]int, len(tr.Blocks))
 		for i := range blocks {
-			blocks[i].Offset = i
+			blocks[i] = i
 		}
 	}
 	var fields []string
@@ -383,8 +383,10 @@ func (e *Env) Stat(t expr.Node, h *plan.Hints) (*plan.Input, error) {
 		desc.Trailer = *tr
 	}
 	return &plan.Input{
-		Descs:  []blockfmt.Descriptor{desc},
-		Blocks: blocks,
+		Descs: []plan.Descriptor{{
+			Descriptor: desc,
+			Blocks:     blocks,
+		}},
 		Fields: fields,
 	}, nil
 }
@@ -396,13 +398,7 @@ func (e *Env) Run(dst vm.QuerySink, in *plan.Input, ep *plan.ExecParams) error {
 			return fmt.Errorf("bad input: %s", in.Descs[i].Path)
 		}
 		// NOTE: not all input types support blocks
-		var blocks []int
-		for j := range in.Blocks {
-			if in.Blocks[j].Index == i {
-				blocks = append(blocks, in.Blocks[j].Offset)
-			}
-		}
-		err := input.Run(dst, blocks, ep.Parallel)
+		err := input.Run(dst, in.Descs[i].Blocks, ep.Parallel)
 		if err != nil {
 			return err
 		}

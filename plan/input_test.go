@@ -41,24 +41,29 @@ func TestInputFilter(t *testing.T) {
 	// exp matches t0 and t2 but not t1
 	exp := parseExpr("timestamp <= `2021-01-02T00:00:00Z` OR timestamp >= `2021-01-05T00:00:00Z`")
 	orig := &Input{
-		Descs: []blockfmt.Descriptor{
-			{ObjectInfo: blockfmt.ObjectInfo{Path: "path/0"}, Trailer: t0},
-			{ObjectInfo: blockfmt.ObjectInfo{Path: "path/1"}, Trailer: t1},
-			{ObjectInfo: blockfmt.ObjectInfo{Path: "path/2"}, Trailer: t2},
-		},
-		Blocks: []blockfmt.Block{
-			{Index: 0, Offset: 0},
-			{Index: 1, Offset: 0},
-			{Index: 2, Offset: 0},
-		},
+		Descs: []Descriptor{{
+			Descriptor: blockfmt.Descriptor{
+				ObjectInfo: blockfmt.ObjectInfo{Path: "path/0"},
+				Trailer:    t0,
+			},
+			Blocks: []int{0},
+		}, {
+			Descriptor: blockfmt.Descriptor{
+				ObjectInfo: blockfmt.ObjectInfo{Path: "path/1"},
+				Trailer:    t1,
+			},
+			Blocks: []int{0},
+		}, {
+			Descriptor: blockfmt.Descriptor{
+				ObjectInfo: blockfmt.ObjectInfo{Path: "path/2"},
+				Trailer:    t2,
+			},
+			Blocks: []int{0},
+		}},
 	}
 	got := orig.Filter(exp)
 	want := Input{
-		Descs: []blockfmt.Descriptor{orig.Descs[0], orig.Descs[2]},
-		Blocks: []blockfmt.Block{
-			{Index: 0, Offset: 0},
-			{Index: 1, Offset: 0},
-		},
+		Descs: []Descriptor{orig.Descs[0], orig.Descs[2]},
 	}
 	if !reflect.DeepEqual(got, &want) {
 		t.Logf("got : %#v", got)

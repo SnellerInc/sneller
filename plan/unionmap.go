@@ -265,7 +265,7 @@ func (t *tablePart) Rewrite(e expr.Node) expr.Node {
 func (t *tablePart) size() int64 {
 	n := int64(0)
 	for i := range t.contents.Descs {
-		n += t.contents.Descs[i].Size
+		n += t.contents.Descs[i].Descriptor.Size
 	}
 	return n
 }

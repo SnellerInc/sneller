@@ -233,7 +233,7 @@ func (i *IndirectTree) decode(ifs InputFS, src *IndirectRef, in []Descriptor, fi
 		case "contents":
 			return f.UnpackList(func(v ion.Datum) error {
 				var d Descriptor
-				err := d.decode(&td, v, 0)
+				err := d.Decode(&td, v, 0)
 				if err != nil {
 					return err
 				}

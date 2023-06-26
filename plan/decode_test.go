@@ -71,38 +71,35 @@ func (b *benchenv) Open(_ context.Context) (vm.Table, error) {
 }
 
 func (b *benchenv) Stat(_ expr.Node, _ *Hints) (*Input, error) {
-	// produce N fake compressed blobs
-	// with data that is reasonably sized
-	descs := make([]blockfmt.Descriptor, b.blocks)
-	blocks := make([]blockfmt.Block, b.blocks)
-	for i := range descs {
-		descs[i] = blockfmt.Descriptor{
-			ObjectInfo: blockfmt.ObjectInfo{
-				Path:         "a-very-long/path-to-the-object/finally.ion.zst",
-				ETag:         "\"abc123xyzandmoreetagstringhere\"",
-				LastModified: date.Now(),
-				Format:       "zion+zstd",
-				Size:         1234567,
+	// produce N fake inputs with data that is
+	// reasonably sized
+	list := make([]Descriptor, b.blocks)
+	blocks := []int{0}
+	for i := range list {
+		list[i] = Descriptor{
+			Descriptor: blockfmt.Descriptor{
+				ObjectInfo: blockfmt.ObjectInfo{
+					Path:         "a-very-long/path-to-the-object/finally.ion.zst",
+					ETag:         "\"abc123xyzandmoreetagstringhere\"",
+					LastModified: date.Now(),
+					Format:       "zion+zstd",
+					Size:         1234567,
+				},
+				Trailer: blockfmt.Trailer{
+					Version:    1,
+					Offset:     1234500,
+					Algo:       "zstd",
+					BlockShift: 20,
+					// common case for the new format
+					// will be ~100 chunks and one block descriptor
+					Blocks: []blockfmt.Blockdesc{{
+						Offset: 0,
+						Chunks: 100,
+					}},
+				},
 			},
-			Trailer: blockfmt.Trailer{
-				Version:    1,
-				Offset:     1234500,
-				Algo:       "zstd",
-				BlockShift: 20,
-				// common case for the new format
-				// will be ~100 chunks and one block descriptor
-				Blocks: []blockfmt.Blockdesc{{
-					Offset: 0,
-					Chunks: 100,
-				}},
-			},
+			Blocks: blocks,
 		}
 	}
-	for i := range blocks {
-		blocks[i].Index = i
-	}
-	return &Input{
-		Descs:  descs,
-		Blocks: blocks,
-	}, nil
+	return &Input{Descs: list}, nil
 }

@@ -20,6 +20,7 @@ import (
 	"io"
 	"io/fs"
 	"runtime"
+	"sync"
 	"sync/atomic"
 
 	"github.com/SnellerInc/sneller/expr"
@@ -60,12 +61,12 @@ func (r *FSRunner) Run(dst vm.QuerySink, src *Input, ep *ExecParams) error {
 		}
 		defer f.Close()
 		in[i].src = f
-		in[i].size = src.Descs[i].Size
+		in[i].size = src.Descs[i].Descriptor.Size
+		in[i].blocks = src.Descs[i].Blocks
 	}
 	tbl := readerTable{
 		in:     in,
 		fields: src.Fields,
-		blocks: src.Blocks,
 	}
 	tbl.tryMap()
 	err := tbl.WriteChunks(dst, ep.Parallel)
@@ -95,18 +96,32 @@ func (f *readerTable) unmap() {
 type readerInput struct {
 	t      *blockfmt.Trailer
 	src    io.ReadCloser
+	blocks []int
 	size   int64
 	mapped []byte
 }
 
 type readerTable struct {
-	in []readerInput
+	in       []readerInput
+	fields   []string
+	idx, blk int
+	lock     sync.Mutex
+	scanned  int64
+}
 
-	fields []string
-
-	blocks  []blockfmt.Block
-	block   int64
-	scanned int64
+func (f *readerTable) next() (in *readerInput, off int) {
+	f.lock.Lock()
+	defer f.lock.Unlock()
+	for f.idx < len(f.in) {
+		in = &f.in[f.idx]
+		if f.blk < len(in.blocks) {
+			off = in.blocks[f.blk]
+			f.blk++
+			return in, off
+		}
+		f.idx, f.blk = f.idx+1, 0
+	}
+	return nil, 0
 }
 
 // IfMatcher can be implemented by a file that
@@ -171,25 +186,23 @@ func (f *readerTable) write(dst io.Writer) error {
 	d.Free = vm.Free
 	d.Fields = f.fields
 	for {
-		i := atomic.AddInt64(&f.block, 1) - 1
-		if i >= int64(len(f.blocks)) {
+		in, off := f.next()
+		if in == nil {
 			break
 		}
-		idx := f.blocks[i].Index
-		off := f.blocks[i].Offset
-		d.Set(f.in[idx].t)
-		pos := f.in[idx].t.Blocks[off].Offset
-		end := f.in[idx].t.Offset
-		if off < len(f.in[idx].t.Blocks)-1 {
-			end = f.in[idx].t.Blocks[off+1].Offset
+		d.Set(in.t)
+		pos := in.t.Blocks[off].Offset
+		end := in.t.Offset
+		if off < len(in.t.Blocks)-1 {
+			end = in.t.Blocks[off+1].Offset
 		}
-		size := int64(f.in[idx].t.Blocks[off].Chunks) << d.BlockShift
+		size := int64(in.t.Blocks[off].Chunks) << d.BlockShift
 		var err error
-		if f.in[idx].mapped != nil {
-			_, err = d.CopyBytes(dst, f.in[idx].mapped[pos:end])
+		if in.mapped != nil {
+			_, err = d.CopyBytes(dst, in.mapped[pos:end])
 		} else {
 			var src io.ReadCloser
-			src, err = SectionReader(f.in[idx].src, pos, end-pos)
+			src, err = SectionReader(in.src, pos, end-pos)
 			if err != nil {
 				return err
 			}

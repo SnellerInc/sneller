@@ -68,20 +68,22 @@ func readFile(root fs.FS, args []expr.Node, hint *plan.Hints) (*plan.Input, erro
 	if err != nil {
 		return nil, err
 	}
-	blocks := make([]blockfmt.Block, len(tr.Blocks))
+	blocks := make([]int, len(tr.Blocks))
 	for i := range blocks {
-		blocks[i].Offset = i
+		blocks[i] = i
 	}
 	ret := &plan.Input{
-		Fields: hint.Fields,
-		Descs: []blockfmt.Descriptor{{
-			ObjectInfo: blockfmt.ObjectInfo{
-				Path: string(str),
-				Size: info.Size(),
+		Descs: []plan.Descriptor{{
+			Descriptor: blockfmt.Descriptor{
+				ObjectInfo: blockfmt.ObjectInfo{
+					Path: string(str),
+					Size: info.Size(),
+				},
+				Trailer: *tr,
 			},
-			Trailer: *tr,
+			Blocks: blocks,
 		}},
-		Blocks: blocks,
+		Fields: hint.Fields,
 	}
 	if hint.Filter != nil {
 		ret = ret.Filter(hint.Filter)

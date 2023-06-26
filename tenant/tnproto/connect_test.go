@@ -64,10 +64,12 @@ func TestAttach(t *testing.T) {
 const largeSize = 500000
 
 var largeInput = []*plan.Input{{
-	Descs: []blockfmt.Descriptor{{
-		ObjectInfo: blockfmt.ObjectInfo{
-			Path: strings.Repeat("A", largeSize),
-			Size: largeSize,
+	Descs: []plan.Descriptor{{
+		Descriptor: blockfmt.Descriptor{
+			ObjectInfo: blockfmt.ObjectInfo{
+				Path: strings.Repeat("A", largeSize),
+				Size: largeSize,
+			},
 		},
 	}},
 }}

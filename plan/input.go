@@ -27,31 +27,43 @@ import (
 	"golang.org/x/exp/slices"
 )
 
+// A Descriptor describes a single input object.
+type Descriptor struct {
+	// Descriptor is the input object descriptor.
+	//
+	// The query planner uses the contents of Descriptor.Trailer
+	// for the purposes of query planning, but otherwise leaves
+	// the semantics of Descriptor.{Path,ETag,...} up to the
+	// [Runner] used to execute the query.
+	blockfmt.Descriptor
+
+	// NOTE for devs: we expect *roughly* one
+	// Block per 50-100MB of decompressed input
+	// data, so a 1TB table would have on the
+	// order of 10,000 Blocks. When you are
+	// manipulating this data structure, please be
+	// sure to use algorithms that run in linear
+	// time with respect to the number of blocks!
+
+	// TODO: we could use a more compact data
+	// structure for representing this information
+
+	// Blocks indicates the list of blocks within
+	// the object that are actually referenced.
+	Blocks []int
+}
+
+// Empty is equivalent to
+//
+//	len(d.Blocks) == 0
+func (d *Descriptor) Empty() bool { return len(d.Blocks) == 0 }
+
 // Input represents a collection of input objects.
 // The zero value of [Input] represents an empty table.
 type Input struct {
-	// Descs is the list of referenced descriptors in the input.
-	//
-	// The query planner uses the contents of Descs[*].Trailer
-	// for the purposes of query planning, but otherwise leaves
-	// the semantics of Descs[*].{Path,ETag,...} up to the
-	// [Runner] used to execute the query.
-	Descs []blockfmt.Descriptor
-
-	// NOTE for devs: we expect *roughly* one Block per 50-100MB
-	// of decompressed input data, so a 1TB table would
-	// have on the order of 10,000 Blocks.
-	// When you are manipulating this data structure,
-	// please be sure to use algorithms that run in linear
-	// time with respect to the number of blocks!
-
-	// Blocks indicates the list of blocks
-	// within Descs that are actually referenced.
-	// Each Block references
-	//
-	//   Input.Descs[Block.Index].Trailer.Blocks[Block.Offset]
-	//
-	Blocks []blockfmt.Block
+	// Descs is the list of referenced descriptors
+	// in the input.
+	Descs []Descriptor
 
 	// Fields are the fields in the input that are
 	// needed by the query. If nil, all fields are
@@ -82,17 +94,17 @@ type InputGroups struct {
 	groups map[string]*ipart
 }
 
-// Groups returns the number of unique groups in [i].
-func (i *InputGroups) Groups() int { return len(i.groups) }
+// Groups returns the number of unique groups in [in].
+func (in *InputGroups) Groups() int { return len(in.groups) }
 
 // Fields returns the list of fields over which the input has been grouped.
-func (i *InputGroups) Fields() []string { return i.fields }
+func (in *InputGroups) Fields() []string { return in.fields }
 
 // Each calls [fn] on each unique group.
 // The [parts] slice indicates the constants that are
-// associated with [i.Fields] for each Input [i].
-func (i *InputGroups) Each(fn func(parts []ion.Datum, i *Input)) {
-	for _, v := range i.groups {
+// associated with [i.Fields] for each Input [in].
+func (in *InputGroups) Each(fn func(parts []ion.Datum, i *Input)) {
+	for _, v := range in.groups {
 		fn(v.values, v.in)
 	}
 }
@@ -100,153 +112,166 @@ func (i *InputGroups) Each(fn func(parts []ion.Datum, i *Input)) {
 // Get returns the [Input] associated with the given partition.
 // Get will return nil if there is no data associated with
 // the given partition constraints.
-func (i *InputGroups) Get(equal []ion.Datum) *Input {
+func (in *InputGroups) Get(equal []ion.Datum) *Input {
 	var st ion.Symtab
 	var buf ion.Buffer
 	for i := range equal {
 		equal[i].Encode(&buf, &st)
 	}
-	c := i.groups[string(buf.Bytes())]
+	c := in.groups[string(buf.Bytes())]
 	if c != nil {
 		return c.in
 	}
 	return nil
 }
 
-// Empty is equivalent to
-//
-//	len(i.Blocks) == 0
-func (i *Input) Empty() bool { return len(i.Blocks) == 0 }
-
-// Clone produces a deep copy of [i].
-func (i *Input) Clone() Input {
-	return Input{
-		Descs:  slices.Clone(i.Descs),
-		Blocks: slices.Clone(i.Blocks),
+// Blocks returns the number of blocks across
+// all inputs.
+func (in *Input) Blocks() int {
+	n := 0
+	for i := range in.Descs {
+		n += len(in.Descs[i].Blocks)
 	}
+	return n
 }
 
-// Filter returns a copy of [i] that contains only
-// the blocks for which [e] may evaluate to TRUE.
-func (i *Input) Filter(e expr.Node) *Input {
-	var f blockfmt.Filter
-	f.Compile(e)
-	ret := &Input{
-		Fields: i.Fields,
-	}
-
-	// sort blocks so we can compact descriptors during visiting;
-	// blocks are sorted first by descriptor and then by offset
-	slices.SortFunc(i.Blocks, func(a, b blockfmt.Block) bool {
-		if a.Index == b.Index {
-			return a.Offset < b.Offset
-		}
-		return a.Index < b.Index
-	})
-
-	// add all the blocks for descriptor [idx] as [newidx]
-	// that overlap with the range [start, end);
-	// this is guaranteed to be called with monotonically
-	// increasing [idx] and start+end ranges
-	blockidx := 0
-	byindex := func(b blockfmt.Block, val int) int { return b.Index - val }
-	keep := func(idx, newidx, start, end int) {
-		possible := i.Blocks[blockidx:]
-		next, match := slices.BinarySearchFunc(possible, idx, byindex)
-		for match && next < len(possible) && possible[next].Index == idx {
-			b := possible[next]
-			if start > b.Offset {
-				next++
-				continue
-			}
-			if end <= b.Offset {
-				break
-			}
-			ret.Blocks = append(ret.Blocks, blockfmt.Block{
-				Index:  newidx,
-				Offset: b.Offset,
-			})
-			next++
-		}
-		blockidx += next
-	}
-
-	// for each descriptor, copy out only the matching blocks,
-	// taking care not to copy over descriptors with zero matching blocks
-	for j := range i.Descs {
-		f.Visit(&i.Descs[j].Trailer.Sparse, func(start, end int) {
-			d := len(ret.Descs)
-			if d > 0 && ret.Descs[d-1].ObjectInfo == i.Descs[j].ObjectInfo {
-				d--
-			} else if start < end {
-				ret.Descs = append(ret.Descs, i.Descs[j])
-			}
-			keep(j, d, start, end)
-		})
-	}
-	return ret
-}
-
-// CompressedSize returns the number of compressed
-// bytes that comprise all of the input blocks.
-func (i *Input) CompressedSize() int64 {
-	s := int64(0)
-	for _, blk := range i.Blocks {
-		start, end := i.Descs[blk.Index].Trailer.BlockRange(blk.Offset)
-		s += (end - start)
-	}
-	return s
-}
-
-// Size returns the decompressed size of all
-// the data referenced by [i].
-func (i *Input) Size() int64 {
-	s := int64(0)
-	for _, blk := range i.Blocks {
-		d := &i.Descs[blk.Index]
-		s += int64(d.Trailer.Blocks[blk.Offset].Chunks) << d.Trailer.BlockShift
-	}
-	return s
-}
-
-// CanPartition indicates whether a call to Partition
-// including the given part would be successful.
-func (i *Input) CanPartition(part string) bool {
-	for j := range i.Descs {
-		if _, ok := i.Descs[j].Trailer.Sparse.Const(part); !ok {
+// Empty returns whether the inputs are all empty.
+func (in *Input) Empty() bool {
+	for i := range in.Descs {
+		if !in.Descs[i].Empty() {
 			return false
 		}
 	}
 	return true
 }
 
-// Partition clusters the blocks in [i] by the given partitions.
-func (i *Input) Partition(parts []string) (*InputGroups, bool) {
-	i.groupcache.lock.Lock()
-	defer i.groupcache.lock.Unlock()
-	if slices.Equal(i.groupcache.parts, parts) {
-		return i.groupcache.final, true
+// Filter returns an equivalent of [in] which
+// contains only the blocks for which [e] may
+// evaluate to TRUE. This will return a distinct
+// object if [e] would exclude any of the blocks
+// referenced by [in], but may simply return [in]
+// if the filtered result would be identical.
+// This method will not mutate [in].
+func (in *Input) Filter(e expr.Node) *Input {
+	var f blockfmt.Filter
+	f.Compile(e)
+	if f.Trivial() {
+		return in
 	}
-	val, ok := i.partition(parts)
+	// TODO: we can avoid making a copy of i if f
+	// would not change the result which may
+	// actually be the common case; for now just
+	// make a copy because it's easier that way
+	ret := &Input{
+		Descs:  make([]Descriptor, 0, len(in.Descs)),
+		Fields: in.Fields,
+	}
+	// for each input, copy out only the matching
+	// blocks, taking care not to copy over
+	// descriptors with zero matching blocks
+	for i := range in.Descs {
+		ret.Descs = in.Descs[i].appendFiltered(ret.Descs, &f)
+	}
+	return ret
+}
+
+// appendFiltered filters [d] using [f] and
+// appends it to [to], returning the appended
+// list. If [f] excludes [d] completely, [to] is
+// returned unchanged.
+func (d *Descriptor) appendFiltered(to []Descriptor, f *blockfmt.Filter) []Descriptor {
+	var blocks []int
+	f.Visit(&d.Trailer.Sparse, func(start, end int) {
+		// TODO: do this in a more efficient way
+		for i := range d.Blocks {
+			if start <= d.Blocks[i] && d.Blocks[i] < end {
+				blocks = append(blocks, d.Blocks[i])
+			}
+		}
+	})
+	if len(blocks) > 0 {
+		to = append(to, Descriptor{
+			Descriptor: d.Descriptor,
+			Blocks:     blocks,
+		})
+	}
+	return to
+}
+
+// CompressedSize returns the number of compressed
+// bytes that comprise all of the input blocks.
+func (in *Input) CompressedSize() (n int64) {
+	for i := range in.Descs {
+		n += in.Descs[i].CompressedSize()
+	}
+	return n
+}
+
+// CompressedSize returns the number of compressed
+// bytes that comprise all of the input blocks.
+func (d *Descriptor) CompressedSize() (n int64) {
+	for _, i := range d.Blocks {
+		n += d.Trailer.BlockSize(i)
+	}
+	return n
+}
+
+// Size returns the decompressed size of all
+// the data referenced by [in].
+func (in *Input) Size() (n int64) {
+	for i := range in.Descs {
+		n += in.Descs[i].Size()
+	}
+	return n
+}
+
+// Size returns the decompressed size of all
+// the data referenced by [d].
+func (d *Descriptor) Size() (n int64) {
+	for _, i := range d.Blocks {
+		n += int64(d.Trailer.Blocks[i].Chunks) << d.Trailer.BlockShift
+	}
+	return n
+}
+
+// CanPartition indicates whether a call to Partition
+// including the given part would be successful.
+func (in *Input) CanPartition(part string) bool {
+	for i := range in.Descs {
+		if _, ok := in.Descs[i].Trailer.Sparse.Const(part); !ok {
+			return false
+		}
+	}
+	return true
+}
+
+// Partition clusters the blocks in [in] by the given partitions.
+func (in *Input) Partition(parts []string) (*InputGroups, bool) {
+	in.groupcache.lock.Lock()
+	defer in.groupcache.lock.Unlock()
+	if slices.Equal(in.groupcache.parts, parts) {
+		return in.groupcache.final, true
+	}
+	val, ok := in.partition(parts)
 	if ok {
-		i.groupcache.parts = slices.Clone(parts)
-		i.groupcache.final = val
+		in.groupcache.parts = slices.Clone(parts)
+		in.groupcache.final = val
 		return val, true
 	}
 	return nil, false
 }
 
-func (i *Input) partition(parts []string) (*InputGroups, bool) {
+func (in *Input) partition(parts []string) (*InputGroups, bool) {
 	sets := make(map[string]*ipart)
-	desc2part := make([]*ipart, len(i.Descs))
-	descmap := make([]int, len(i.Descs))
+	desc2part := make([]*ipart, len(in.Descs))
+	descmap := make([]int, len(in.Descs))
 	var raw ion.Bag
 
 	// first, map descriptors to their partitions
-	for j := range i.Descs {
+	for i := range in.Descs {
 		raw.Reset()
 		for k := range parts {
-			dat, ok := i.Descs[j].Trailer.Sparse.Const(parts[k])
+			dat, ok := in.Descs[i].Trailer.Sparse.Const(parts[k])
 			if !ok {
 				return nil, false
 			}
@@ -264,21 +289,18 @@ func (i *Input) partition(parts []string) (*InputGroups, bool) {
 			c.in = &Input{}
 			sets[key] = c
 		}
-		desc2part[j] = c
+		desc2part[i] = c
 		// track new descriptor positions within their groups:
-		descmap[j] = len(c.in.Descs)
-		c.in.Descs = append(c.in.Descs, i.Descs[j])
+		descmap[i] = len(c.in.Descs)
+		c.in.Descs = append(c.in.Descs, in.Descs[i])
 	}
 
 	// map blocks to their partitions based upon
 	// the partitions to which the descriptors were assigned
-	for j := range i.Blocks {
-		c := desc2part[i.Blocks[j].Index]
+	for i := range in.Descs {
+		c := desc2part[i]
 		if c != nil {
-			c.in.Blocks = append(c.in.Blocks, blockfmt.Block{
-				Index:  descmap[i.Blocks[j].Index],
-				Offset: i.Blocks[j].Offset, // unchanged
-			})
+			c.in.Descs[descmap[i]].Blocks = slices.Clone(in.Descs[i].Blocks)
 		}
 	}
 	return &InputGroups{
@@ -287,9 +309,13 @@ func (i *Input) partition(parts []string) (*InputGroups, bool) {
 	}, true
 }
 
-// HashSplit splits the input [i] into [n] groups deterministically
-// based on the ETags within [i.Descs].
-func (i *Input) HashSplit(n int) []*Input {
+// HashSplit splits the input [in] into [n]
+// groups deterministically based on the ETags
+// within [in.Descs].
+//
+// The resulting slice may contain nil pointers
+// if no blocks were assigned to that slot.
+func (in *Input) HashSplit(n int) []*Input {
 	const (
 		k0    = 0x5d1ec810febed702
 		k1    = 0x40fd7fee17262f71
@@ -298,131 +324,107 @@ func (i *Input) HashSplit(n int) []*Input {
 
 	ret := make([]*Input, n)
 
-	// order blocks by descriptor so that they are easy to deduplicate
-	// as we copy them into the appropriate output
-	slices.SortFunc(i.Blocks, func(a, b blockfmt.Block) bool {
-		if a.Index == b.Index {
-			return a.Offset < b.Offset
-		}
-		return a.Index < b.Index
-	})
-
 	var tmp []byte
-	for j := range i.Blocks {
-		k := i.Blocks[j].Index
-		tmp = append(tmp[:0], i.Descs[k].ETag...)
-		tmp = binary.LittleEndian.AppendUint32(tmp, uint32(i.Blocks[j].Offset))
-		h := siphash.Hash(k0, k1, tmp)
-		n := int(h / (clamp / uint64(n)))
-		if ret[n] == nil {
-			ret[n] = &Input{}
+	for i := range in.Descs {
+		tmp = append(tmp[:0], in.Descs[i].ETag...)
+		cut := len(tmp)
+		for _, off := range in.Descs[i].Blocks {
+			tmp = binary.LittleEndian.AppendUint32(tmp[:cut], uint32(off))
+			h := siphash.Hash(k0, k1, tmp)
+			n := int(h / (clamp / uint64(n)))
+			if ret[n] == nil {
+				ret[n] = &Input{
+					Descs:  make([]Descriptor, len(in.Descs)),
+					Fields: in.Fields,
+				}
+			}
+			if ret[n].Descs[i].Empty() {
+				ret[n].Descs[i].Descriptor = in.Descs[i].Descriptor
+			}
+			ret[n].Descs[i].Blocks = append(ret[n].Descs[i].Blocks, off)
 		}
-		// the descriptor index for the block will either
-		// be the index of the new descriptor or the most-recently-inserted one,
-		// since we sorted all the blocks by offset up front
-		index := len(ret[n].Descs)
-		if index > 0 && ret[n].Descs[index-1].ObjectInfo == i.Descs[k].ObjectInfo {
-			index--
-		} else {
-			ret[n].Descs = append(ret[n].Descs, i.Descs[k])
+	}
+	for i := range ret {
+		if ret[i] == nil {
+			continue
 		}
-		ret[n].Blocks = append(ret[n].Blocks, blockfmt.Block{
-			Index:  index,
-			Offset: i.Blocks[j].Offset,
-		})
+		all := ret[i].Descs
+		ret[i].Descs = ret[i].Descs[:0]
+		for j := range all {
+			if !all[j].Empty() {
+				ret[i].Descs = append(ret[i].Descs, all[j])
+			}
+		}
 	}
 	return ret
 }
 
-// Append appends the contents of [other] to [i].
-func (i *Input) Append(other *Input) {
-	delta := len(i.Descs)
-	i.Descs = append(i.Descs, other.Descs...)
-
-	start := len(i.Blocks)
-	i.Blocks = append(i.Blocks, other.Blocks...)
-	tail := i.Blocks[start:]
-	for j := range tail {
-		tail[j].Index += delta
+// Append appends the contents of [other] to [in].
+func (in *Input) Append(other *Input) {
+	end := len(in.Descs)
+	in.Descs = append(in.Descs, other.Descs...)
+	for i := end; i < len(in.Descs); i++ {
+		in.Descs[i].Blocks = slices.Clone(in.Descs[i].Blocks)
 	}
 }
 
-func (i *Input) encode(dst *ion.Buffer, st *ion.Symtab) {
+func (in *Input) Encode(dst *ion.Buffer, st *ion.Symtab) {
 	// TODO: compress very large Input lists
 	dst.BeginStruct(-1)
 	dst.BeginField(st.Intern("descs"))
-	blockfmt.WriteDescriptors(dst, st, i.Descs)
-	dst.BeginField(st.Intern("blocks"))
 	dst.BeginList(-1)
-	indexsym := st.Intern("index")
-	offsetsym := st.Intern("offset")
-	for j := range i.Blocks {
-		dst.BeginStruct(-1)
-		dst.BeginField(indexsym)
-		dst.WriteInt(int64(i.Blocks[j].Index))
-		dst.BeginField(offsetsym)
-		dst.WriteInt(int64(i.Blocks[j].Offset))
-		dst.EndStruct()
+	for i := range in.Descs {
+		in.Descs[i].Encode(dst, st)
 	}
 	dst.EndList()
 	// NOTE: there is a meaningful difference
 	// between nil and empty i.Fields...
-	if i.Fields != nil {
+	if in.Fields != nil {
 		dst.BeginField(st.Intern("fields"))
 		dst.BeginList(-1)
-		for j := range i.Fields {
-			dst.WriteString(i.Fields[j])
+		for i := range in.Fields {
+			dst.WriteString(in.Fields[i])
 		}
 		dst.EndList()
 	}
 	dst.EndStruct()
 }
 
-func (i *Input) decode(v ion.Datum) error {
+func (d *Descriptor) Encode(dst *ion.Buffer, st *ion.Symtab) {
+	dst.BeginStruct(-1)
+	dst.BeginField(st.Intern("descriptor"))
+	d.Descriptor.Encode(dst, st)
+	dst.BeginField(st.Intern("blocks"))
+	dst.BeginList(-1)
+	for _, off := range d.Blocks {
+		dst.WriteInt(int64(off))
+	}
+	dst.EndList()
+	dst.EndStruct()
+}
+
+func (in *Input) decode(v ion.Datum) error {
 	err := v.UnpackStruct(func(f ion.Field) error {
 		switch f.Label {
 		case "descs":
-			descs, err := blockfmt.ReadDescriptors(f.Datum)
-			if err != nil {
-				return err
-			}
-			i.Descs = descs
-			return nil
-		case "blocks":
-			return f.UnpackList(func(item ion.Datum) error {
-				var block blockfmt.Block
-				err := item.UnpackStruct(func(f ion.Field) error {
-					var n int64
-					var err error
-					switch f.Label {
-					case "index":
-						n, err = f.Int()
-						block.Index = int(n)
-					case "offset":
-						n, err = f.Int()
-						block.Offset = int(n)
-					default:
-						err = errUnexpectedField
-					}
-					return err
-				})
-				if err == nil {
-					i.Blocks = append(i.Blocks, block)
-				}
-				return err
+			var td blockfmt.TrailerDecoder
+			in.Descs = in.Descs[:0]
+			return f.UnpackList(func(v ion.Datum) error {
+				in.Descs = append(in.Descs, Descriptor{})
+				return in.Descs[len(in.Descs)-1].Decode(&td, v)
 			})
 		case "fields":
 			if f.IsNull() {
-				i.Fields = nil
+				in.Fields = nil
 				return nil
 			}
-			i.Fields = []string{}
+			in.Fields = []string{}
 			return f.UnpackList(func(v ion.Datum) error {
 				s, err := v.String()
 				if err != nil {
 					return err
 				}
-				i.Fields = append(i.Fields, s)
+				in.Fields = append(in.Fields, s)
 				return nil
 			})
 		default:
@@ -433,4 +435,25 @@ func (i *Input) decode(v ion.Datum) error {
 		return fmt.Errorf("plan.Decode: %w", err)
 	}
 	return err
+}
+
+func (d *Descriptor) Decode(td *blockfmt.TrailerDecoder, v ion.Datum) error {
+	return v.UnpackStruct(func(f ion.Field) error {
+		switch f.Label {
+		case "descriptor":
+			return d.Descriptor.Decode(td, f.Datum, blockfmt.FlagSkipInputs)
+		case "blocks":
+			d.Blocks = d.Blocks[:0]
+			return f.UnpackList(func(v ion.Datum) error {
+				n, err := v.Int()
+				if err != nil {
+					return err
+				}
+				d.Blocks = append(d.Blocks, int(n))
+				return nil
+			})
+		default:
+			return errUnexpectedField
+		}
+	})
 }

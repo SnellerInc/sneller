@@ -456,7 +456,7 @@ func (t *Trailer) Decompressed() int64 {
 }
 
 // BlockRange returns the start and end offsets
-// of block i within the object.
+// of block [i] within the object.
 func (t *Trailer) BlockRange(i int) (start, end int64) {
 	start = t.Blocks[i].Offset
 	end = t.Offset
@@ -464,4 +464,17 @@ func (t *Trailer) BlockRange(i int) (start, end int64) {
 		end = t.Blocks[i+1].Offset
 	}
 	return start, end
+}
+
+// BlockSize returns the compressed size of
+// block [i] within the object.
+func (t *Trailer) BlockSize(i int) int64 {
+	start, end := t.BlockRange(i)
+	return end - start
+}
+
+// DecompressedSize returns the decompressed
+// size of block [i] within the object.
+func (t *Trailer) DecompressedSize(i int) int64 {
+	return int64(t.Blocks[i].Chunks) << t.BlockShift
 }

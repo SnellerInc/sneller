@@ -73,12 +73,11 @@ func (s stubenv) Stat(tbl expr.Node, _ *plan.Hints) (*plan.Input, error) {
 			return out, nil
 		case "BAD", "HANG":
 			return &plan.Input{
-				Descs: []blockfmt.Descriptor{{
-					ObjectInfo: blockfmt.ObjectInfo{Path: b.Text},
-				}},
-				Blocks: []blockfmt.Block{{
-					Index:  0,
-					Offset: 0,
+				Descs: []plan.Descriptor{{
+					Descriptor: blockfmt.Descriptor{
+						ObjectInfo: blockfmt.ObjectInfo{Path: b.Text},
+					},
+					Blocks: []int{0},
 				}},
 			}, nil
 		default:
@@ -105,16 +104,18 @@ func (s stubenv) Stat(tbl expr.Node, _ *plan.Hints) (*plan.Input, error) {
 	if err != nil {
 		return nil, fmt.Errorf("reading trailer: %v", err)
 	}
-	blocks := make([]blockfmt.Block, len(tr.Blocks))
+	blocks := make([]int, len(tr.Blocks))
 	for i := range blocks {
-		blocks[i].Offset = i
+		blocks[i] = i
 	}
 	return &plan.Input{
-		Descs: []blockfmt.Descriptor{{
-			ObjectInfo: blockfmt.ObjectInfo{Path: name},
-			Trailer:    *tr,
+		Descs: []plan.Descriptor{{
+			Descriptor: blockfmt.Descriptor{
+				ObjectInfo: blockfmt.ObjectInfo{Path: name},
+				Trailer:    *tr,
+			},
+			Blocks: blocks,
 		}},
-		Blocks: blocks,
 	}, nil
 }
 
@@ -681,26 +682,28 @@ type benchenv struct {
 func (b *benchenv) Stat(_ expr.Node, _ *plan.Hints) (*plan.Input, error) {
 	// produce N fake descriptors
 	// with data that is reasonably sized
-	lst := make([]blockfmt.Descriptor, b.blocks)
+	lst := make([]plan.Descriptor, b.blocks)
 	for i := range lst {
-		lst[i] = blockfmt.Descriptor{
-			ObjectInfo: blockfmt.ObjectInfo{
-				Path:         "a-very-long/path-to-the-object/finally.ion.zst",
-				ETag:         "\"abc123xyzandmoreetagstringhere\"",
-				Size:         1234567,
-				LastModified: date.Now(),
-			},
-			Trailer: blockfmt.Trailer{
-				Version:    1,
-				Offset:     1234500,
-				Algo:       "zstd",
-				BlockShift: 20,
-				// common case for the new format
-				// will be ~100 chunks and one block descriptor
-				Blocks: []blockfmt.Blockdesc{{
-					Offset: 0,
-					Chunks: 100,
-				}},
+		lst[i] = plan.Descriptor{
+			Descriptor: blockfmt.Descriptor{
+				ObjectInfo: blockfmt.ObjectInfo{
+					Path:         "a-very-long/path-to-the-object/finally.ion.zst",
+					ETag:         "\"abc123xyzandmoreetagstringhere\"",
+					Size:         1234567,
+					LastModified: date.Now(),
+				},
+				Trailer: blockfmt.Trailer{
+					Version:    1,
+					Offset:     1234500,
+					Algo:       "zstd",
+					BlockShift: 20,
+					// common case for the new format
+					// will be ~100 chunks and one block descriptor
+					Blocks: []blockfmt.Blockdesc{{
+						Offset: 0,
+						Chunks: 100,
+					}},
+				},
 			},
 		}
 		lst[i].Trailer.Sparse.Push(nil)

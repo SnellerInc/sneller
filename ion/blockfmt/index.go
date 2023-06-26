@@ -93,13 +93,6 @@ type Descriptor struct {
 	Trailer Trailer
 }
 
-// Block is a reference to a block
-// within a list of [blockfmt.Descriptor]s.
-// See [plan.Input.Blocks] and [plan.Input.Descs].
-type Block struct {
-	Index, Offset int
-}
-
 // Quarantined is an item that
 // is queued for GC but has not
 // yet been deleted.
@@ -376,7 +369,7 @@ func WriteDescriptor(buf *ion.Buffer, st *ion.Symtab, desc *Descriptor) {
 func ReadDescriptor(d ion.Datum) (*Descriptor, error) {
 	var td TrailerDecoder
 	ret := new(Descriptor)
-	err := ret.decode(&td, d, 0)
+	err := ret.Decode(&td, d, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -389,40 +382,36 @@ func ReadDescriptors(d ion.Datum) ([]Descriptor, error) {
 	var ret []Descriptor
 	err := d.UnpackList(func(item ion.Datum) error {
 		ret = append(ret, Descriptor{})
-		return ret[len(ret)-1].decode(&td, item, 0)
+		return ret[len(ret)-1].Decode(&td, item, 0)
 	})
 	return ret, err
 }
 
 func WriteDescriptors(buf *ion.Buffer, st *ion.Symtab, contents []Descriptor) {
-	var (
-		path         = st.Intern("path")
-		etag         = st.Intern("etag")
-		lastModified = st.Intern("last-modified")
-		format       = st.Intern("format")
-		trailer      = st.Intern("trailer")
-		size         = st.Intern("size")
-	)
 	buf.BeginList(-1)
 	for i := range contents {
-		buf.BeginStruct(-1)
-		buf.BeginField(path)
-		buf.WriteString(contents[i].Path)
-		buf.BeginField(etag)
-		buf.WriteString(contents[i].ETag)
-		if !contents[i].LastModified.IsZero() {
-			buf.BeginField(lastModified)
-			buf.WriteTime(contents[i].LastModified)
-		}
-		buf.BeginField(format)
-		buf.WriteString(contents[i].Format)
-		buf.BeginField(size)
-		buf.WriteInt(contents[i].Size)
-		buf.BeginField(trailer)
-		contents[i].Trailer.Encode(buf, st)
-		buf.EndStruct()
+		contents[i].Encode(buf, st)
 	}
 	buf.EndList()
+}
+
+func (d *Descriptor) Encode(buf *ion.Buffer, st *ion.Symtab) {
+	buf.BeginStruct(-1)
+	buf.BeginField(st.Intern("path"))
+	buf.WriteString(d.Path)
+	buf.BeginField(st.Intern("etag"))
+	buf.WriteString(d.ETag)
+	if !d.LastModified.IsZero() {
+		buf.BeginField(st.Intern("last-modified"))
+		buf.WriteTime(d.LastModified)
+	}
+	buf.BeginField(st.Intern("format"))
+	buf.WriteString(d.Format)
+	buf.BeginField(st.Intern("size"))
+	buf.WriteInt(d.Size)
+	buf.BeginField(st.Intern("trailer"))
+	d.Trailer.Encode(buf, st)
+	buf.EndStruct()
 }
 
 var (
@@ -451,7 +440,7 @@ func (o *ObjectInfo) set(f ion.Field) (bool, error) {
 	return true, err
 }
 
-func (d *Descriptor) decode(td *TrailerDecoder, v ion.Datum, opts Flag) error {
+func (d *Descriptor) Decode(td *TrailerDecoder, v ion.Datum, opts Flag) error {
 	return v.UnpackStruct(func(f ion.Field) error {
 		switch f.Label {
 		case "original":
@@ -658,7 +647,7 @@ func DecodeIndex(key *Key, index []byte, opts Flag) (*Index, error) {
 	}
 	err = contents.UnpackList(func(d ion.Datum) error {
 		var self Descriptor
-		if err := self.decode(&td, d, opts); err != nil {
+		if err := self.Decode(&td, d, opts); err != nil {
 			return err
 		}
 		idx.Inline = append(idx.Inline, self)
@@ -814,23 +803,19 @@ func (idx *Index) Objects() int {
 //
 // Note that the returned slices may be empty if
 // the index has no contents.
-func (idx *Index) Descs(src InputFS, keep *Filter) ([]Descriptor, []Block, int64, error) {
+func (idx *Index) Descs(src InputFS, keep *Filter) ([]Descriptor, [][]int, int64, error) {
 	var out []Descriptor
-	var blocks []Block
+	var blocks [][]int
 	var size int64
 	add := func(b Descriptor) {
-		any := false
+		var blks []int
 		visit := func(start, end int) {
 			if start == end {
 				return
 			}
-			any = true
 			for i := start; i < end; i++ {
 				size += int64(b.Trailer.Blocks[i].Chunks << b.Trailer.BlockShift)
-				blocks = append(blocks, Block{
-					Index:  len(out),
-					Offset: i,
-				})
+				blks = append(blks, i)
 			}
 		}
 		if keep == nil {
@@ -838,8 +823,9 @@ func (idx *Index) Descs(src InputFS, keep *Filter) ([]Descriptor, []Block, int64
 		} else {
 			keep.Visit(&b.Trailer.Sparse, visit)
 		}
-		if any {
+		if len(blks) > 0 {
 			out = append(out, b)
+			blocks = append(blocks, blks)
 		}
 	}
 	for i := range idx.Inline {

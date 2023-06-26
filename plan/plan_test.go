@@ -25,8 +25,10 @@ import (
 
 func mksized(size int64) *Input {
 	return &Input{
-		Descs: []blockfmt.Descriptor{{
-			ObjectInfo: blockfmt.ObjectInfo{Size: size},
+		Descs: []Descriptor{{
+			Descriptor: blockfmt.Descriptor{
+				ObjectInfo: blockfmt.ObjectInfo{Size: size},
+			},
 		}},
 	}
 }

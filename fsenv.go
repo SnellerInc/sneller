@@ -158,10 +158,16 @@ func (f *FSEnv) Stat(e expr.Node, h *plan.Hints) (*plan.Input, error) {
 		return nil, err
 	}
 	f.maxscan += size
+	ds := make([]plan.Descriptor, 0, len(descs))
+	for i := range descs {
+		ds = append(ds, plan.Descriptor{
+			Descriptor: descs[i],
+			Blocks:     blocks[i],
+		})
+	}
 	return &plan.Input{
+		Descs:  ds,
 		Fields: h.Fields,
-		Descs:  descs,
-		Blocks: blocks,
 	}, nil
 }
 

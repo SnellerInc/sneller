@@ -116,18 +116,20 @@ func (t *testenv) str2json(arg expr.Node) (*Input, error) {
 		return nil, err
 	}
 	tr := c.Trailer()
-	blocks := make([]blockfmt.Block, len(tr.Blocks))
+	blocks := make([]int, len(tr.Blocks))
 	for i := range blocks {
-		blocks[i].Offset = i
+		blocks[i] = i
 	}
 	return &Input{
-		Descs: []blockfmt.Descriptor{{
-			ObjectInfo: blockfmt.ObjectInfo{
-				Path: filepath.Join(name),
+		Descs: []Descriptor{{
+			Descriptor: blockfmt.Descriptor{
+				ObjectInfo: blockfmt.ObjectInfo{
+					Path: filepath.Join(name),
+				},
+				Trailer: *tr,
 			},
-			Trailer: *tr,
+			Blocks: blocks,
 		}},
-		Blocks: blocks,
 	}, nil
 }
 
@@ -162,16 +164,18 @@ func (t *testenv) Stat(tbl expr.Node, h *Hints) (*Input, error) {
 	if err != nil {
 		return nil, fmt.Errorf("reading trailer: %v", err)
 	}
-	blocks := make([]blockfmt.Block, len(tr.Blocks))
+	blocks := make([]int, len(tr.Blocks))
 	for i := range blocks {
-		blocks[i].Offset = i
+		blocks[i] = i
 	}
 	return &Input{
-		Descs: []blockfmt.Descriptor{{
-			ObjectInfo: blockfmt.ObjectInfo{Path: path},
-			Trailer:    *tr,
+		Descs: []Descriptor{{
+			Descriptor: blockfmt.Descriptor{
+				ObjectInfo: blockfmt.ObjectInfo{Path: path},
+				Trailer:    *tr,
+			},
+			Blocks: blocks,
 		}},
-		Blocks: blocks,
 	}, nil
 }
 

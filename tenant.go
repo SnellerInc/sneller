@@ -77,15 +77,17 @@ func (r *TenantRunner) Run(dst vm.QuerySink, in *plan.Input, ep *plan.ExecParams
 	if !CanVMOpen {
 		panic("shouldn't have called Run")
 	}
-	segs := make([]dcache.Segment, 0, len(in.Blocks))
-	for i := range in.Blocks {
-		seg := &tenantSegment{
-			fs:     ep.FS,
-			desc:   in.Descs[in.Blocks[i].Index],
-			block:  in.Blocks[i].Offset,
-			fields: in.Fields,
+	segs := make([]dcache.Segment, 0, in.Blocks())
+	for i := range in.Descs {
+		for _, off := range in.Descs[i].Blocks {
+			seg := &tenantSegment{
+				fs:     ep.FS,
+				desc:   in.Descs[i].Descriptor,
+				block:  off,
+				fields: in.Fields,
+			}
+			segs = append(segs, seg)
 		}
-		segs = append(segs, seg)
 	}
 	if len(segs) == 0 {
 		return nil
