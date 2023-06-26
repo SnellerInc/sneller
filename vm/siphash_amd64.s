@@ -27,6 +27,6 @@ TEXT ·siphashx8(SB), NOSPLIT, $0
   VPBROADCASTQ k1+8(FP), Z8   // Z8 = k1
   KXNORB    K1, K1, K1        // lanes = 0xff
   CALL      siphashx8(SB)
-  VMOVDQU32 Z9, ret+32(FP)     // lo 64 bits x 8
-  VMOVDQU32 Z10, ret+32+64(FP) // hi 64 bits x 8
+  VMOVDQU32 Z9, ret+32(FP)      // lo 64 bits x 8
+  VMOVDQU32 Z10, ret_1_0+96(FP) // hi 64 bits x 8
   RET
