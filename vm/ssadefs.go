@@ -398,9 +398,13 @@ const (
 	sarraysum
 
 	svectorinnerproduct
+	svectorinnerproductimm
 	svectorl1distance
+	svectorl1distanceimm
 	svectorl2distance
+	svectorl2distanceimm
 	svectorcosinedistance
+	svectorcosinedistanceimm
 
 	sboxmask  // box a mask
 	sboxint   // box an integer
@@ -1096,10 +1100,15 @@ var _ssainfo = [_ssamax]ssaopinfo{
 	sarrayposition: {text: "arrayposition", argtypes: []ssatype{stList, stValue, stBool}, rettype: stIntMasked, bc: oparrayposition},
 	sarraysum:      {text: "arraysum", argtypes: []ssatype{stList, stBool}, rettype: stFloatMasked, bc: oparraysum},
 
-	svectorinnerproduct:   {text: "vectorinnerproduct", argtypes: []ssatype{stList, stList, stBool}, rettype: stFloatMasked, bc: opvectorinnerproduct},
-	svectorl1distance:     {text: "vectorl1distance", argtypes: []ssatype{stList, stList, stBool}, rettype: stFloatMasked, bc: opvectorl1distance},
-	svectorl2distance:     {text: "vectorl2distance", argtypes: []ssatype{stList, stList, stBool}, rettype: stFloatMasked, bc: opvectorl2distance},
-	svectorcosinedistance: {text: "vectorcosinedistance", argtypes: []ssatype{stList, stList, stBool}, rettype: stFloatMasked, bc: opvectorcosinedistance},
+	svectorinnerproduct:   {text: "vectorinnerproduct", cost: costHeavy, argtypes: []ssatype{stList, stList, stBool}, rettype: stFloatMasked, bc: opvectorinnerproduct},
+	svectorl1distance:     {text: "vectorl1distance", cost: costHeavy, argtypes: []ssatype{stList, stList, stBool}, rettype: stFloatMasked, bc: opvectorl1distance},
+	svectorl2distance:     {text: "vectorl2distance", cost: costHeavy, argtypes: []ssatype{stList, stList, stBool}, rettype: stFloatMasked, bc: opvectorl2distance},
+	svectorcosinedistance: {text: "vectorcosinedistance", cost: costHeavy, argtypes: []ssatype{stList, stList, stBool}, rettype: stFloatMasked, bc: opvectorcosinedistance},
+
+	svectorinnerproductimm:   {text: "vectorinnerproduct@imm", cost: costHeavy, argtypes: []ssatype{stList, stBool}, rettype: stFloatMasked, immfmt: fmtdict, bc: opvectorinnerproductimm},
+	svectorl1distanceimm:     {text: "vectorl1distance@imm", cost: costHeavy, argtypes: []ssatype{stList, stBool}, rettype: stFloatMasked, immfmt: fmtdict, bc: opvectorl1distanceimm},
+	svectorl2distanceimm:     {text: "vectorl2distance@imm", cost: costHeavy, argtypes: []ssatype{stList, stBool}, rettype: stFloatMasked, immfmt: fmtdict, bc: opvectorl2distanceimm},
+	svectorcosinedistanceimm: {text: "vectorcosinedistance@imm", cost: costHeavy, argtypes: []ssatype{stList, stBool}, rettype: stFloatMasked, immfmt: fmtdict, bc: opvectorcosinedistanceimm},
 
 	saggmergestate: {
 		text:     "aggmergestate",

@@ -8339,6 +8339,45 @@ done:
 
   NEXT_ADVANCE(BC_SLOT_SIZE*5)
 
+// f64[0].k[1] = bcvectorinnerproductimm(s[2], dict[3]).k[4]
+TEXT bcvectorinnerproductimm(SB), NOSPLIT|NOFRAME, $0
+  BC_UNPACK_SLOT_DICT_SLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(CX), OUT(R8))
+
+  BC_LOAD_SLICE_FROM_SLOT(OUT(Z20), OUT(Z21), IN(BX))  // Z20:Z21 <- A array offset and byte-length
+  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
+
+  VXORPD X0, X0, X0                                    // Z0 <- accumulator (low)
+  VXORPD X1, X1, X1                                    // Z1 <- accumulator (high)
+
+  MOVQ 8(CX), R8                                       // R8 <- literal array length (in bytes)
+  MOVQ 0(CX), CX                                       // CX <- literal array pointer (pointing to the first item)
+  SHRQ $3, R8                                          // R8 <- literal array length (in 8-byte units)
+  JZ done                                              // Don't process zero-length literal arrays
+
+  VPTESTMD Z21, Z21, K1, K2                            // K2 <- arrays having non-zero length (arrays to process) (A)
+  VPADDD Z20, Z21, Z21                                 // Z21 <- end of A array
+
+  KTESTW K2, K2
+  JZ done
+
+  BL_NUMERIC_ARRAY_ITERATOR_BEGIN()
+    VBROADCASTSD 0(CX), Z9
+    BL_NUMERIC_ARRAY_ITERATOR_CONV_TO_F64()
+    KSHIFTRW $8, K3, K4                                // K4 <- valid values (high)
+    VFMADD231PD Z9, Z10, K3, Z0                        // Z0 <- Z0 + A * B (low)
+    VFMADD231PD Z9, Z11, K4, Z1                        // Z1 <- Z1 + A * B (high)
+    ADDQ $8, CX                                        // CX <- advance literal array pointer
+    DECQ R8                                            // R8 <- decrement literal array counter
+    JZ done
+  BL_NUMERIC_ARRAY_ITERATOR_END()
+
+done:
+  BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
+  BC_STORE_F64_TO_SLOT(IN(Z0), IN(Z1), IN(DX))
+  BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
+
+  NEXT_ADVANCE(BC_SLOT_SIZE*4 + BC_DICT_SIZE)
+
 // f64[0].k[1] = vectorl1distance(s[2], s[3]).k[4]
 TEXT bcvectorl1distance(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_3xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(CX), OUT(R8))
@@ -8378,6 +8417,50 @@ done:
 
   NEXT_ADVANCE(BC_SLOT_SIZE*5)
 
+// f64[0].k[1] = vectorl1distanceimm(s[2], dict[3]).k[4]
+TEXT bcvectorl1distanceimm(SB), NOSPLIT|NOFRAME, $0
+  BC_UNPACK_SLOT_DICT_SLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(CX), OUT(R8))
+
+  BC_LOAD_SLICE_FROM_SLOT(OUT(Z20), OUT(Z21), IN(BX))  // Z20:Z21 <- A array offset and byte-length
+  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
+
+  VXORPD X0, X0, X0                                    // Z0 <- accumulator (low)
+  VXORPD X1, X1, X1                                    // Z1 <- accumulator (high)
+  VBROADCASTSD CONSTF64_SIGN_BIT(), Z2                 // Z2 <- float64 sign bit
+
+  MOVQ 8(CX), R8                                       // R8 <- literal array length (in bytes)
+  MOVQ 0(CX), CX                                       // CX <- literal array pointer (pointing to the first item)
+  SHRQ $3, R8                                          // R8 <- literal array length (in 8-byte units)
+  JZ done                                              // Don't process zero-length literal arrays
+
+  VPTESTMD Z21, Z21, K1, K2                            // K2 <- arrays having non-zero length (arrays to process) (A)
+  VPADDD Z20, Z21, Z21                                 // Z21 <- end of A array
+
+  KTESTW K2, K2
+  JZ done
+
+  BL_NUMERIC_ARRAY_ITERATOR_BEGIN()
+    VBROADCASTSD 0(CX), Z9
+    BL_NUMERIC_ARRAY_ITERATOR_CONV_TO_F64()
+    KSHIFTRW $8, K3, K4                                // K4 <- valid values (high)
+    VSUBPD.Z Z9, Z10, K3, Z10                          // Z10 <- A - B (low)
+    VSUBPD.Z Z9, Z11, K4, Z11                          // Z11 <- A - B (high)
+    VANDNPD Z10, Z2, Z10                               // Z10 <- abs(A - B) (low)
+    VANDNPD Z11, Z2, Z11                               // Z11 <- abs(A - B) (high)
+    VADDPD Z10, Z0, K3, Z0                             // Z0 <- Z0 + abs(A - B) (low)
+    VADDPD Z11, Z1, K4, Z1                             // Z1 <- Z1 + abs(A - B) (high)
+    ADDQ $8, CX                                        // CX <- advance literal array pointer
+    DECQ R8                                            // R8 <- decrement literal array counter
+    JZ done
+  BL_NUMERIC_ARRAY_ITERATOR_END()
+
+done:
+  BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
+  BC_STORE_F64_TO_SLOT(IN(Z0), IN(Z1), IN(DX))
+  BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
+
+  NEXT_ADVANCE(BC_SLOT_SIZE*4 + BC_DICT_SIZE)
+
 // f64[0].k[1] = vectorl2distance(s[2], s[3]).k[4]
 TEXT bcvectorl2distance(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_3xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(CX), OUT(R8))
@@ -8416,6 +8499,51 @@ done:
   BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
 
   NEXT_ADVANCE(BC_SLOT_SIZE*5)
+
+// f64[0].k[1] = vectorl2distanceimm(s[2], dict[3]).k[4]
+TEXT bcvectorl2distanceimm(SB), NOSPLIT|NOFRAME, $0
+  BC_UNPACK_SLOT_DICT_SLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(CX), OUT(R8))
+
+  BC_LOAD_SLICE_FROM_SLOT(OUT(Z20), OUT(Z21), IN(BX))  // Z20:Z21 <- A array offset and byte-length
+  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
+
+  VXORPD X0, X0, X0                                    // Z0 <- accumulator (low)
+  VXORPD X1, X1, X1                                    // Z1 <- accumulator (high)
+
+  MOVQ 8(CX), R8                                       // R8 <- literal array length (in bytes)
+  MOVQ 0(CX), CX                                       // CX <- literal array pointer (pointing to the first item)
+  SHRQ $3, R8                                          // R8 <- literal array length (in 8-byte units)
+  JZ done                                              // Don't process zero-length literal arrays
+
+  VPTESTMD Z21, Z21, K1, K2                            // K2 <- arrays having non-zero length (arrays to process) (A)
+  VPADDD Z20, Z21, Z21                                 // Z21 <- end of A array
+
+  KTESTW K2, K2
+  JZ done
+
+  BL_NUMERIC_ARRAY_ITERATOR_BEGIN()
+    VBROADCASTSD 0(CX), Z9
+    BL_NUMERIC_ARRAY_ITERATOR_CONV_TO_F64()
+    KSHIFTRW $8, K3, K4                                // K4 <- valid values (high)
+    VSUBPD.Z Z9, Z10, K3, Z10                          // Z10 <- A - B (low)
+    VSUBPD.Z Z9, Z11, K4, Z11                          // Z11 <- A - B (high)
+    VFMADD231PD Z10, Z10, K3, Z0                       // Z0 <- Z0 + (A - B)^2 (low)
+    VFMADD231PD Z11, Z11, K4, Z1                       // Z1 <- Z1 + (A - B)^2 (high)
+    ADDQ $8, CX                                        // CX <- advance literal array pointer
+    DECQ R8                                            // R8 <- decrement literal array counter
+    JZ done_loop
+  BL_NUMERIC_ARRAY_ITERATOR_END()
+
+done_loop:
+  VSQRTPD Z0, Z0                                       // Z0 <- calculated l2 distance (low)
+  VSQRTPD Z1, Z1                                       // Z1 <- calculated l2 distance (high)
+
+done:
+  BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
+  BC_STORE_F64_TO_SLOT(IN(Z0), IN(Z1), IN(DX))
+  BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
+
+  NEXT_ADVANCE(BC_SLOT_SIZE*4 + BC_DICT_SIZE)
 
 // f64[0].k[1] = vectorcosinedistance(s[2], s[3]).k[4]
 TEXT bcvectorcosinedistance(SB), NOSPLIT|NOFRAME, $0
@@ -8481,6 +8609,77 @@ done:
   BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
 
   NEXT_ADVANCE(BC_SLOT_SIZE*5)
+
+// f64[0].k[1] = vectorcosinedistanceimm(s[2], dict[3]).k[4]
+TEXT bcvectorcosinedistanceimm(SB), NOSPLIT|NOFRAME, $0
+  BC_UNPACK_SLOT_DICT_SLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(CX), OUT(R8))
+
+  BC_LOAD_SLICE_FROM_SLOT(OUT(Z20), OUT(Z21), IN(BX))  // Z20:Z21 <- A array offset and byte-length
+  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
+
+  VXORPD X0, X0, X0                                    // Z0 <- accumulator (low)
+  VXORPD X1, X1, X1                                    // Z1 <- accumulator (high)
+
+  VXORPD X2, X2, X2                                    // Z2 <- accumulator (low)
+  VXORPD X3, X3, X3                                    // Z3 <- accumulator (high)
+
+  VXORPD X4, X4, X4                                    // Z4 <- accumulator (low)
+  VXORPD X5, X5, X5                                    // Z5 <- accumulator (high)
+
+  MOVQ 8(CX), R8                                       // R8 <- literal array length (in bytes)
+  MOVQ 0(CX), CX                                       // CX <- literal array pointer (pointing to the first item)
+  SHRQ $3, R8                                          // R8 <- literal array length (in 8-byte units)
+  JZ done                                              // Don't process zero-length literal arrays
+
+  VPTESTMD Z21, Z21, K1, K2                            // K2 <- arrays having non-zero length (arrays to process) (A)
+  VPADDD Z20, Z21, Z21                                 // Z21 <- end of A array
+
+  KTESTW K2, K2
+  JZ done
+
+  BL_NUMERIC_ARRAY_ITERATOR_BEGIN()
+    VBROADCASTSD 0(CX), Z9
+    BL_NUMERIC_ARRAY_ITERATOR_CONV_TO_F64()
+    KSHIFTRW $8, K3, K4                                // K4 <- valid values (high)
+    VFMADD231PD Z9, Z10, K3, Z0                        // Z0 <- Z0 + A * B (low)
+    VFMADD231PD Z9, Z11, K4, Z1                        // Z1 <- Z1 + A * B (high)
+    VFMADD231PD Z10, Z10, K3, Z2                       // Z2 <- Z2 + A * A (low)
+    VFMADD231PD Z11, Z11, K4, Z3                       // Z3 <- Z3 + A * A (high)
+    VFMADD231PD Z9, Z9, K3, Z4                         // Z4 <- Z4 + B * B (low)
+    VFMADD231PD Z9, Z9, K4, Z5                         // Z5 <- Z5 + B * B (high)
+    ADDQ $8, CX                                        // CX <- advance literal array pointer
+    DECQ R8                                            // R8 <- decrement literal array counter
+    JZ done_loop
+  BL_NUMERIC_ARRAY_ITERATOR_END()
+
+done_loop:
+  // Compute `cosine_similarity(a, b)`
+  KSHIFTRW $8, K1, K2
+  VMULPD Z4, Z2, Z2
+  VMULPD Z5, Z3, Z3
+
+  VXORPD X5, X5, X5
+  VBROADCASTSD CONSTF64_1(), Z4
+
+  VSQRTPD Z2, Z2
+  VSQRTPD Z3, Z3
+
+  VCMPPD $VCMP_IMM_GT_OQ, Z5, Z2, K1, K3
+  VCMPPD $VCMP_IMM_GT_OQ, Z5, Z3, K2, K4
+
+  VDIVPD Z2, Z0, Z0
+  VDIVPD Z3, Z1, Z1
+
+  // Compute `cosine_distance(a, b)`, which is equal to `1 - cosine_similarity(a, b)`
+  VSUBPD.Z Z0, Z4, K3, Z0
+  VSUBPD.Z Z1, Z4, K4, Z1
+
+done:
+  BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
+  BC_STORE_F64_TO_SLOT(IN(Z0), IN(Z1), IN(DX))
+  BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
+
+  NEXT_ADVANCE(BC_SLOT_SIZE*4 + BC_DICT_SIZE)
 
 // String Instructions
 // -------------------

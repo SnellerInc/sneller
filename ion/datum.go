@@ -337,6 +337,14 @@ func (d Datum) String() (string, error)            { return d.string("") }
 func (d Datum) Blob() ([]byte, error)              { return d.blob("") }
 func (d Datum) Timestamp() (date.Time, error)      { return d.timestamp("") }
 
+func (d Datum) CoerceFloat() (float64, error) {
+	i, err := d.Int()
+	if err == nil {
+		return float64(i), nil
+	}
+	return d.Float()
+}
+
 // StringShared returns a []byte aliasing the
 // contents of this Datum and should be copied
 // as necessary to avoid issues that may arise

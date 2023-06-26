@@ -1,3 +1,4 @@
+## benchmark: true
 SELECT
   INNER_PRODUCT(a, b) AS output
 FROM

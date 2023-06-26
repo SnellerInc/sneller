@@ -15,6 +15,7 @@
 package vm
 
 import (
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
@@ -2609,36 +2610,61 @@ func (p *prog) arraySum(array *value) *value {
 	return p.ssa2(sarraysum, array, mask)
 }
 
-func (p *prog) vectorInnerProduct(a *value, b *value) *value {
+func serializeListLiteralToTypedArray(d ion.Datum) (string, bool) {
+	buf := []byte{}
+
+	err := d.UnpackList(func(element ion.Datum) error {
+		f, err := element.CoerceFloat()
+		if err != nil {
+			return err
+		}
+
+		buf = binary.LittleEndian.AppendUint64(buf, math.Float64bits(float64(f)))
+		return nil
+	})
+
+	if err != nil {
+		return "", false
+	}
+
+	return string(buf), true
+}
+
+func (p *prog) vectorProduct(regularOp ssaop, immOp ssaop, a *value, b *value) *value {
+	// move a possible literal to B, so we only need to handle a single code-path
+	if a.op == sliteral {
+		a, b = b, a
+	}
+
+	if b.op == sliteral && ionType(b.imm) == ion.ListType {
+		typedArrayData, ok := serializeListLiteralToTypedArray(b.imm.(ion.Datum))
+		if ok {
+			a = p.tolist(a)
+			return p.ssa2imm(immOp, a, p.mask(a), typedArrayData)
+		}
+	}
+
 	a = p.tolist(a)
 	b = p.tolist(b)
 	mask := p.and(p.mask(a), p.mask(b))
 
-	return p.ssa3(svectorinnerproduct, a, b, mask)
+	return p.ssa3(regularOp, a, b, mask)
+}
+
+func (p *prog) vectorInnerProduct(a *value, b *value) *value {
+	return p.vectorProduct(svectorinnerproduct, svectorinnerproductimm, a, b)
 }
 
 func (p *prog) vectorL1Distance(a *value, b *value) *value {
-	a = p.tolist(a)
-	b = p.tolist(b)
-	mask := p.and(p.mask(a), p.mask(b))
-
-	return p.ssa3(svectorl1distance, a, b, mask)
+	return p.vectorProduct(svectorl1distance, svectorl1distanceimm, a, b)
 }
 
 func (p *prog) vectorL2Distance(a *value, b *value) *value {
-	a = p.tolist(a)
-	b = p.tolist(b)
-	mask := p.and(p.mask(a), p.mask(b))
-
-	return p.ssa3(svectorl2distance, a, b, mask)
+	return p.vectorProduct(svectorl2distance, svectorl2distanceimm, a, b)
 }
 
 func (p *prog) vectorCosineDistance(a *value, b *value) *value {
-	a = p.tolist(a)
-	b = p.tolist(b)
-	mask := p.and(p.mask(a), p.mask(b))
-
-	return p.ssa3(svectorcosinedistance, a, b, mask)
+	return p.vectorProduct(svectorcosinedistance, svectorcosinedistanceimm, a, b)
 }
 
 func emitNone(v *value, c *compilestate) {
