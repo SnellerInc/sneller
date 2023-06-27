@@ -61,6 +61,13 @@ const (
 	// CompressIguanaV0 indicates that buckets are
 	// compressed using the experimental iguana compression.
 	CompressIguanaV0
+	// CompressIguanaV0Specialized indicates
+	// that buckets are compressed using the experimental
+	// iguana compression OR a specialized algorithm given
+	// by the first byte of the data.
+	// If the first byte of the data is a null byte, then
+	// IguanaV0 is used.
+	CompressIguanaV0Specialized
 )
 
 func (a BucketAlgo) String() string {
@@ -69,6 +76,8 @@ func (a BucketAlgo) String() string {
 		return "zstd"
 	case CompressIguanaV0:
 		return "iguana_v0"
+	case CompressIguanaV0Specialized:
+		return "iguana_v0/specialized"
 	default:
 		return fmt.Sprintf("BucketAlgo(%X)", uint8(a))
 	}
@@ -99,6 +108,22 @@ func AppendMagic(dst []byte, algo BucketAlgo, seed uint8) []byte {
 	return append(append(dst, magic...), lo8, hi8, 0, 0)
 }
 
+// BucketHints is a set of hints to be provided for compression.
+// The zero value of BucketHints implies there are no hints available.
+type BucketHints struct {
+	// Elements is the number of (symbol, value) pairs in the bucket.
+	Elements int
+	// TypeSet is a bitmap containing all of the
+	// possible ion types for values in this bucket.
+	TypeSet uint16
+	// ListTypeSet is a bitmap of all the possible
+	// ion types for sub-elements of the top level type
+	// when the top-level type is an ion list type.
+	// (This may be zero even when the top-level type
+	// is only a list type iif the top-level lists are all empty.)
+	ListTypeSet uint16
+}
+
 func init() {
 	dec, _ = zstd.NewReader(nil,
 		zstd.WithDecoderConcurrency(runtime.GOMAXPROCS(0)),
@@ -120,17 +145,27 @@ func put24(i int, dst []byte) {
 	dst[2] = byte(i >> 16)
 }
 
+const (
+	iguanaUnspecialized = iota
+	// specialized encoding: for future use
+)
+
 // Compress compresses data from src and appends it to dst,
 // returning the new dst slice or an error.
-func (a BucketAlgo) Compress(src, dst []byte) ([]byte, error) {
+// If [hints] is non-nil, it may be used to improve
+// the quality of the compression performed.
+func (a BucketAlgo) Compress(hints *BucketHints, src, dst []byte) ([]byte, error) {
 	off := len(dst)
 	dst = append(dst, 0, 0, 0)
 	if len(src) == 0 {
 		return dst, nil
 	}
-
 	var err error
 	switch a {
+	case CompressIguanaV0Specialized:
+		// TODO: use hints
+		dst = append(dst, iguanaUnspecialized) // leading null byte
+		fallthrough
 	case CompressIguanaV0:
 		enc := iguanaEnc()
 		dst, err = enc.Compress(src, dst, iguana.DefaultEntropyRejectionThreshold)
@@ -186,6 +221,15 @@ func (a BucketAlgo) Decompress(src, dst []byte) ([]byte, int, error) {
 	switch a {
 	case CompressZstd:
 		out, err = dec.DecodeAll(src[3:size], dst)
+	case CompressIguanaV0Specialized:
+		// for now there are no specializations,
+		// so we just expect one constant byte:
+		if size < 1 || src[3] != iguanaUnspecialized {
+			return nil, 0, fmt.Errorf("bad iguana/specialized bucket encoding")
+		}
+		dec := iguanaDec()
+		out, err = dec.DecompressTo(dst, src[4:size])
+		dropIguana(dec)
 	case CompressIguanaV0:
 		dec := iguanaDec()
 		out, err = dec.DecompressTo(dst, src[3:size])

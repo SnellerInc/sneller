@@ -95,7 +95,7 @@ func TestConvertMulti(t *testing.T) {
 	multiples := []int{
 		1, 3, 5, 7, 10,
 	}
-	algos := []string{"zstd", "zion", "zion+iguana_v0"}
+	algos := []string{"zstd", "zion", "zion+iguana_v0/specialized"}
 	for _, algo := range algos {
 		for _, m := range multiples {
 			t.Run(fmt.Sprintf("algo=%s,m=%d", algo, m), func(t *testing.T) {
@@ -156,7 +156,7 @@ func TestConvertSingle(t *testing.T) {
 		1, 3, 7, 50,
 	}
 	formats := []string{
-		"zstd", "zion", "zion+iguana_v0",
+		"zstd", "zion", "zion+iguana_v0/specialized",
 	}
 	for _, algo := range formats {
 		for _, m := range multiples {

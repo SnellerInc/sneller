@@ -46,9 +46,10 @@ type Encoder struct {
 	// buckets+1 compressed frames; the first frame
 	// is the symbol table plus the "shape" and the
 	// remaining frames are the buckets, in-order
-	enc  shapeEncoder
-	buck [zll.NumBuckets]bucket
-	seed uint32
+	enc   shapeEncoder
+	buck  [zll.NumBuckets]bucket
+	hints [zll.NumBuckets]zll.BucketHints
+	seed  uint32
 }
 
 // SetSymbols sets the current state of the
@@ -123,12 +124,12 @@ func (e *Encoder) Encode(src, dst []byte) ([]byte, error) {
 	// the one that produces the most even distribution
 	// of compressed bucket sizes?
 	dst = zll.AppendMagic(dst, e.Algo, uint8(e.seed))
-	dst, err = e.Algo.Compress(e.shape, dst)
+	dst, err = e.Algo.Compress(nil, e.shape, dst)
 	if err != nil {
 		return nil, err
 	}
 	for i := 0; i < zll.NumBuckets; i++ {
-		dst, err = e.Algo.Compress(e.buck[i].mem, dst)
+		dst, err = e.Algo.Compress(&e.hints[i], e.buck[i].mem, dst)
 		if err != nil {
 			return nil, err
 		}
@@ -154,6 +155,7 @@ func skipOne(mem []byte) ([]byte, error) {
 }
 
 func (e *Encoder) walk(mem []byte) error {
+	e.hints = [zll.NumBuckets]zll.BucketHints{}
 	var err error
 	for len(mem) > 0 {
 		mem, err = e.walkOne(mem)
@@ -213,10 +215,24 @@ func (e *Encoder) walkOne(mem []byte) ([]byte, error) {
 	return rest, nil
 }
 
-func (e *Encoder) encodeFlat(sym ion.Symbol, fieldval []byte) {
+func (e *Encoder) encodeFlat(sym ion.Symbol, fieldval, val []byte) {
 	b := e.sym2bucket[sym]
 	e.enc.emit(b)
 	e.buck[b].append(fieldval)
+
+	// track hints:
+	h := &e.hints[b]
+	t := ion.TypeOf(val)
+	h.TypeSet |= 1 << uint16(t)
+	h.Elements++
+	if t == ion.ListType {
+		body, _ := ion.Contents(val)
+		for len(body) > 0 {
+			h.ListTypeSet |= 1 << uint16(ion.TypeOf(body))
+			s := ion.SizeOf(body)
+			body = body[s:]
+		}
+	}
 }
 
 func (e *Encoder) encodeField(mem []byte) ([]byte, error) {
@@ -229,9 +245,9 @@ func (e *Encoder) encodeField(mem []byte) ([]byte, error) {
 		return nil, fmt.Errorf("zion.Encoder.encodeField: illegal ion object size %d (buf size %d)", s, len(mem))
 	}
 	// encode a terminal value
-	s += len(mem) - len(rest)
-	e.encodeFlat(sym, mem[:s])
-	return mem[s:], nil
+	memsize := s + len(mem) - len(rest)
+	e.encodeFlat(sym, mem[:memsize], rest[:s])
+	return mem[memsize:], nil
 }
 
 const trials = (64 / zll.BucketBits)

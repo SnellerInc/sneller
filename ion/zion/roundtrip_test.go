@@ -33,6 +33,7 @@ import (
 var validAlgs = []zll.BucketAlgo{
 	zll.CompressZstd,
 	zll.CompressIguanaV0,
+	zll.CompressIguanaV0Specialized,
 }
 
 type testWriter struct {
@@ -240,6 +241,7 @@ func TestDecodePart(t *testing.T) {
 		touched := cases[i].decomps
 		t.Run(fmt.Sprintf("case%d", i), func(t *testing.T) {
 			tb := &testBuffer{}
+			tb.enc.Algo = zll.CompressIguanaV0Specialized
 			cn := ion.Chunker{
 				W:     tb,
 				Align: 1024,
@@ -474,7 +476,7 @@ func benchmarkDecompressFields(alg zll.BucketAlgo, b *testing.B) {
 				in = append(in, trimnop(tb.input[i])...)
 			}
 			insize := len(in)
-			in, _ = alg.Compress(in, nil)
+			in, _ = alg.Compress(nil, in, nil)
 			// benchmark simply (de)compressing the input data directly
 			b.Run("baseline", func(b *testing.B) {
 				b.Logf("%d -> %d bytes", insize, len(in))
