@@ -119,12 +119,14 @@ func (s *Server) Serve(rw io.ReadWriteCloser) error {
 	sv.run = s.Runner
 	sv.initfs = s.InitFS
 	sv.pipe = rw
+	sv.tmp = sv.tmp[:0]
+	sv.writeFail = false
+	sv.st.Reset()
 	if sv.rd == nil {
 		sv.rd = bufio.NewReader(rw)
 	} else {
 		sv.rd.Reset(rw)
 	}
-	sv.st.Reset()
 	err := sv.serve()
 	serverPool.Put(sv)
 	return err

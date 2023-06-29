@@ -784,6 +784,7 @@ func (m *Manager) handleRemote(conn net.Conn) {
 		return
 	}
 	if id.IsZero() {
+		m.errorf("empty tenant proxy message (ping?)")
 		return // ping message; just expecting a Close()
 	}
 	c, err := m.get(id, key)

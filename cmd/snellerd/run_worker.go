@@ -29,6 +29,7 @@ import (
 	"github.com/SnellerInc/sneller/db"
 	"github.com/SnellerInc/sneller/debug"
 	"github.com/SnellerInc/sneller/ion"
+	"github.com/SnellerInc/sneller/plan"
 	"github.com/SnellerInc/sneller/tenant/dcache"
 	"github.com/SnellerInc/sneller/tenant/tnproto"
 	"github.com/SnellerInc/sneller/vm"
@@ -112,8 +113,11 @@ func runWorker(args []string) {
 		return db.DecodeS3FS(d)
 	}
 	srv := tnproto.Server{
-		Runner: &run,
-		InitFS: initfs,
+		Server: plan.Server{
+			Runner: &run,
+			InitFS: initfs,
+		},
+		Logf: logger.Printf,
 	}
 	err = srv.Serve(uc)
 	if err != nil {

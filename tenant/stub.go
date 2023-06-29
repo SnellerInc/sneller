@@ -141,7 +141,12 @@ func main() {
 	defer uc.Close()
 	env := Env{eventfd: evfd}
 	env.cache = dcache.New(cachedir, env.post)
-	srv := tnproto.Server{Runner: &env}
+	srv := tnproto.Server{
+		Server: plan.Server{Runner: &env},
+		Logf: func(f string, args ...any) {
+			fmt.Fprintf(os.Stderr, f+"\n", args...)
+		},
+	}
 	err = srv.Serve(uc)
 	if err != nil {
 		die(err)

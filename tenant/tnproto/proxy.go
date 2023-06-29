@@ -285,7 +285,10 @@ func (b *Buffer) DirectExec(ctl *net.UnixConn, conn net.Conn) (io.ReadCloser, er
 	return nil, fmt.Errorf("unexpected tenant response %q", b.pre[:])
 }
 
-type Server plan.Server
+type Server struct {
+	plan.Server
+	Logf func(f string, args ...any)
+}
 
 // Serve responds to ProxyExec and DirectExec requests
 // over the given control socket.
@@ -364,7 +367,10 @@ func (s *Server) Serve(ctl *net.UnixConn) error {
 
 func (s *Server) serveProxy(conn net.Conn) {
 	defer conn.Close()
-	(*plan.Server)(s).Serve(conn)
+	err := s.Server.Serve(conn)
+	if err != nil && s.Logf != nil {
+		s.Logf("serve: %s", err)
+	}
 }
 
 // pipectx returns a context.Context that is canceled
