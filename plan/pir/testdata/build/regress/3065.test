@@ -1,0 +1,17 @@
+SELECT time, SUM(commits) commits
+FROM (
+  SELECT created_at, ARRAY_SIZE(payload.commits) commits
+  FROM gha
+  WHERE created_at >= `2021-01-01T03:00:00Z` AND created_at < `2021-01-08T00:00:00Z`
+    AND repo.name = 'dotnet/core'
+    AND type = 'PushEvent'
+) gha
+GROUP BY DATE_BIN('21600000 milliseconds', created_at, `2020-12-31T23:00:00Z`) AS time
+---
+ITERATE gha FIELDS [created_at, payload, repo, type] WHERE created_at >= `2021-01-01T03:00:00Z` AND created_at < `2021-01-08T00:00:00Z` AND repo.name = 'dotnet\/core' AND type = 'PushEvent'
+AGGREGATE SUM_INT(ARRAY_SIZE(payload.commits)) AS commits BY DATE_BIN(21600000000, created_at, `2020-12-31T23:00:00Z`) AS time
+---
+UNION MAP gha (
+	ITERATE PART gha FIELDS [created_at, payload, repo, type] WHERE created_at >= `2021-01-01T03:00:00Z` AND created_at < `2021-01-08T00:00:00Z` AND repo.name = 'dotnet\/core' AND type = 'PushEvent'
+	AGGREGATE SUM_INT(ARRAY_SIZE(payload.commits)) AS $_2_0 BY DATE_BIN(21600000000, created_at, `2020-12-31T23:00:00Z`) AS time)
+AGGREGATE SUM_INT($_2_0) AS commits BY time AS time

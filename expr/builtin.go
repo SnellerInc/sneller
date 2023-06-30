@@ -1186,10 +1186,10 @@ var builtinInfo = [maxBuiltin]binfo{
 	GeoTileES:   {check: fixedArgs(NumericType, NumericType, IntegerType), ret: StringType | MissingType},
 	GeoDistance: {check: fixedArgs(NumericType, NumericType, NumericType, NumericType), ret: FloatType | MissingType},
 
-	ObjectSize:    {check: checkObjectSize, ret: NumericType | MissingType},
-	ArraySize:     {check: checkArraySize, ret: NumericType | MissingType},
+	ObjectSize:    {check: checkObjectSize, ret: UnsignedType | MissingType},
+	ArraySize:     {check: checkArraySize, ret: UnsignedType | MissingType},
 	ArrayContains: {check: checkArrayContains, ret: LogicalType | MissingType},
-	ArrayPosition: {check: checkArrayPosition, ret: NumericType | MissingType},
+	ArrayPosition: {check: checkArrayPosition, ret: UnsignedType | MissingType},
 	ArraySum:      {check: checkArraySum, ret: FloatType | MissingType},
 
 	VectorInnerProduct:   {check: checkVectorOp("INNER_PRODUCT"), ret: FloatType | MissingType},
