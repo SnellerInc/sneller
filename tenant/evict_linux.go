@@ -30,10 +30,13 @@ func init() {
 
 func eventfd() (*os.File, error) {
 	const (
-		syseventfd2  = 290 // int eventfd(unsigned int count, int flags);
-		efdSemaphore = 1
+		syseventfd2 = 290 // int eventfd2(unsigned int count, int flags);
+		// these are from grep -r EFD_ /usr/include/
+		flagEFDCLOEXEC   = 02000000
+		flagEFDNONBLOCK  = 00004000
+		flagEFDSEMAPHORE = 1
 	)
-	rc, _, err := syscall.Syscall(syseventfd2, 0, syscall.O_NONBLOCK|syscall.O_CLOEXEC, 0)
+	rc, _, err := syscall.Syscall(syseventfd2, 0, flagEFDNONBLOCK|flagEFDCLOEXEC, 0)
 	if err != 0 {
 		return nil, err
 	}

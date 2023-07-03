@@ -385,6 +385,7 @@ func (c *child) directExec(t *plan.Tree, ofmt tnproto.OutputFormat, conn net.Con
 	}
 	defer c.unlock()
 	ret, err := buf.DirectExec(c.ctl, conn)
+	buf.Reset() // paranoia
 	bufPool.Put(buf)
 	return ret, err
 }
@@ -428,7 +429,7 @@ func (m *Manager) reap(c *child, pid procID) {
 	if err != nil {
 		panic(err)
 	}
-	_ = state // TODO: examine state
+	m.errorf("child pid %d exited: %s", c.proc.Pid, state)
 	m.lock.Lock()
 	// only delete this child if it
 	// precisely the same child instance
@@ -464,6 +465,7 @@ func (m *Manager) cachegc() {
 		m.cacheEvict()
 		_, err := m.eventfd.Read(buf[:])
 		if err != nil {
+			m.errorf("tenant.Manager.cachegc exiting due to eventfd error: %v", err)
 			// expected when m.eventfd.Close() is called elsewhere
 			return
 		}
@@ -476,7 +478,7 @@ func (m *Manager) gc() {
 	if interval == 0 {
 		return // no gc
 	}
-	ticker := time.NewTicker(interval)
+	ticker := time.NewTicker(interval / 2)
 	defer ticker.Stop()
 	// TODO: if the number of tenant processes
 	// is really large, we should probably use
@@ -487,7 +489,8 @@ func (m *Manager) gc() {
 		case <-ticker.C:
 			m.lock.Lock()
 			for id, c := range m.live {
-				if time.Since(c.touched) >= interval {
+				if idle := time.Since(c.touched); idle >= interval {
+					m.errorf("pid %d idle for %s; killing", c.proc.Pid, idle)
 					c.proc.Kill()
 					if !c.cg.IsZero() {
 						c.cg.Kill()
@@ -645,6 +648,7 @@ func (m *Manager) launch(id tnproto.ID, key tnproto.Key) (*child, error) {
 	}
 	avail := make(chan struct{}, 1)
 	avail <- struct{}{}
+	m.errorf("started child pid %d", cmd.Process.Pid)
 	return &child{
 		key:     key,
 		avail:   avail,
@@ -784,7 +788,6 @@ func (m *Manager) handleRemote(conn net.Conn) {
 		return
 	}
 	if id.IsZero() {
-		m.errorf("empty tenant proxy message (ping?)")
 		return // ping message; just expecting a Close()
 	}
 	c, err := m.get(id, key)

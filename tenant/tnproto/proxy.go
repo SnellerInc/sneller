@@ -157,14 +157,19 @@ type serializer struct {
 	prepared bool
 }
 
-func (s *serializer) prepare(t *plan.Tree, f OutputFormat) error {
-	s.prepared = false
+func (s *serializer) reset() {
+	s.mainbuf.Reset()
 	s.stbuf.Reset()
+	s.st.Reset()
+	s.pre = [8]byte{}
+	s.prepared = false
+}
+
+func (s *serializer) prepare(t *plan.Tree, f OutputFormat) error {
+	s.reset()
 	copy(s.pre[:], directmsg)
 	s.pre[7] = byte(f)
 	s.stbuf.UnsafeAppend(s.pre[:]) // we will frob this later
-	s.mainbuf.Reset()
-	s.st.Reset()
 	err := t.Encode(&s.mainbuf, &s.st)
 	if err != nil {
 		return err
@@ -206,9 +211,14 @@ type Buffer struct {
 	serializer
 }
 
-// Prepare prepepares a serialized query
-// in b. Each call to Prepare overwrites
-// the serialized query produced by
+// Reset resets a [Buffer] to a state equivalent
+// to the zero value of [b].
+func (b *Buffer) Reset() {
+	b.serializer.reset()
+}
+
+// Prepare resets the buffer and then prepepares a serialized query
+// in [b]. Each call to Prepare overwrites the serialized query produced by
 // preceding calls to Prepare.
 func (b *Buffer) Prepare(t *plan.Tree, f OutputFormat) error {
 	return b.prepare(t, f)

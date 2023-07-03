@@ -459,7 +459,7 @@ func TestExec(t *testing.T) {
 	if len(logged) > 0 {
 		lines := strings.Split(string(logged), "\n")
 		for i := range lines {
-			t.Error(lines[i])
+			t.Log(lines[i])
 		}
 	}
 	// wait for Serve() to return nil

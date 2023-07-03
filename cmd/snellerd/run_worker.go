@@ -80,13 +80,15 @@ func runWorker(args []string) {
 	}
 	f.Close()
 	uc, ok := conn.(*net.UnixConn)
-
-	evfd := os.NewFile(uintptr(*eventfd), "eventfd")
-
 	if !ok {
 		panic(fmt.Errorf("unexpected fd type %T", conn))
 	}
 	defer uc.Close()
+	err = syscall.SetNonblock(int(*eventfd), true)
+	if err != nil {
+		logger.Printf("warning: couldn't set eventfd to nonblocking: %s", err)
+	}
+	evfd := os.NewFile(uintptr(*eventfd), "eventfd")
 
 	run := sneller.TenantRunner{
 		Events: evfd,
