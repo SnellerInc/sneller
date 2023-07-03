@@ -88,7 +88,6 @@ func (m *Manager) sandboxStart(cmd *exec.Cmd, cg cgroup.Dir, cachedir string) er
 		"--",
 	}
 	cmd.ExtraFiles = append(cmd.ExtraFiles, blockr, infow)
-	args = append(args, cmd.Args...)
 	cmd.Path = bw
 	cmd.Args = append(args, cmd.Args...)
 	err = cmd.Start()
