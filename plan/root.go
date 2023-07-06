@@ -148,6 +148,11 @@ type RangeReader interface {
 	RangeReader(off, width int64) (io.ReadCloser, error)
 }
 
+type readCloser struct {
+	io.Reader
+	io.Closer
+}
+
 // SectionReader produces a reader which reads
 // from [src] at the given offset [off] limited
 // to [n] bytes.
@@ -158,17 +163,24 @@ type RangeReader interface {
 // does and may disappear in the future.
 func SectionReader(src io.ReadCloser, off, n int64) (io.ReadCloser, error) {
 	if rr, ok := src.(RangeReader); ok {
+		defer src.Close()
 		return rr.RangeReader(off, n)
 	}
 	if rd, ok := src.(io.ReaderAt); ok {
-		return io.NopCloser(io.NewSectionReader(rd, off, n)), nil
+		return &readCloser{
+			Reader: io.NewSectionReader(rd, off, n),
+			Closer: src,
+		}, nil
 	}
 	if src, ok := src.(io.ReadSeekCloser); ok {
 		_, err := src.Seek(off, io.SeekStart)
 		if err != nil {
 			return nil, err
 		}
-		return io.NopCloser(io.LimitReader(src, n)), nil
+		return &readCloser{
+			Reader: io.LimitReader(src, n),
+			Closer: src,
+		}, nil
 	}
 	return nil, fmt.Errorf("cannot make section reader from %T", src)
 }

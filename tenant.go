@@ -24,6 +24,7 @@ import (
 	"io/fs"
 	"os"
 
+	"github.com/SnellerInc/sneller/aws/s3"
 	"github.com/SnellerInc/sneller/db"
 	"github.com/SnellerInc/sneller/ion/blockfmt"
 	"github.com/SnellerInc/sneller/plan"
@@ -182,14 +183,23 @@ func (s *tenantSegment) ETag() string {
 	return base64.URLEncoding.EncodeToString(mem)
 }
 
-// Read implements dcache.Segment.Open
-func (s *tenantSegment) Open() (io.ReadCloser, error) {
-	f, err := s.fs.Open(s.desc.Path)
+func openFileRange(src fs.FS, desc *blockfmt.Descriptor, start, width int64) (io.ReadCloser, error) {
+	if s3fs, ok := src.(*db.S3FS); ok {
+		// just do one range get
+		f := s3.NewFile(s3fs.Key, s3fs.Bucket, desc.Path, desc.ETag, desc.Size)
+		return f.RangeReader(start, width)
+	}
+	f, err := src.Open(desc.Path)
 	if err != nil {
 		return nil, err
 	}
+	return plan.SectionReader(f, start, width)
+}
+
+// Read implements dcache.Segment.Open
+func (s *tenantSegment) Open() (io.ReadCloser, error) {
 	start, end := s.desc.Trailer.BlockRange(s.block)
-	return plan.SectionReader(f, start, end-start)
+	return openFileRange(s.fs, &s.desc, start, end-start)
 }
 
 func (s *tenantSegment) Ephemeral() bool {
