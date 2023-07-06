@@ -23,7 +23,9 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"syscall"
+	"time"
 
 	"github.com/SnellerInc/sneller"
 	"github.com/SnellerInc/sneller/db"
@@ -108,11 +110,31 @@ func runWorker(args []string) {
 			debug.Path(filepath.Join(cachedir, "debug.sock"), ok, logger)
 		}
 	}
+
+	// use a dedicated http client configuration for aws s3
+	// so that we can limit the number of idle conns;
+	// see #3055
+	s3client := &http.Client{
+		Transport: &http.Transport{
+			ResponseHeaderTimeout: 5 * time.Second,
+			MaxIdleConnsPerHost:   5,
+			MaxIdleConns:          runtime.GOMAXPROCS(0) * 2,
+			DisableCompression:    true,
+			DialContext: (&net.Dialer{
+				Timeout: 2 * time.Second,
+			}).DialContext,
+		},
+	}
 	initfs := func(d ion.Datum) (fs.FS, error) {
 		if testmode {
 			return db.DecodeClientFS(d)
 		}
-		return db.DecodeS3FS(d)
+		s3fs, err := db.DecodeS3FS(d)
+		if err != nil {
+			return nil, err
+		}
+		s3fs.Client = s3client
+		return s3fs, nil
 	}
 	srv := tnproto.Server{
 		Server: plan.Server{

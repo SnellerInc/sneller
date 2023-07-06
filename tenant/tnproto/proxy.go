@@ -346,22 +346,26 @@ func (s *Server) Serve(ctl *net.UnixConn) error {
 			_, err := io.ReadFull(ctl, tmp)
 			ctl.SetReadDeadline(time.Time{}) // clear deadline
 			if err != nil {
+				conn.Close()
 				return fmt.Errorf("tnproto.Serve: reading DirectExec message: %w", err)
 			}
 			st.Reset()
 			tmp, err = st.Unmarshal(tmp)
 			if err != nil {
+				conn.Close()
 				return fmt.Errorf("tnproto.Serve: decoding symbol table: %w", err)
 			}
 			t, err := plan.Decode(&st, tmp)
 			if err != nil {
 				err = errnow(ctl, err, tmp)
 				if err != nil {
+					conn.Close()
 					return err
 				}
 			} else {
 				errorWriter, err := detach(ctl)
 				if err != nil {
+					conn.Close()
 					return err
 				}
 				go s.serveDirect(t, ofmt.writer(conn), errorWriter)
@@ -453,6 +457,7 @@ func (s *Server) serveDirect(t *plan.Tree, conn io.WriteCloser, errpipe net.Conn
 		fs, err := s.InitFS(t.Data)
 		if err != nil {
 			sendError(conn, err)
+			conn.Close()
 			return
 		}
 		ep.FS = fs

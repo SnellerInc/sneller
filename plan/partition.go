@@ -243,6 +243,9 @@ func (s *server) Write(buf []byte) (int, error) {
 		return 0, fmt.Errorf("client disappeared (%s): %w", err, io.EOF)
 	}
 	n, err := s.pipe.Write(buf)
+	if err == nil && n < len(buf) {
+		err = io.ErrShortWrite
+	}
 	if err != nil {
 		s.writeFail = true
 		err = fmt.Errorf("client disappeared (%s): %w", err, io.EOF)
@@ -257,7 +260,10 @@ func (s *server) writeframe(f frame) error {
 	}
 	s.tmp = s.tmp[:framesize]
 	f.put(s.tmp)
-	_, err := s.pipe.Write(s.tmp)
+	n, err := s.pipe.Write(s.tmp)
+	if err == nil && n != len(s.tmp) {
+		err = io.ErrShortWrite
+	}
 	return err
 }
 
