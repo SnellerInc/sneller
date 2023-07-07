@@ -190,6 +190,23 @@ func (c *ClientFS) Encode(dst *ion.Buffer, st *ion.Symtab) error {
 	return nil
 }
 
+// OpenRange implements fsutil.OpenRangeFS.OpenRange
+func (c *ClientFS) OpenRange(name, etag string, off, width int64) (io.ReadCloser, error) {
+	info, _ := fs.Stat(c.DirFS, name)
+	url, err := c.url(name)
+	if err != nil {
+		return nil, err
+	}
+	return &clientFile{
+		info:     info,
+		url:      url,
+		hasrange: true,
+		etag:     etag,
+		start:    off,
+		end:      off + width,
+	}, nil
+}
+
 func (c *ClientFS) Open(name string) (fs.File, error) {
 	info, _ := fs.Stat(c.DirFS, name)
 	url, err := c.url(name)

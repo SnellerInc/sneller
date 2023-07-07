@@ -16,7 +16,6 @@ package plan
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"io/fs"
 	"runtime"
@@ -24,6 +23,7 @@ import (
 	"sync/atomic"
 
 	"github.com/SnellerInc/sneller/expr"
+	"github.com/SnellerInc/sneller/fsutil"
 	"github.com/SnellerInc/sneller/ion"
 	"github.com/SnellerInc/sneller/ion/blockfmt"
 	"github.com/SnellerInc/sneller/vm"
@@ -54,54 +54,38 @@ type FSRunner struct {
 func (r *FSRunner) Run(dst vm.QuerySink, src *Input, ep *ExecParams) error {
 	in := make([]readerInput, len(src.Descs))
 	for i := range src.Descs {
-		in[i].t = &src.Descs[i].Trailer
-		f, err := r.Open(src.Descs[i].Path)
-		if err != nil {
-			return err
-		}
-		defer f.Close()
-		in[i].src = f
-		in[i].size = src.Descs[i].Descriptor.Size
-		in[i].blocks = src.Descs[i].Blocks
+		in[i].desc = &src.Descs[i]
 	}
 	tbl := readerTable{
+		fs:     r.FS,
 		in:     in,
 		fields: src.Fields,
 	}
-	tbl.tryMap()
+	// fast-path for local files: use mmap for reading
+	if dfs, ok := r.FS.(*blockfmt.DirFS); ok {
+		for i := range in {
+			in[i].mapped, _ = dfs.Mmap(in[i].desc.Path)
+		}
+		defer func() {
+			for i := range in {
+				if in[i].mapped != nil {
+					dfs.Unmap(in[i].mapped)
+				}
+			}
+		}()
+	}
 	err := tbl.WriteChunks(dst, ep.Parallel)
-	tbl.unmap()
 	ep.Stats.Observe(&tbl)
 	return err
 }
 
-func (f *readerTable) tryMap() {
-	for i := range f.in {
-		mem, ok := mmap(f.in[i].src, f.in[i].size)
-		if ok {
-			f.in[i].mapped = mem
-		}
-	}
-}
-
-func (f *readerTable) unmap() {
-	for i := range f.in {
-		if f.in[i].mapped != nil {
-			unmap(f.in[i].mapped)
-			f.in[i].mapped = nil
-		}
-	}
-}
-
 type readerInput struct {
-	t      *blockfmt.Trailer
-	src    io.ReadCloser
-	blocks []int
-	size   int64
+	desc   *Descriptor
 	mapped []byte
 }
 
 type readerTable struct {
+	fs       fs.FS
 	in       []readerInput
 	fields   []string
 	idx, blk int
@@ -114,8 +98,8 @@ func (f *readerTable) next() (in *readerInput, off int) {
 	defer f.lock.Unlock()
 	for f.idx < len(f.in) {
 		in = &f.in[f.idx]
-		if f.blk < len(in.blocks) {
-			off = in.blocks[f.blk]
+		if f.blk < len(in.desc.Blocks) {
+			off = in.desc.Blocks[f.blk]
 			f.blk++
 			return in, off
 		}
@@ -138,53 +122,6 @@ type IfMatcher interface {
 	IfMatch(etag string) error
 }
 
-// RangeReader can be implemented by a file that
-// supports requesting a subrange of the file.
-// This can be more efficient than using utilies
-// from the io package to do the same thing, for
-// example due to the implementation's ability
-// to specify a "Range" HTTP header.
-type RangeReader interface {
-	RangeReader(off, width int64) (io.ReadCloser, error)
-}
-
-type readCloser struct {
-	io.Reader
-	io.Closer
-}
-
-// SectionReader produces a reader which reads
-// from [src] at the given offset [off] limited
-// to [n] bytes.
-//
-// This function is exported to support [Runner]
-// implementations that make use of optional
-// interfaces in the same way that [FSRunner]
-// does and may disappear in the future.
-func SectionReader(src io.ReadCloser, off, n int64) (io.ReadCloser, error) {
-	if rr, ok := src.(RangeReader); ok {
-		defer src.Close()
-		return rr.RangeReader(off, n)
-	}
-	if rd, ok := src.(io.ReaderAt); ok {
-		return &readCloser{
-			Reader: io.NewSectionReader(rd, off, n),
-			Closer: src,
-		}, nil
-	}
-	if src, ok := src.(io.ReadSeekCloser); ok {
-		_, err := src.Seek(off, io.SeekStart)
-		if err != nil {
-			return nil, err
-		}
-		return &readCloser{
-			Reader: io.LimitReader(src, n),
-			Closer: src,
-		}, nil
-	}
-	return nil, fmt.Errorf("cannot make section reader from %T", src)
-}
-
 func vmMalloc(size int) []byte {
 	if size > vm.PageSize {
 		panic("size > vm.PageSize")
@@ -202,19 +139,19 @@ func (f *readerTable) write(dst io.Writer) error {
 		if in == nil {
 			break
 		}
-		d.Set(in.t)
-		pos := in.t.Blocks[off].Offset
-		end := in.t.Offset
-		if off < len(in.t.Blocks)-1 {
-			end = in.t.Blocks[off+1].Offset
+		d.Set(&in.desc.Trailer)
+		pos := in.desc.Trailer.Blocks[off].Offset
+		end := in.desc.Trailer.Offset
+		if off < len(in.desc.Trailer.Blocks)-1 {
+			end = in.desc.Trailer.Blocks[off+1].Offset
 		}
-		size := int64(in.t.Blocks[off].Chunks) << d.BlockShift
+		size := int64(in.desc.Trailer.Blocks[off].Chunks) << d.BlockShift
 		var err error
 		if in.mapped != nil {
 			_, err = d.CopyBytes(dst, in.mapped[pos:end])
 		} else {
 			var src io.ReadCloser
-			src, err = SectionReader(in.src, pos, end-pos)
+			src, err = fsutil.OpenRange(f.fs, in.desc.Path, in.desc.ETag, pos, end-pos)
 			if err != nil {
 				return err
 			}

@@ -17,11 +17,89 @@ package fsutil
 import (
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"path"
 	"strconv"
 	"unicode/utf8"
 )
+
+// OpenRangeFS is an [fs.FS] that can open a byte range
+// of a named file at the same time that the etag of the
+// file is checked against the etag of the file currently
+// residing in the filesystem.
+type OpenRangeFS interface {
+	OpenRange(name, etag string, off, width int64) (io.ReadCloser, error)
+}
+
+// ETagFS is an [fs.FS] that is aware of ETags.
+type ETagFS interface {
+	// ETag should return the ETag for the file
+	// given by [name] with file info [info] that
+	// has been produced by an [fs.Stat] call.
+	ETag(name string, info fs.FileInfo) (string, error)
+}
+
+type readCloser struct {
+	io.Reader
+	io.Closer
+}
+
+// OpenRange tries to open the byte range given by [off] to [off+width]
+// of the file given by [name] with etag [etag].
+//
+// The argument [src] must be either an [OpenRangeFS] or an [ETagFS],
+// and the file returned by [src.Open] must be either an [io.ReaderAt]
+// or an [io.Seeker].
+func OpenRange(src fs.FS, name, etag string, off, width int64) (io.ReadCloser, error) {
+	if or, ok := src.(OpenRangeFS); ok {
+		return or.OpenRange(name, etag, off, width)
+	}
+	f, err := src.Open(name)
+	if err != nil {
+		return nil, err
+	}
+	if etag != "" {
+		etfs, ok := src.(ETagFS)
+		if !ok {
+			f.Close()
+			return nil, fmt.Errorf("fsutil.OpenRange: %T is not an ETagFS", src)
+		}
+		info, err := f.Stat()
+		if err != nil {
+			f.Close()
+			return nil, err
+		}
+		fetag, err := etfs.ETag(name, info)
+		if err != nil {
+			f.Close()
+			return nil, err
+		}
+		if etag != fetag {
+			f.Close()
+			return nil, fmt.Errorf("fsutil.OpenRange: ETag mismatch: %s != %s", etag, fetag)
+		}
+	}
+	if ra, ok := f.(io.ReaderAt); ok {
+		return &readCloser{
+			Reader: io.NewSectionReader(ra, off, width),
+			Closer: f,
+		}, nil
+	}
+	if seeker, ok := f.(io.Seeker); ok {
+		_, err := seeker.Seek(off, io.SeekStart)
+		if err != nil {
+			f.Close()
+			return nil, err
+		}
+		return &readCloser{
+			Reader: io.LimitReader(f, width),
+			Closer: f,
+		}, nil
+	}
+	f.Close()
+	return nil, fmt.Errorf("cannot OpenRange on fs %T file %T", src, f)
+}
 
 // VisitDirFS can be implemented by a file
 // system that provides an optimized

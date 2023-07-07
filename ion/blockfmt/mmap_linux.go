@@ -12,14 +12,37 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-//go:build !linux
+//go:build linux
 
-package plan
+package blockfmt
 
-import "io"
+import (
+	"fmt"
+	"math"
+	"os"
+	"syscall"
+)
 
-func mmap(src io.Reader, size int64) ([]byte, bool) {
-	return nil, false
+func mmap(fp string) ([]byte, error) {
+	f, err := os.Open(fp)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	info, err := f.Stat()
+	if err != nil {
+		return nil, err
+	}
+	if info.Size() > math.MaxInt {
+		return nil, fmt.Errorf("mapped file size %d exceeds max integer", info.Size())
+	}
+	mem, err := syscall.Mmap(int(f.Fd()), 0, int(info.Size()), syscall.PROT_READ, syscall.MAP_PRIVATE)
+	if err != nil {
+		return nil, err
+	}
+	return mem, nil
 }
 
-func unmap(buf []byte) {}
+func unmap(mem []byte) error {
+	return syscall.Munmap(mem)
+}

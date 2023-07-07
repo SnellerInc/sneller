@@ -126,6 +126,26 @@ func (b *BucketFS) Sub(dir string) (fs.FS, error) {
 	return b.sub(dir + "/"), nil
 }
 
+// OpenRange produces an [io.ReadCloser] that reads data from
+// the file given by [name] with the etag given by [etag]
+// starting at byte [start] and continuing for [width] bytes.
+// If [etag] does not match the ETag of the object, then
+// [ErrETagChanged] will be returned.
+func (b *BucketFS) OpenRange(name, etag string, start, width int64) (io.ReadCloser, error) {
+	name = path.Clean(name)
+	if !fs.ValidPath(name) || name == "." {
+		return nil, badpath("OpenRange", name)
+	}
+	r := Reader{
+		Client: b.Client,
+		Key:    b.Key,
+		Bucket: b.Bucket,
+		Path:   name,
+		ETag:   etag,
+	}
+	return r.RangeReader(start, width)
+}
+
 // Open implements fs.FS.Open
 //
 // The returned fs.File will be either a *File

@@ -38,6 +38,7 @@ import (
 // that is required for reading inputs.
 type InputFS interface {
 	fs.FS
+	fsutil.ETagFS
 
 	// Prefix should return a string
 	// that is prepended to filesystem
@@ -47,12 +48,6 @@ type InputFS interface {
 	//   s3://bucket/
 	// as its prefix.
 	Prefix() string
-
-	// ETag should return the ETag
-	// for a given file. ETag should
-	// be implemented for *at least*
-	// ordinary files.
-	ETag(fullpath string, info fs.FileInfo) (string, error)
 }
 
 // UploadFS describes the FS implementation
@@ -140,6 +135,21 @@ func hashFile(r io.Reader) (string, error) {
 		return "", err
 	}
 	return "\"b2sum:" + base32.StdEncoding.EncodeToString(h.Sum(nil)) + `"`, nil
+}
+
+// Mmap maps the file given by [fullpath].
+// The caller must ensure that the returned slice,
+// if non-nil, is unmapped with [Unmap].
+// NOTE: Mmap is not supported on all platforms.
+// The caller should be prepared to handle the error and
+// fall back to ordinary [Open] and [Read] calls.
+func (d *DirFS) Mmap(fullpath string) ([]byte, error) {
+	return mmap(filepath.Join(d.Root, filepath.FromSlash(fullpath)))
+}
+
+// Unmap unmaps a buffer returned by [Mmap].
+func (d *DirFS) Unmap(buf []byte) error {
+	return unmap(buf)
 }
 
 // Prefix implements InputFS.Prefix

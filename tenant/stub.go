@@ -30,13 +30,14 @@ import (
 	"time"
 
 	"github.com/SnellerInc/sneller/cgroup"
+	"github.com/SnellerInc/sneller/ion/blockfmt"
 	"github.com/SnellerInc/sneller/plan"
 	"github.com/SnellerInc/sneller/tenant/dcache"
 	"github.com/SnellerInc/sneller/tenant/tnproto"
 	"github.com/SnellerInc/sneller/vm"
 )
 
-var testdata = os.DirFS("../testdata")
+var testdata = blockfmt.NewDirFS("../testdata")
 
 type Env struct {
 	cache   *dcache.Cache

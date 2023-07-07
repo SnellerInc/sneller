@@ -22,6 +22,7 @@ import (
 
 // we can't do this inside the s3 package
 // due to circular imports, but we can do it here:
+var _ fsutil.OpenRangeFS = &s3.BucketFS{}
 var _ fsutil.VisitDirFS = &s3.BucketFS{}
 var _ fsutil.VisitDirFS = &s3.Prefix{}
 var _ fsutil.NamedFile = &s3.File{}
