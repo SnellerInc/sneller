@@ -23,6 +23,7 @@ import (
 	"io"
 	"io/fs"
 	"os"
+	"runtime/trace"
 
 	"github.com/SnellerInc/sneller/db"
 	"github.com/SnellerInc/sneller/fsutil"
@@ -78,11 +79,15 @@ func (r *TenantRunner) Run(dst vm.QuerySink, in *plan.Input, ep *plan.ExecParams
 	if !CanVMOpen {
 		panic("shouldn't have called Run")
 	}
+	ctx, task := trace.NewTask(ctx, "run-segments")
+	defer task.End()
+	trace.Log(ctx, "query-id", ep.Plan.ID)
 	segs := make([]dcache.Segment, 0, in.Blocks())
 	for i := range in.Descs {
 		for _, off := range in.Descs[i].Blocks {
 			seg := &tenantSegment{
 				fs:     ep.FS,
+				ctx:    ctx, // inherit current task
 				desc:   in.Descs[i].Descriptor,
 				block:  off,
 				fields: in.Fields,
@@ -106,6 +111,7 @@ func (r *TenantRunner) Run(dst vm.QuerySink, in *plan.Input, ep *plan.ExecParams
 // tenantSegment implements dcache.Segment
 type tenantSegment struct {
 	fs     fs.FS
+	ctx    context.Context
 	desc   blockfmt.Descriptor
 	block  int
 	fields []string
@@ -185,6 +191,9 @@ func (s *tenantSegment) ETag() string {
 
 // Read implements dcache.Segment.Open
 func (s *tenantSegment) Open() (io.ReadCloser, error) {
+	// NOTE: this region only times the time-to-first-byte,
+	// not the additional latency of actuall reading the bytes
+	defer trace.StartRegion(s.ctx, "cache-fill-open").End()
 	start, end := s.desc.Trailer.BlockRange(s.block)
 	name := s.desc.Path
 	etag := s.desc.ETag
@@ -204,6 +213,7 @@ func vmMalloc(size int) []byte {
 
 // Decode implements dcache.Segment.Decode
 func (s *tenantSegment) Decode(dst io.Writer, src []byte) error {
+	defer trace.StartRegion(s.ctx, "decode-segment").End()
 	var dec blockfmt.Decoder
 	dec.Malloc = vmMalloc
 	dec.Free = vm.Free

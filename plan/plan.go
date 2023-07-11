@@ -1250,6 +1250,8 @@ func (t *Tree) Encode(dst *ion.Buffer, st *ion.Symtab) error {
 
 func (t *Tree) encode(dst *ion.Buffer, st *ion.Symtab, ep *ExecParams) error {
 	dst.BeginStruct(-1)
+	dst.BeginField(st.Intern("id"))
+	dst.WriteString(t.ID)
 	dst.BeginField(st.Intern("inputs"))
 	dst.BeginList(-1)
 	for i := range t.Inputs {

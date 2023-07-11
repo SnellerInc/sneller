@@ -38,6 +38,10 @@ func DecodeDatum(v ion.Datum) (*Tree, error) {
 	t := &Tree{}
 	err := v.UnpackStruct(func(f ion.Field) error {
 		switch f.Label {
+		case "id":
+			var err error
+			t.ID, err = f.String()
+			return err
 		case "inputs":
 			return f.UnpackList(func(v ion.Datum) error {
 				t.Inputs = append(t.Inputs, &Input{})

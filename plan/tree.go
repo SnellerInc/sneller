@@ -40,6 +40,8 @@ type Table struct {
 // or NewSplit and it can be executed
 // with Exec or Transport.Exec.
 type Tree struct {
+	// ID is an opaque ID assigned to this query by the caller.
+	ID string
 	// Inputs is the global list of inputs for the tree.
 	// Each [Node.Input] references an element of this array.
 	//

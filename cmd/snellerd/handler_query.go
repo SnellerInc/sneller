@@ -195,8 +195,8 @@ func (s *server) queryHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	endPoints := s.peers.Get()
 
-	queryID := uuid.New()
-	w.Header().Add("X-Sneller-Query-ID", queryID.String())
+	queryID := uuid.New().String()
+	w.Header().Add("X-Sneller-Query-ID", queryID)
 
 	var tree *plan.Tree
 	start = time.Now()
@@ -214,6 +214,7 @@ func (s *server) queryHandler(w http.ResponseWriter, r *http.Request) {
 		planError(w, err)
 		return
 	}
+	tree.ID = queryID
 	// TODO: clean this up
 	if enc, ok := planEnv.Root.(interface {
 		Encode(*ion.Buffer, *ion.Symtab) error

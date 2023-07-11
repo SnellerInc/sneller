@@ -144,6 +144,7 @@ func (u *UnionMap) exec(dst vm.QuerySink, src *Input, ep *ExecParams) error {
 			// is approximately true
 			subep := ep.clone()
 			subep.Plan = &Tree{
+				ID:     ep.Plan.ID,
 				Inputs: in[i : i+1],
 				Data:   ep.Plan.Data,
 				Root: Node{

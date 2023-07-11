@@ -1934,6 +1934,7 @@ func testSplitEquivalent(t *testing.T, text string, e *testenv, expected []strin
 	var ib ion.Buffer
 	var st ion.Symtab
 
+	tree.ID = "my-random-tree-id"
 	// Encode+Decode the plan, just to
 	// be certain that the serialization process
 	// is behavior-preserving
@@ -1953,6 +1954,9 @@ func testSplitEquivalent(t *testing.T, text string, e *testenv, expected []strin
 	if astr != bstr {
 		t.Errorf("old plan: %s", tree)
 		t.Fatalf("new plan: %s", newtree)
+	}
+	if newtree.ID != tree.ID {
+		t.Errorf("tree ID %s != %s", newtree, tree)
 	}
 
 	t.Logf("plan:\n%s", tree.String())
