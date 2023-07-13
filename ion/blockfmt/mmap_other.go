@@ -18,12 +18,11 @@ package blockfmt
 
 import (
 	"errors"
-	"io"
 )
 
 var errUnimplemented = errors.New("mmap not implemented on this platform")
 
-func mmap(src io.Reader, size int64) ([]byte, error) {
+func mmap(_ string) ([]byte, error) {
 	return nil, errUnimplemented
 }
 
