@@ -60,7 +60,7 @@ type HashEngine ExpandedKey128Quad
 type WideHash [2 * 4]uint64
 
 type Hashable interface {
-	constraints.Integer
+	constraints.Integer | WideHash
 }
 
 //go:nosplit
@@ -83,6 +83,16 @@ func HashSlice[T Hashable](e *HashEngine, in []T) uint64 {
 func HashWideSlice[T Hashable](e *HashEngine, in []T) WideHash {
 	hdr := (*reflect.SliceHeader)(unsafe.Pointer(&in)) // Let the empty slice case be handled in assembly
 	return aesHashWide((*ExpandedKey128Quad)(e), (*byte)(unsafe.Pointer(hdr.Data)), hdr.Len*int(unsafe.Sizeof(in[0])))
+}
+
+// HashCombine combines multiple uint64 hash values into a new one
+func HashCombine(e *HashEngine, hashes ...uint64) uint64 {
+	return HashSlice(e, hashes)
+}
+
+// HashCombineWide combines multiple WideHash values into a new one
+func HashCombineWide(e *HashEngine, hashes ...WideHash) WideHash {
+	return HashWideSlice(e, hashes)
 }
 
 // Initialize initializes the hash engine e according to the provided initialization key quad
