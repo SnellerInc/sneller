@@ -233,6 +233,12 @@ func TestDecodePart(t *testing.T) {
 			selection: []string{"x"},
 			decomps:   1,
 		},
+		{
+			input:     `{"vec": [-1, 0, 1, 3]}`,
+			output:    `[{"vec": [-1, 0, 1, 3]}]`,
+			selection: []string{"vec"},
+			decomps:   1,
+		},
 	}
 	for i := range cases {
 		in := cases[i].input

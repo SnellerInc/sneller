@@ -44,6 +44,22 @@ func UnsafeWriteTag(dst []byte, tag Type, size uint) int {
 	return 1 + UnsafeWriteUVarint(dst[1:], size)
 }
 
+// UnsafeAppendTag appends a type+length tag of the
+// given type and size to dst and returns the extended buffer.
+func UnsafeAppendTag(dst []byte, tag Type, size uint) []byte {
+	if size < 14 {
+		return append(dst, byte(tag<<4)|byte(size))
+	}
+	dst = append(dst, byte(tag<<4)|0xe)
+	uv := Uvsize(size)
+	for uv > 1 {
+		uv--
+		shift := uv * 7
+		dst = append(dst, byte((size>>shift)&0x7f))
+	}
+	return append(dst, byte(size&0x7f)|0x80)
+}
+
 // NopPadding writes a header for Ion NOP operation for given padsize.
 // It returns the size of header and the number of pad bytes that
 // have to be written after the header.

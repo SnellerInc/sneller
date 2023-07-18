@@ -20,6 +20,7 @@ import (
 	"runtime"
 	"sync"
 
+	"github.com/SnellerInc/sneller/ion"
 	"github.com/SnellerInc/sneller/ion/zion/iguana"
 	"github.com/klauspost/compress/zstd"
 )
@@ -146,7 +147,10 @@ func put24(i int, dst []byte) {
 }
 
 const (
+	// regular iguana compression:
 	iguanaUnspecialized = iota
+	// uvarint list lengths + identity-encoded int8 values:
+	iguanaRawInt8Vector
 	// specialized encoding: for future use
 )
 
@@ -163,6 +167,16 @@ func (a BucketAlgo) Compress(hints *BucketHints, src, dst []byte) ([]byte, error
 	var err error
 	switch a {
 	case CompressIguanaV0Specialized:
+		if hints != nil && hints.Elements > 0 &&
+			hints.TypeSet == uint16(1)<<ion.ListType &&
+			hints.ListTypeSet == (uint16(1)<<ion.IntType)|(uint16(1)<<ion.UintType) {
+			out := append(dst, iguanaRawInt8Vector)
+			out, ok := tryInt8Vector(src, out)
+			if ok {
+				dst = out
+				break
+			}
+		}
 		// TODO: use hints
 		dst = append(dst, iguanaUnspecialized) // leading null byte
 		fallthrough
@@ -222,14 +236,19 @@ func (a BucketAlgo) Decompress(src, dst []byte) ([]byte, int, error) {
 	case CompressZstd:
 		out, err = dec.DecodeAll(src[3:size], dst)
 	case CompressIguanaV0Specialized:
-		// for now there are no specializations,
-		// so we just expect one constant byte:
-		if size < 1 || src[3] != iguanaUnspecialized {
-			return nil, 0, fmt.Errorf("bad iguana/specialized bucket encoding")
+		if size < 4 {
+			return nil, 0, fmt.Errorf("size %d does not fit bucket specialization byte", size)
 		}
-		dec := iguanaDec()
-		out, err = dec.DecompressTo(dst, src[4:size])
-		dropIguana(dec)
+		switch src[3] {
+		default:
+			return nil, 0, fmt.Errorf("bad iguana/specialized bucket encoding %d", src[3])
+		case iguanaRawInt8Vector:
+			out, err = decodeInt8Vec(dst, src[4:size])
+		case iguanaUnspecialized:
+			dec := iguanaDec()
+			out, err = dec.DecompressTo(dst, src[4:size])
+			dropIguana(dec)
+		}
 	case CompressIguanaV0:
 		dec := iguanaDec()
 		out, err = dec.DecompressTo(dst, src[3:size])

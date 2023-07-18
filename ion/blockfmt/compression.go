@@ -596,7 +596,7 @@ func (z *zionDecompressor) Decompress(src, dst []byte) error {
 
 func getAlgo(algo string) decompressor {
 	switch algo {
-	case "zion", "zion+zstd", "zion+iguana_v0":
+	case "zion", "zion+zstd", "zion+iguana_v0", "zion+iguana_v0/specialized":
 		d := zionDecompPool.Get().(*zion.Decoder)
 		d.Reset()
 		return &zionDecompressor{d}
