@@ -12,8 +12,8 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-//go:build linux || netbsd || openbsd || solaris || freebsd || aix || darwin || dragonfly
-// +build linux netbsd openbsd solaris freebsd aix darwin dragonfly
+//go:build linux || netbsd || openbsd || solaris || freebsd || aix || dragonfly
+// +build linux netbsd openbsd solaris freebsd aix dragonfly
 
 // Package usock implements a wrapper
 // around the unix(7) SCM_RIGHTS API,
