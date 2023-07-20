@@ -292,6 +292,14 @@ func (q *rowSplitter) EndSegment() {
 	// interleaved queries can use the same vm buffers
 	q.symbolized = false
 	q.shared.Reset()
+	// similarly, we can free the vmcache:
+	if q.vmcache != nil {
+		Free(q.vmcache)
+		q.vmcache = nil
+		if q.zstate != nil {
+			q.zstate.buckets.Decompressed = nil
+		}
+	}
 	for rc := q.rowConsumer; rc != nil; rc = rc.next() {
 		if esw, ok := rc.(EndSegmentWriter); ok {
 			esw.EndSegment()
