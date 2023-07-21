@@ -34,6 +34,7 @@ import (
 	"github.com/SnellerInc/sneller/date"
 	"github.com/SnellerInc/sneller/expr"
 	"github.com/SnellerInc/sneller/expr/partiql"
+	"github.com/SnellerInc/sneller/ints"
 	"github.com/SnellerInc/sneller/ion"
 	"github.com/SnellerInc/sneller/ion/blockfmt"
 	"github.com/SnellerInc/sneller/vm"
@@ -116,10 +117,7 @@ func (t *testenv) str2json(arg expr.Node) (*Input, error) {
 		return nil, err
 	}
 	tr := c.Trailer()
-	blocks := make([]int, len(tr.Blocks))
-	for i := range blocks {
-		blocks[i] = i
-	}
+	blocks := ints.Intervals{{0, len(tr.Blocks)}}
 	return &Input{
 		Descs: []Descriptor{{
 			Descriptor: blockfmt.Descriptor{
@@ -164,10 +162,7 @@ func (t *testenv) Stat(tbl expr.Node, h *Hints) (*Input, error) {
 	if err != nil {
 		return nil, fmt.Errorf("reading trailer: %v", err)
 	}
-	blocks := make([]int, len(tr.Blocks))
-	for i := range blocks {
-		blocks[i] = i
-	}
+	blocks := ints.Intervals{{0, len(tr.Blocks)}}
 	return &Input{
 		Descs: []Descriptor{{
 			Descriptor: blockfmt.Descriptor{

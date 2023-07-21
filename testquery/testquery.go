@@ -35,6 +35,7 @@ import (
 	"github.com/SnellerInc/sneller/date"
 	"github.com/SnellerInc/sneller/expr"
 	"github.com/SnellerInc/sneller/expr/partiql"
+	"github.com/SnellerInc/sneller/ints"
 	"github.com/SnellerInc/sneller/ion"
 	"github.com/SnellerInc/sneller/ion/blockfmt"
 	"github.com/SnellerInc/sneller/ion/zion"
@@ -46,14 +47,14 @@ import (
 )
 
 type Input interface {
-	Run(dst vm.QuerySink, blocks []int, parallel int) error
+	Run(dst vm.QuerySink, blocks ints.Intervals, parallel int) error
 	Size() int64
 	Trailer() *blockfmt.Trailer
 }
 
 type RawInput []byte
 
-func (b RawInput) Run(dst vm.QuerySink, _ []int, parallel int) error {
+func (b RawInput) Run(dst vm.QuerySink, _ ints.Intervals, parallel int) error {
 	return vm.BufferTable([]byte(b), len(b)).WriteChunks(dst, parallel)
 }
 
@@ -99,12 +100,12 @@ func (c *chunksInput) Trailer() *blockfmt.Trailer {
 	return tr
 }
 
-func (c *chunksInput) writeZion(dst io.WriteCloser, blocks []int) error {
+func (c *chunksInput) writeZion(dst io.WriteCloser, blocks ints.Intervals) error {
 	var mem []byte
-	var err error
 	var enc zion.Encoder
-	for i := range blocks {
-		mem, err = enc.Encode(c.chunks[blocks[i]], mem[:0])
+	err := blocks.EachErr(func(blk int) error {
+		var err error
+		mem, err = enc.Encode(c.chunks[blk], mem[:0])
 		if err != nil {
 			dst.Close()
 			return err
@@ -114,6 +115,10 @@ func (c *chunksInput) writeZion(dst io.WriteCloser, blocks []int) error {
 			dst.Close()
 			return err
 		}
+		return nil
+	})
+	if err != nil {
+		return err
 	}
 	if shw, ok := dst.(vm.EndSegmentWriter); ok {
 		shw.EndSegment()
@@ -124,7 +129,7 @@ func (c *chunksInput) writeZion(dst io.WriteCloser, blocks []int) error {
 	return dst.Close()
 }
 
-func (c *chunksInput) Run(dst vm.QuerySink, blocks []int, _ int) error {
+func (c *chunksInput) Run(dst vm.QuerySink, blocks ints.Intervals, _ int) error {
 	w, err := dst.Open()
 	if err != nil {
 		return err
@@ -134,8 +139,8 @@ func (c *chunksInput) Run(dst vm.QuerySink, blocks []int, _ int) error {
 	}
 	tmp := vm.Malloc()
 	defer vm.Free(tmp)
-	for i := range blocks {
-		buf := c.chunks[blocks[i]]
+	err = blocks.EachErr(func(blk int) error {
+		buf := c.chunks[blk]
 		if len(buf) > len(tmp) {
 			return fmt.Errorf("chunk len %d > PageSize", len(buf))
 		}
@@ -151,6 +156,10 @@ func (c *chunksInput) Run(dst vm.QuerySink, blocks []int, _ int) error {
 			}
 			return err
 		}
+		return nil
+	})
+	if err != nil {
+		return err
 	}
 	if shw, ok := w.(vm.EndSegmentWriter); ok {
 		shw.EndSegment()
@@ -263,9 +272,9 @@ func (p *parallelInput) partition(parts []string) (*rowgroup, error) {
 	return rg, nil
 }
 
-func (p *parallelInput) Run(dst vm.QuerySink, blocks []int, _ int) error {
-	outputs := make([]io.WriteCloser, len(blocks))
-	errlist := make([]error, len(blocks))
+func (p *parallelInput) Run(dst vm.QuerySink, blocks ints.Intervals, _ int) error {
+	outputs := make([]io.WriteCloser, blocks.Len())
+	errlist := make([]error, blocks.Len())
 	var wg sync.WaitGroup
 	for i := range outputs {
 		w, err := dst.Open()
@@ -275,7 +284,8 @@ func (p *parallelInput) Run(dst vm.QuerySink, blocks []int, _ int) error {
 		outputs[i] = w
 	}
 	wg.Add(len(outputs))
-	for i := range outputs {
+	i := 0
+	blocks.Each(func(blk int) {
 		go func(w io.WriteCloser, mem []byte, errp *error) {
 			defer wg.Done()
 			seterr := func(e error) {
@@ -307,8 +317,9 @@ func (p *parallelInput) Run(dst vm.QuerySink, blocks []int, _ int) error {
 				return
 			}
 			seterr(w.Close())
-		}(outputs[i], p.chunks[blocks[i]], &errlist[i])
-	}
+		}(outputs[i], p.chunks[blk], &errlist[i])
+		i++
+	})
 	wg.Wait()
 	for i := range errlist {
 		if errlist[i] != nil {
@@ -358,13 +369,10 @@ func (e *Env) Stat(t expr.Node, h *plan.Hints) (*plan.Input, error) {
 	if !ok {
 		return nil, fmt.Errorf("invalid input %q", string(id))
 	}
-	var blocks []int
+	var blocks ints.Intervals
 	tr := in.Trailer()
 	if tr != nil {
-		blocks = make([]int, len(tr.Blocks))
-		for i := range blocks {
-			blocks[i] = i
-		}
+		blocks = ints.Intervals{{0, len(tr.Blocks)}}
 	}
 	var fields []string
 	if !h.AllFields {

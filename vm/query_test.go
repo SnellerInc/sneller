@@ -29,6 +29,7 @@ import (
 
 	"github.com/SnellerInc/sneller/expr"
 	"github.com/SnellerInc/sneller/expr/partiql"
+	"github.com/SnellerInc/sneller/ints"
 	"github.com/SnellerInc/sneller/ion"
 	"github.com/SnellerInc/sneller/ion/blockfmt"
 	"github.com/SnellerInc/sneller/ion/versify"
@@ -57,7 +58,7 @@ type benchTable struct {
 	count int64
 }
 
-func (b *benchTable) Run(dst vm.QuerySink, _ []int, parallel int) error {
+func (b *benchTable) Run(dst vm.QuerySink, _ ints.Intervals, parallel int) error {
 	return b.WriteChunks(dst, parallel)
 }
 

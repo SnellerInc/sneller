@@ -33,6 +33,7 @@ import (
 	"github.com/SnellerInc/sneller/db"
 	"github.com/SnellerInc/sneller/expr"
 	"github.com/SnellerInc/sneller/expr/partiql"
+	"github.com/SnellerInc/sneller/ints"
 	"github.com/SnellerInc/sneller/ion"
 	"github.com/SnellerInc/sneller/ion/blockfmt"
 	"github.com/SnellerInc/sneller/plan"
@@ -68,10 +69,7 @@ func readFile(root fs.FS, args []expr.Node, hint *plan.Hints) (*plan.Input, erro
 	if err != nil {
 		return nil, err
 	}
-	blocks := make([]int, len(tr.Blocks))
-	for i := range blocks {
-		blocks[i] = i
-	}
+	blocks := ints.Intervals{{0, len(tr.Blocks)}}
 	ret := &plan.Input{
 		Descs: []plan.Descriptor{{
 			Descriptor: blockfmt.Descriptor{

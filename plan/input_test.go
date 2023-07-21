@@ -19,6 +19,7 @@ import (
 	"testing"
 
 	"github.com/SnellerInc/sneller/date"
+	"github.com/SnellerInc/sneller/ints"
 	"github.com/SnellerInc/sneller/ion"
 	"github.com/SnellerInc/sneller/ion/blockfmt"
 )
@@ -46,19 +47,19 @@ func TestInputFilter(t *testing.T) {
 				ObjectInfo: blockfmt.ObjectInfo{Path: "path/0"},
 				Trailer:    t0,
 			},
-			Blocks: []int{0},
+			Blocks: ints.Intervals{{0, 1}},
 		}, {
 			Descriptor: blockfmt.Descriptor{
 				ObjectInfo: blockfmt.ObjectInfo{Path: "path/1"},
 				Trailer:    t1,
 			},
-			Blocks: []int{0},
+			Blocks: ints.Intervals{{0, 1}},
 		}, {
 			Descriptor: blockfmt.Descriptor{
 				ObjectInfo: blockfmt.ObjectInfo{Path: "path/2"},
 				Trailer:    t2,
 			},
-			Blocks: []int{0},
+			Blocks: ints.Intervals{{0, 1}},
 		}},
 	}
 	got := orig.Filter(exp)

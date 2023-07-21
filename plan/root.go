@@ -24,6 +24,7 @@ import (
 
 	"github.com/SnellerInc/sneller/expr"
 	"github.com/SnellerInc/sneller/fsutil"
+	"github.com/SnellerInc/sneller/ints"
 	"github.com/SnellerInc/sneller/ion"
 	"github.com/SnellerInc/sneller/ion/blockfmt"
 	"github.com/SnellerInc/sneller/vm"
@@ -54,7 +55,8 @@ type FSRunner struct {
 func (r *FSRunner) Run(dst vm.QuerySink, src *Input, ep *ExecParams) error {
 	in := make([]readerInput, len(src.Descs))
 	for i := range src.Descs {
-		in[i].desc = &src.Descs[i]
+		in[i].desc = &src.Descs[i].Descriptor
+		in[i].blks = src.Descs[i].Blocks.Clone()
 	}
 	tbl := readerTable{
 		fs:     r.FS,
@@ -80,17 +82,18 @@ func (r *FSRunner) Run(dst vm.QuerySink, src *Input, ep *ExecParams) error {
 }
 
 type readerInput struct {
-	desc   *Descriptor
+	desc   *blockfmt.Descriptor
+	blks   ints.Intervals
 	mapped []byte
 }
 
 type readerTable struct {
-	fs       fs.FS
-	in       []readerInput
-	fields   []string
-	idx, blk int
-	lock     sync.Mutex
-	scanned  int64
+	fs      fs.FS
+	in      []readerInput
+	fields  []string
+	idx     int
+	lock    sync.Mutex
+	scanned int64
 }
 
 func (f *readerTable) next() (in *readerInput, off int) {
@@ -98,12 +101,10 @@ func (f *readerTable) next() (in *readerInput, off int) {
 	defer f.lock.Unlock()
 	for f.idx < len(f.in) {
 		in = &f.in[f.idx]
-		if f.blk < len(in.desc.Blocks) {
-			off = in.desc.Blocks[f.blk]
-			f.blk++
+		if off, ok := in.blks.Next(); ok {
 			return in, off
 		}
-		f.idx, f.blk = f.idx+1, 0
+		f.idx = f.idx + 1
 	}
 	return nil, 0
 }

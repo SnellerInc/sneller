@@ -27,6 +27,7 @@ import (
 
 	"github.com/SnellerInc/sneller/compr"
 	"github.com/SnellerInc/sneller/date"
+	"github.com/SnellerInc/sneller/ints"
 	"github.com/SnellerInc/sneller/ion"
 
 	"golang.org/x/crypto/blake2b"
@@ -803,27 +804,27 @@ func (idx *Index) Objects() int {
 //
 // Note that the returned slices may be empty if
 // the index has no contents.
-func (idx *Index) Descs(src InputFS, keep *Filter) ([]Descriptor, [][]int, int64, error) {
+func (idx *Index) Descs(src InputFS, keep *Filter) ([]Descriptor, []ints.Intervals, int64, error) {
 	var out []Descriptor
-	var blocks [][]int
+	var blocks []ints.Intervals
 	var size int64
 	add := func(b Descriptor) {
-		var blks []int
+		var blks ints.Intervals
 		visit := func(start, end int) {
 			if start == end {
 				return
 			}
 			for i := start; i < end; i++ {
 				size += int64(b.Trailer.Blocks[i].Chunks << b.Trailer.BlockShift)
-				blks = append(blks, i)
 			}
+			blks = append(blks, ints.Interval{start, end})
 		}
 		if keep == nil {
 			visit(0, len(b.Trailer.Blocks))
 		} else {
 			keep.Visit(&b.Trailer.Sparse, visit)
 		}
-		if len(blks) > 0 {
+		if !blks.Empty() {
 			out = append(out, b)
 			blocks = append(blocks, blks)
 		}

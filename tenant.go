@@ -84,7 +84,7 @@ func (r *TenantRunner) Run(dst vm.QuerySink, in *plan.Input, ep *plan.ExecParams
 	trace.Log(ctx, "query-id", ep.Plan.ID)
 	segs := make([]dcache.Segment, 0, in.Blocks())
 	for i := range in.Descs {
-		for _, off := range in.Descs[i].Blocks {
+		in.Descs[i].Blocks.Each(func(off int) {
 			seg := &tenantSegment{
 				fs:     ep.FS,
 				ctx:    ctx, // inherit current task
@@ -93,7 +93,7 @@ func (r *TenantRunner) Run(dst vm.QuerySink, in *plan.Input, ep *plan.ExecParams
 				fields: in.Fields,
 			}
 			segs = append(segs, seg)
-		}
+		})
 	}
 	if len(segs) == 0 {
 		return nil

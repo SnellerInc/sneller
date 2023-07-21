@@ -22,6 +22,7 @@ import (
 	"github.com/SnellerInc/sneller/date"
 	"github.com/SnellerInc/sneller/expr"
 	"github.com/SnellerInc/sneller/expr/partiql"
+	"github.com/SnellerInc/sneller/ints"
 	"github.com/SnellerInc/sneller/ion"
 	"github.com/SnellerInc/sneller/ion/blockfmt"
 	"github.com/SnellerInc/sneller/vm"
@@ -74,7 +75,7 @@ func (b *benchenv) Stat(_ expr.Node, _ *Hints) (*Input, error) {
 	// produce N fake inputs with data that is
 	// reasonably sized
 	list := make([]Descriptor, b.blocks)
-	blocks := []int{0}
+	blocks := ints.Intervals{{0, 1}}
 	for i := range list {
 		list[i] = Descriptor{
 			Descriptor: blockfmt.Descriptor{

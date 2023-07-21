@@ -37,6 +37,7 @@ import (
 	"github.com/SnellerInc/sneller/date"
 	"github.com/SnellerInc/sneller/expr"
 	"github.com/SnellerInc/sneller/expr/partiql"
+	"github.com/SnellerInc/sneller/ints"
 	"github.com/SnellerInc/sneller/ion"
 	"github.com/SnellerInc/sneller/ion/blockfmt"
 	"github.com/SnellerInc/sneller/plan"
@@ -77,7 +78,7 @@ func (s stubenv) Stat(tbl expr.Node, _ *plan.Hints) (*plan.Input, error) {
 					Descriptor: blockfmt.Descriptor{
 						ObjectInfo: blockfmt.ObjectInfo{Path: b.Text},
 					},
-					Blocks: []int{0},
+					Blocks: ints.Intervals{{0, 1}},
 				}},
 			}, nil
 		default:
@@ -104,10 +105,7 @@ func (s stubenv) Stat(tbl expr.Node, _ *plan.Hints) (*plan.Input, error) {
 	if err != nil {
 		return nil, fmt.Errorf("reading trailer: %v", err)
 	}
-	blocks := make([]int, len(tr.Blocks))
-	for i := range blocks {
-		blocks[i] = i
-	}
+	blocks := ints.Intervals{{0, len(tr.Blocks)}}
 	return &plan.Input{
 		Descs: []plan.Descriptor{{
 			Descriptor: blockfmt.Descriptor{

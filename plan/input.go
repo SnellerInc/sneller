@@ -20,6 +20,7 @@ import (
 	"sync"
 
 	"github.com/SnellerInc/sneller/expr"
+	"github.com/SnellerInc/sneller/ints"
 	"github.com/SnellerInc/sneller/ion"
 	"github.com/SnellerInc/sneller/ion/blockfmt"
 
@@ -45,18 +46,15 @@ type Descriptor struct {
 	// sure to use algorithms that run in linear
 	// time with respect to the number of blocks!
 
-	// TODO: we could use a more compact data
-	// structure for representing this information
-
 	// Blocks indicates the list of blocks within
 	// the object that are actually referenced.
-	Blocks []int
+	Blocks ints.Intervals
 }
 
 // Empty is equivalent to
 //
 //	len(d.Blocks) == 0
-func (d *Descriptor) Empty() bool { return len(d.Blocks) == 0 }
+func (d *Descriptor) Empty() bool { return d.Blocks.Empty() }
 
 // Input represents a collection of input objects.
 // The zero value of [Input] represents an empty table.
@@ -130,7 +128,7 @@ func (in *InputGroups) Get(equal []ion.Datum) *Input {
 func (in *Input) Blocks() int {
 	n := 0
 	for i := range in.Descs {
-		n += len(in.Descs[i].Blocks)
+		n += in.Descs[i].Blocks.Len()
 	}
 	return n
 }
@@ -180,16 +178,9 @@ func (in *Input) Filter(e expr.Node) *Input {
 // list. If [f] excludes [d] completely, [to] is
 // returned unchanged.
 func (d *Descriptor) appendFiltered(to []Descriptor, f *blockfmt.Filter) []Descriptor {
-	var blocks []int
-	f.Visit(&d.Trailer.Sparse, func(start, end int) {
-		// TODO: do this in a more efficient way
-		for i := range d.Blocks {
-			if start <= d.Blocks[i] && d.Blocks[i] < end {
-				blocks = append(blocks, d.Blocks[i])
-			}
-		}
-	})
-	if len(blocks) > 0 {
+	filtered := f.Intervals(&d.Trailer.Sparse)
+	blocks := d.Blocks.Intersect(filtered)
+	if !blocks.Empty() {
 		to = append(to, Descriptor{
 			Descriptor: d.Descriptor,
 			Blocks:     blocks,
@@ -210,9 +201,9 @@ func (in *Input) CompressedSize() (n int64) {
 // CompressedSize returns the number of compressed
 // bytes that comprise all of the input blocks.
 func (d *Descriptor) CompressedSize() (n int64) {
-	for _, i := range d.Blocks {
+	d.Blocks.Each(func(i int) {
 		n += d.Trailer.BlockSize(i)
-	}
+	})
 	return n
 }
 
@@ -228,9 +219,9 @@ func (in *Input) Size() (n int64) {
 // Size returns the decompressed size of all
 // the data referenced by [d].
 func (d *Descriptor) Size() (n int64) {
-	for _, i := range d.Blocks {
+	d.Blocks.Each(func(i int) {
 		n += int64(d.Trailer.Blocks[i].Chunks) << d.Trailer.BlockShift
-	}
+	})
 	return n
 }
 
@@ -328,7 +319,7 @@ func (in *Input) HashSplit(n int) []*Input {
 	for i := range in.Descs {
 		tmp = append(tmp[:0], in.Descs[i].ETag...)
 		cut := len(tmp)
-		for _, off := range in.Descs[i].Blocks {
+		in.Descs[i].Blocks.Each(func(off int) {
 			tmp = binary.LittleEndian.AppendUint32(tmp[:cut], uint32(off))
 			h := siphash.Hash(k0, k1, tmp)
 			n := int(h / (clamp / uint64(n)))
@@ -341,8 +332,13 @@ func (in *Input) HashSplit(n int) []*Input {
 			if ret[n].Descs[i].Empty() {
 				ret[n].Descs[i].Descriptor = in.Descs[i].Descriptor
 			}
-			ret[n].Descs[i].Blocks = append(ret[n].Descs[i].Blocks, off)
-		}
+			// TODO: make this more efficient
+			// efficient way of doing this
+			ret[n].Descs[i].Blocks = append(ret[n].Descs[i].Blocks, ints.Interval{
+				Start: off,
+				End:   off + 1,
+			})
+		})
 	}
 	for i := range ret {
 		if ret[i] == nil {
@@ -352,6 +348,7 @@ func (in *Input) HashSplit(n int) []*Input {
 		ret[i].Descs = ret[i].Descs[:0]
 		for j := range all {
 			if !all[j].Empty() {
+				all[j].Blocks.Compress()
 				ret[i].Descs = append(ret[i].Descs, all[j])
 			}
 		}
@@ -396,8 +393,9 @@ func (d *Descriptor) Encode(dst *ion.Buffer, st *ion.Symtab) {
 	d.Descriptor.Encode(dst, st)
 	dst.BeginField(st.Intern("blocks"))
 	dst.BeginList(-1)
-	for _, off := range d.Blocks {
-		dst.WriteInt(int64(off))
+	for i := range d.Blocks {
+		dst.WriteInt(int64(d.Blocks[i].Start))
+		dst.WriteInt(int64(d.Blocks[i].End))
 	}
 	dst.EndList()
 	dst.EndStruct()
@@ -443,15 +441,26 @@ func (d *Descriptor) Decode(td *blockfmt.TrailerDecoder, v ion.Datum) error {
 		case "descriptor":
 			return d.Descriptor.Decode(td, f.Datum, blockfmt.FlagSkipInputs)
 		case "blocks":
+			it, err := f.Iterator()
+			if err != nil {
+				return err
+			}
 			d.Blocks = d.Blocks[:0]
-			return f.UnpackList(func(v ion.Datum) error {
-				n, err := v.Int()
+			for !it.Done() {
+				start, err := it.Int()
 				if err != nil {
 					return err
 				}
-				d.Blocks = append(d.Blocks, int(n))
-				return nil
-			})
+				end, err := it.Int()
+				if err != nil {
+					return err
+				}
+				d.Blocks = append(d.Blocks, ints.Interval{
+					Start: int(start),
+					End:   int(end),
+				})
+			}
+			return nil
 		default:
 			return errUnexpectedField
 		}

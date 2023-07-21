@@ -19,16 +19,9 @@ import (
 
 	"github.com/SnellerInc/sneller/date"
 	"github.com/SnellerInc/sneller/expr"
+	"github.com/SnellerInc/sneller/ints"
 	"github.com/SnellerInc/sneller/ion"
-
-	"golang.org/x/exp/slices"
 )
-
-// interval is a half-open interval [start, end)
-// (start is always less than or equal to end)
-type interval struct {
-	start, end int
-}
 
 // Filter represents a compiled condition that
 // can be evaluated against a SparseIndex to
@@ -38,7 +31,7 @@ type Filter struct {
 
 	// union of intervals to traverse;
 	// by convention these are always non-empty
-	intervals []interval
+	intervals ints.Intervals
 }
 
 type evalfn func(f *Filter, si *SparseIndex, rest cont)
@@ -346,49 +339,15 @@ func filtcompile(e expr.Node) evalfn {
 	return nil
 }
 
-func (f *Filter) compress() {
-	// sort by start, then by end
-	slices.SortFunc(f.intervals, func(x, y interval) bool {
-		if x.start == y.start {
-			return x.end < y.end
-		}
-		return x.start < y.start
-	})
-	// remove duplicate ranges
-	f.intervals = slices.Compact(f.intervals)
-
-	// compress overlapping ranges
-	oranges := f.intervals[:0]
-	for i := 0; i < len(f.intervals); i++ {
-		merged := 0
-		// while the next-highest start range
-		// starts below the current ranges' max,
-		// collapse the ranges together
-		for j := i + 1; j < len(f.intervals); j++ {
-			if f.intervals[j].start > f.intervals[i].end {
-				break
-			}
-			// extend intervals[i] as necessary
-			if f.intervals[j].end > f.intervals[i].end {
-				f.intervals[i].end = f.intervals[j].end
-			}
-			merged++
-		}
-		oranges = append(oranges, f.intervals[i])
-		i += merged
-	}
-	f.intervals = oranges
-}
-
 func (f *Filter) run(si *SparseIndex) {
 	f.intervals = f.intervals[:0]
 	if f.eval == nil {
 		return
 	}
 	f.eval(f, si, func(f *Filter, start, end int) {
-		f.intervals = append(f.intervals, interval{start, end})
+		f.intervals = append(f.intervals, ints.Interval{start, end})
 	})
-	f.compress()
+	f.intervals.Compress()
 }
 
 // Overlaps returns whether or not the sparse
@@ -405,20 +364,7 @@ func (f *Filter) Overlaps(si *SparseIndex, start, end int) bool {
 		return start == 0
 	}
 	f.run(si)
-	for i := range f.intervals {
-		// ends before start: doesn't overlap
-		if f.intervals[i].end <= start {
-			continue
-		}
-		// starts after end: done
-		if f.intervals[i].start >= end {
-			break
-		}
-		// we know f.intervals[i].end > start
-		//      or f.intervals[i].start < end
-		return true
-	}
-	return false
+	return f.intervals.Overlaps(start, end)
 }
 
 // MatchesAny returns true if f matches any non-empty
@@ -429,6 +375,15 @@ func (f *Filter) MatchesAny(si *SparseIndex) bool {
 	}
 	f.run(si)
 	return len(f.intervals) > 0
+}
+
+// Intervals returns the intervals within [si]
+// that match the filter.
+func (f *Filter) Intervals(si *SparseIndex) ints.Intervals {
+	f.run(si)
+	in := f.intervals
+	f.intervals = nil
+	return in
 }
 
 // Visit visits distinct (non-overlapping) intervals
@@ -443,12 +398,5 @@ func (f *Filter) Visit(si *SparseIndex, interval func(start, end int)) {
 		return
 	}
 	f.run(si)
-	if len(f.intervals) == 0 {
-		// no non-empty intervals
-		interval(0, 0)
-		return
-	}
-	for i := range f.intervals {
-		interval(f.intervals[i].start, f.intervals[i].end)
-	}
+	f.intervals.Visit(interval)
 }
