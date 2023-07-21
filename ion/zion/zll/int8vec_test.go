@@ -23,7 +23,7 @@ import (
 )
 
 func TestInt8Vec(t *testing.T) {
-	vec := make([]int8, 512)
+	vec := make([]int8, 1024)
 	for i := range vec {
 		vec[i] = int8(i)
 	}

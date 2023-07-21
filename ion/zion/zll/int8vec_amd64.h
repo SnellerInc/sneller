@@ -54,6 +54,9 @@ loop_32x:
     KSHIFTRQ    $1, K1, K7     // K7 = non-zero byte positions shifted right by 1
     VPMOVM2B    K7, Z4         // Z4 = low bytes before non-zero bytes = 0xff
     VPTERNLOGD  $0xF8, Z3, Z4, Z0 // Z0 |= (low bytes before non-zero bytes & 0x01
+    // store vpcompressb(z0, k1) into 0(DI)
+    // and add popcntq(r15) to DI
+    // clobbers allowed: z0, r10, r15, z20-31, k1, k7
     VPCOMPRESSB_IMPL_Z0_K1_DI_R15()
     CMPQ        DI, R13
     JA          loop_1x        // break loop if we're now at or past the last output location

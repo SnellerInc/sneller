@@ -44,22 +44,22 @@
     POPCNTW       R15, R10     \
     ADDQ          R10, DI      \
     SHRQ          $16, R15     \
-    KSHIFTRQ      $16, K1, K2  \
-    VPCOMPRESSD   Z21, K2, Z21 \
+    KSHIFTRQ      $16, K1, K7  \
+    VPCOMPRESSD   Z21, K7, Z21 \
     VPMOVDB       Z21, X21     \
     VMOVDQU32     X21, 0(DI)   \
     POPCNTW       R15, R10     \
     ADDQ          R10, DI      \
     SHRQ          $16, R15     \
-    KSHIFTRQ      $16, K2, K2  \
-    VPCOMPRESSD   Z22, K2, Z22 \
+    KSHIFTRQ      $16, K7, K7  \
+    VPCOMPRESSD   Z22, K7, Z22 \
     VPMOVDB       Z22, X22     \
     VMOVDQU32     X22, 0(DI)   \
     POPCNTW       R15, R10     \
     ADDQ          R10, DI      \
     SHRQ          $16, R15     \
-    KSHIFTRQ      $16, K2, K2  \
-    VPCOMPRESSD   Z23, K2, Z23 \
+    KSHIFTRQ      $16, K7, K7  \
+    VPCOMPRESSD   Z23, K7, Z23 \
     VPMOVDB       Z23, X23     \
     VMOVDQU32     X23, 0(DI)   \
     POPCNTW       R15, R10     \
