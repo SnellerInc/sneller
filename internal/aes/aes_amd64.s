@@ -32,7 +32,7 @@
 //  DI, X1, X2
 
 TEXT aesExpandKeyCore128<>(SB), NOSPLIT | NOFRAME, $0-0
-    MOVOU               X0, (DI)
+    VMOVDQU             X0, (DI)
     ADDQ                DX, DI
     AESKEYGENASSIST     $0x01, X0, X1   // round 1
     CALL                aesExpandKeyMixCore128<>(SB)
@@ -67,7 +67,7 @@ TEXT aesExpandKeyMixCore128<>(SB), NOSPLIT | NOFRAME, $0-0
     PSLLDQ      $4, X2
     PXOR        X2, X0
     PXOR        X1, X0
-    MOVOU       X0, (DI)
+    VMOVDQU     X0, (DI)
     ADDQ        DX, DI
     RET
 
@@ -77,7 +77,7 @@ TEXT aesExpandKeyMixCore128<>(SB), NOSPLIT | NOFRAME, $0-0
 //
 TEXT ·auxExpandFromKey128(SB), NOSPLIT | NOFRAME, $0-0
     MOVQ        p+0(FP), DI
-    MOVOU       key+8(FP), X0
+    VMOVDQU     key+8(FP), X0
     MOVL        $0x10, DX
     JMP         aesExpandKeyCore128<>(SB)
 
@@ -91,17 +91,17 @@ TEXT ·auxExpandFromKey128(SB), NOSPLIT | NOFRAME, $0-0
 // so it needs to be done separately for every lane.
 //
 TEXT ·auxExpandFromKey128Quad(SB), NOSPLIT | NOFRAME, $0-0
-    MOVOU       quad_0_0+8(FP), X0
+    VMOVDQU     quad_0_0+8(FP), X0
     MOVQ        p+0(FP), SI
     MOVL        $0x40, DX
     MOVQ        SI, DI
     CALL        aesExpandKeyCore128<>(SB)
-    MOVOU       quad_1_0+24(FP), X0
+    VMOVDQU     quad_1_0+24(FP), X0
     LEAQ        0x10(SI), DI
     CALL        aesExpandKeyCore128<>(SB)
-    MOVOU       quad_2_0+40(FP), X0
+    VMOVDQU     quad_2_0+40(FP), X0
     LEAQ        0x20(SI), DI
     CALL        aesExpandKeyCore128<>(SB)
-    MOVOU       quad_3_0+56(FP), X0
+    VMOVDQU     quad_3_0+56(FP), X0
     LEAQ        0x30(SI), DI
     JMP         aesExpandKeyCore128<>(SB)

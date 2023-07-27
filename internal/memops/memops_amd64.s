@@ -22,7 +22,7 @@
 TEXT ·zeroMemoryPointerless(SB), NOSPLIT|NOFRAME, $0-0
     NO_LOCAL_POINTERS
     MOVQ            n+8(FP), AX                         // AX := uint64{n}
-    MOVQ            p+0(FP), SI                         // SI := uint64{p}
+    MOVQ            ptr+0(FP), SI                       // SI := uint64{p}
     MOVQ            $-1, CX
     VPXORQ          X0, X0, X0                          // Z0 := {0*}
     BZHIQ           AX, CX, CX                          // CX := uint64{set n least significant bits}, valid for 0 <= n <= 64
