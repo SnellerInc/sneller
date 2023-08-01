@@ -125,8 +125,8 @@ func addApplet(app applet) {
 
 func sortedApplets() []applet {
 	vals := maps.Values(applets)
-	slices.SortFunc(vals, func(x, y applet) bool {
-		return x.name < y.name
+	slices.SortFunc(vals, func(x, y applet) int {
+		return strings.Compare(x.name, y.name)
 	})
 	return vals
 }

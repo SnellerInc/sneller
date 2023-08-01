@@ -68,8 +68,8 @@ func TestConcat(t *testing.T) {
 		})
 	}
 	// sort largest desc first
-	slices.SortFunc(descs, func(x, y Descriptor) bool {
-		return x.Trailer.Offset > y.Trailer.Offset
+	slices.SortFunc(descs, func(x, y Descriptor) int {
+		return int(y.Trailer.Offset - x.Trailer.Offset)
 	})
 	// force buffering of final desc
 	dfs.MinPartSize = int(descs[len(descs)-1].Trailer.Offset) + 1

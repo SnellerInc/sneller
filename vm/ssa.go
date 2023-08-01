@@ -3283,8 +3283,8 @@ func (p *prog) ordersyms(pi *proginfo) {
 			continue
 		}
 		pi.invalidate()
-		slices.SortFunc(access, func(x, y *value) bool {
-			return x.imm.(ion.Symbol) < y.imm.(ion.Symbol)
+		slices.SortFunc(access, func(x, y *value) int {
+			return int(x.imm.(ion.Symbol)) - int(y.imm.(ion.Symbol))
 		})
 		prev := access[0]
 		rest := access[1:]

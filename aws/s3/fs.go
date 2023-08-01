@@ -815,8 +815,8 @@ func (p *Prefix) readDirAt(n int, token, seek, pattern string) (d []fs.DirEntry,
 		ret.CommonPrefixes[i].Ctx = p.Ctx
 		out = append(out, &ret.CommonPrefixes[i])
 	}
-	slices.SortFunc(out, func(a, b fs.DirEntry) bool {
-		return a.Name() < b.Name()
+	slices.SortFunc(out, func(a, b fs.DirEntry) int {
+		return strings.Compare(a.Name(), b.Name())
 	})
 	if !ret.IsTruncated {
 		err = io.EOF

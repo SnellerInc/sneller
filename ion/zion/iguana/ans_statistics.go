@@ -112,7 +112,7 @@ func (s *ansRawStatistics) optimize() {
 	for i, f := range s.freqs {
 		histo[i] = ansStatisticsEntry{freq: uint16(f), idx: uint8(i)}
 	}
-	slices.SortFunc(histo[:], func(a, b ansStatisticsEntry) bool { return a.freq > b.freq })
+	slices.SortFunc(histo[:], func(a, b ansStatisticsEntry) int { return int(b.freq) - int(a.freq) })
 
 	cum := uint32(0)
 	nEntries := 0

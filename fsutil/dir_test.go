@@ -411,8 +411,8 @@ func FuzzTreecmp(f *testing.F) {
 		// insert p
 		tree = append(tree, p)
 		// sort it lexically
-		slices.SortFunc(tree, func(a, b string) bool {
-			return pathcmp(a, b) < 0
+		slices.SortFunc(tree, func(a, b string) int {
+			return pathcmp(a, b)
 		})
 		// look for p
 		if tree[0] == p {

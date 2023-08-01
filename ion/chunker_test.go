@@ -35,14 +35,14 @@ func TestPathLess(t *testing.T) {
 	}
 	for i := range ord[:len(ord)-1] {
 		tail := ord[i+1:]
-		if pathLess(ord[i], ord[i]) {
+		if pathCompare(ord[i], ord[i]) != 0 {
 			t.Errorf("%v less than itself?", ord)
 		}
 		for j := range tail {
-			if !pathLess(ord[i], tail[j]) {
+			if pathCompare(ord[i], tail[j]) >= 0 {
 				t.Errorf("%v not less than %v?", ord[i], tail[j])
 			}
-			if pathLess(tail[j], ord[i]) {
+			if pathCompare(tail[j], ord[i]) < 0 {
 				t.Errorf("%v < %v ?", tail[j], ord[i])
 			}
 		}

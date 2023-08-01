@@ -185,8 +185,8 @@ func (p *projector) symbolize(st *symtab, aux *auxbindings) error {
 		p.outsel[i].value = sym
 		p.outsel[i].encoded, p.outsel[i].mask, p.outsel[i].size = encoded(sym)
 	}
-	slices.SortFunc(p.outsel, func(x, y syminfo) bool {
-		return x.value < y.value
+	slices.SortFunc(p.outsel, func(x, y syminfo) int {
+		return int(x.value) - int(y.value)
 	})
 	p.st = st
 	p.prep = false // p.aw.setpre() on next writeRows call

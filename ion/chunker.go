@@ -619,20 +619,17 @@ func (c *Chunker) Write(block []byte) (int, error) {
 	return start, nil
 }
 
-func pathLess(left, right []Symbol) bool {
+func pathCompare(left, right []Symbol) int {
 	n := len(left)
 	if len(right) < n {
 		n = len(right)
 	}
 	for i := range left[:n] {
-		if left[i] < right[i] {
-			return true
-		}
-		if left[i] > right[i] {
-			return false
+		if c := int(left[i]) - int(right[i]); c != 0 {
+			return c
 		}
 	}
-	return len(left) < len(right)
+	return len(left) - len(right)
 }
 
 const badSymbol = Symbol(0xffffffff)
@@ -668,7 +665,7 @@ func (c *Chunker) walkTimeRanges(rec []byte) {
 			c.rangeSyms[i] = sl
 		}
 		// produce ranges to search in symbol order
-		slices.SortFunc(c.rangeSyms, pathLess)
+		slices.SortFunc(c.rangeSyms, pathCompare)
 	}
 	body, _ := Contents(rec)
 	for i := range c.rangeSyms {

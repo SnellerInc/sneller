@@ -559,8 +559,8 @@ func (c *Converter) MultiStream() bool {
 // have been processed at all.
 func (c *Converter) Run() error {
 	// keep this deterministic:
-	slices.SortFunc(c.Constants, func(x, y ion.Field) bool {
-		return x.Label < y.Label
+	slices.SortFunc(c.Constants, func(x, y ion.Field) int {
+		return strings.Compare(x.Label, y.Label)
 	})
 	if len(c.Inputs) == 0 && c.Prepend.R == nil {
 		return errors.New("no inputs or merge sources")

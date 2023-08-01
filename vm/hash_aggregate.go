@@ -100,10 +100,7 @@ func (w *window) run(agt *aggtable) {
 		}
 		return 0
 	}
-	slices.SortFunc(order, func(i, j int) bool {
-		dir := cmp(i, j)
-		return dir < 0
-	})
+	slices.SortFunc(order, cmp)
 	// walk pairs in order
 	repeat := false
 	for i := range order {
@@ -420,18 +417,14 @@ func (h *HashAggregate) sort() []int {
 	if h.order == nil {
 		return ret
 	}
-	slices.SortFunc(ret, func(i, j int) bool {
+	slices.SortFunc(ret, func(i, j int) int {
 		for k := range h.order {
 			dir := h.order[k](h.final, i, j)
-			if dir < 0 {
-				return true
+			if dir != 0 {
+				return dir
 			}
-			if dir > 0 {
-				return false
-			}
-			// dir == 0 -> equal, continue
 		}
-		return false
+		return 0
 	})
 	return ret
 }

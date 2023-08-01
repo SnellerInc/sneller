@@ -70,11 +70,11 @@ func (in Intervals) Clone() Intervals {
 // non-overlapping.
 func (in *Intervals) Compress() {
 	// sort by start, then by end
-	slices.SortFunc(*in, func(x, y Interval) bool {
+	slices.SortFunc(*in, func(x, y Interval) int {
 		if x.Start == y.Start {
-			return x.End < y.End
+			return x.End - y.End
 		}
-		return x.Start < y.Start
+		return x.Start - y.Start
 	})
 	// remove duplicate ranges
 	*in = slices.Compact(*in)

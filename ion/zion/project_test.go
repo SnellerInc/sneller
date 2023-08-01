@@ -115,11 +115,8 @@ func onePartSortedEqual(d *Decoder, got, want []byte) bool {
 	gotlines := bytes.Split(got, sep)
 	wantlines := bytes.Split(want, sep)
 
-	compare := func(x, y []byte) bool {
-		return bytes.Compare(x, y) < 0
-	}
-	slices.SortFunc(gotlines, compare)
-	slices.SortFunc(wantlines, compare)
+	slices.SortFunc(gotlines, bytes.Compare)
+	slices.SortFunc(wantlines, bytes.Compare)
 	return slices.EqualFunc(gotlines, wantlines, bytes.Equal)
 }
 

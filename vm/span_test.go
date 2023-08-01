@@ -30,9 +30,8 @@ func TestSpan(t *testing.T) {
 	}
 
 	validate := func(t *testing.T, s *spanalloc) {
-		spanorder := func(a, b span) bool {
-			// a is strictly less than b (doesn't overlap):
-			return a.pos < b.pos && a.end() <= b.pos
+		spanorder := func(a, b span) int {
+			return a.pos - b.pos
 		}
 		if !slices.IsSortedFunc(s.used, spanorder) {
 			t.Helper()

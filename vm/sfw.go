@@ -583,8 +583,8 @@ func (m *Rematerializer) symbolize(st *symtab, aux *auxbindings) error {
 		m.auxpos[i] = i
 	}
 	// produce aux symbols in sorted order
-	slices.SortFunc(m.auxpos, func(i, j int) bool {
-		return m.aux[i] < m.aux[j]
+	slices.SortFunc(m.auxpos, func(i, j int) int {
+		return int(m.aux[i]) - int(m.aux[j])
 	})
 	st.Marshal(&m.buf, true)
 	m.stsize = m.buf.Size()

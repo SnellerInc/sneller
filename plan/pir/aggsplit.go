@@ -178,8 +178,8 @@ func (f *flattener) final() []expr.Binding {
 		i += 1
 	}
 
-	slices.SortFunc(tmp, func(a, b item) bool {
-		return a.id < b.id
+	slices.SortFunc(tmp, func(a, b item) int {
+		return a.id - b.id
 	})
 
 	bindings := make([]expr.Binding, len(tmp))

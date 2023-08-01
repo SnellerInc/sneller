@@ -15,6 +15,8 @@
 package blockfmt
 
 import (
+	"strings"
+
 	"golang.org/x/exp/slices"
 
 	"github.com/SnellerInc/sneller/date"
@@ -86,25 +88,22 @@ func timeUnion(min1, max1, min2, max2 date.Time) (min, max date.Time) {
 	return min, max
 }
 
-func pathless(a, b []string) bool {
+func pathcmp(a, b []string) int {
 	n := len(a)
 	if len(b) < n {
 		n = len(b)
 	}
 	for i := range a[:n] {
-		if a[i] < b[i] {
-			return true
-		}
-		if a[i] > b[i] {
-			return false
+		if c := strings.Compare(a[i], b[i]); c != 0 {
+			return c
 		}
 	}
-	return len(a) < len(b)
+	return len(a) - len(b)
 }
 
 func sortByPath(lst []TimeRange) {
-	slices.SortFunc(lst, func(left, right TimeRange) bool {
-		return pathless(left.path, right.path)
+	slices.SortFunc(lst, func(left, right TimeRange) int {
+		return pathcmp(left.path, right.path)
 	})
 }
 
@@ -124,7 +123,7 @@ func union(a, b []TimeRange) []TimeRange {
 		bpath := b[i].path
 		apath := a[pos].path
 		// search for b <= a
-		for pathless(apath, bpath) && pos < max {
+		for pathcmp(apath, bpath) < 0 && pos < max {
 			pos++
 			apath = a[pos].path
 		}

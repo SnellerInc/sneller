@@ -221,8 +221,8 @@ func (b *BytecodeSpec) String() string {
 
 func slots2string(slots []StackSlot) (res string) {
 	tmp := slices.Clone(slots)
-	slices.SortFunc(tmp, func(a, b StackSlot) bool {
-		return a.index < b.index
+	slices.SortFunc(tmp, func(a, b StackSlot) int {
+		return a.index - b.index
 	})
 
 	for i := range tmp {

@@ -769,11 +769,11 @@ func (s Struct) Equal(s2 Struct) bool {
 		f1[i].Sym = 0
 		f2[i].Sym = 0
 	}
-	slices.SortFunc(f1, func(x, y Field) bool {
-		return x.Label < y.Label
+	slices.SortFunc(f1, func(x, y Field) int {
+		return strings.Compare(x.Label, y.Label)
 	})
-	slices.SortFunc(f2, func(x, y Field) bool {
-		return x.Label < y.Label
+	slices.SortFunc(f2, func(x, y Field) int {
+		return strings.Compare(x.Label, y.Label)
 	})
 	for i := range f1 {
 		if f1[i].Label != f2[i].Label {

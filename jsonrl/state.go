@@ -539,8 +539,8 @@ func (n *Hint) printTree(name string, level int) string {
 	slices.SortFunc(children, func(a, b struct {
 		key   string
 		value string
-	}) bool {
-		return strings.Compare(a.key, b.key) < 0
+	}) int {
+		return strings.Compare(a.key, b.key)
 	})
 	for i := range children {
 		result += children[i].value
@@ -956,8 +956,8 @@ func (s *state) emitConst(lst []ion.Field) {
 		}
 		// most of the time we should produce sorted results;
 		// just in case we don't:
-		slices.SortFunc(lst, func(x, y ion.Field) bool {
-			return x.Sym < y.Sym
+		slices.SortFunc(lst, func(x, y ion.Field) int {
+			return int(x.Sym) - int(y.Sym)
 		})
 		s.constResolved = true
 	}

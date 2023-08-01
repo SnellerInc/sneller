@@ -372,11 +372,11 @@ func ifexpr(t *rules.Term, bound map[string]int) string {
 
 // group rules by name, then by argument count
 func orderRules(rules []rule) {
-	slices.SortFunc(rules, func(x, y rule) bool {
+	slices.SortFunc(rules, func(x, y rule) int {
 		if x.op == y.op {
-			return len(x.args) < len(y.args)
+			return len(x.args) - len(y.args)
 		}
-		return x.op < y.op
+		return int(x.op) - int(y.op)
 	})
 }
 

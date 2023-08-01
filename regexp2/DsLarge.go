@@ -29,8 +29,8 @@ type DsLarge struct {
 }
 
 func edgeSort(srn []edgeT) {
-	slices.SortFunc(srn, func(edge1, edge2 edgeT) bool {
-		return edge1.symbolRange < edge2.symbolRange
+	slices.SortFunc(srn, func(edge1, edge2 edgeT) int {
+		return int(edge1.symbolRange) - int(edge2.symbolRange)
 	})
 }
 

@@ -265,7 +265,7 @@ func (s *SparseIndex) MinMax(path []string) (min, max date.Time, ok bool) {
 
 func (s *SparseIndex) search(path []string) *timeIndex {
 	j := sort.Search(len(s.indices), func(i int) bool {
-		return !pathless(s.indices[i].path, path)
+		return pathcmp(s.indices[i].path, path) >= 0
 	})
 	if j < len(s.indices) && slices.Equal(path, s.indices[j].path) {
 		return &s.indices[j]
@@ -275,7 +275,7 @@ func (s *SparseIndex) search(path []string) *timeIndex {
 
 func (s *SparseIndex) push(path []string, min, max date.Time) {
 	j := sort.Search(len(s.indices), func(i int) bool {
-		return !pathless(s.indices[i].path, path)
+		return pathcmp(s.indices[i].path, path) >= 0
 	})
 	if j < len(s.indices) && slices.Equal(path, s.indices[j].path) {
 		s.indices[j].ranges.Push(min, max)
@@ -291,7 +291,7 @@ func (s *SparseIndex) push(path []string, min, max date.Time) {
 
 func (s *SparseIndex) update(path []string, min, max date.Time) {
 	j := sort.Search(len(s.indices), func(i int) bool {
-		return !pathless(s.indices[i].path, path)
+		return pathcmp(s.indices[i].path, path) >= 0
 	})
 	if j < len(s.indices) && slices.Equal(path, s.indices[j].path) {
 		s.indices[j].ranges.EditLatest(min, max)

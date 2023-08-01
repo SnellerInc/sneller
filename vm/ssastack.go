@@ -201,8 +201,8 @@ func (s *spanalloc) reserve(pos, size int) {
 		s.used[len(s.used)-1].size = pos - s.used[len(s.used)-1].pos
 	}
 	s.used = append(s.used, span{pos: pos, size: size})
-	slices.SortFunc(s.used, func(a, b span) bool {
-		return a.pos-b.pos < 0
+	slices.SortFunc(s.used, func(a, b span) int {
+		return a.pos - b.pos
 	})
 }
 

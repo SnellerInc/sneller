@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"text/scanner"
 	"unicode"
 
@@ -700,11 +701,11 @@ type rule struct {
 
 // group rules by name, then by argument count
 func orderRules(rules []rule) {
-	slices.SortStableFunc(rules, func(x, y rule) bool {
+	slices.SortStableFunc(rules, func(x, y rule) int {
 		if x.op == y.op {
-			return len(x.args) < len(y.args)
+			return len(x.args) - len(y.args)
 		}
-		return x.op < y.op
+		return strings.Compare(x.op, y.op)
 	})
 }
 
@@ -846,8 +847,8 @@ func writeRules(rules []rule) {
 		class2rules[c] = append(class2rules[c], rules[i])
 	}
 	classes := maps.Keys(class2rules)
-	slices.SortFunc(classes, func(x, y *opclass) bool {
-		return x.typename < y.typename
+	slices.SortFunc(classes, func(x, y *opclass) int {
+		return strings.Compare(x.typename, y.typename)
 	})
 
 	// emit a function for each distinct class
