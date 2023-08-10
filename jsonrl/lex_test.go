@@ -38,7 +38,7 @@ func TestParseOK(t *testing.T) {
 		`   {"foo": -300, "bar": 1000, "baz": 3.141, "quux":3.0, "exp": 3.18e-9, "exp2": 3.1e+1}  `,
 		// test larger/small floating-point numbers
 		// that require Eisel-Lemire conversion for full precision
-		`{"1": "7.18931911124017e+66", "2": "-1.7976931348623157e308"}`,
+		`{"1": 7.18931911124017e+66, "2": -1.7976931348623157e308, "3": -0.33097076416015625}`,
 		`{"foo": null}`,
 		`{"foo": true}`,
 		`{"xyz": false}`,
@@ -109,6 +109,8 @@ func TestParseOK(t *testing.T) {
 				t.Fatalf("ion.FromJSON: %s", err)
 			}
 			if !ion.Equal(dat, got) {
+				t.Logf("orig: %s", dat.JSON())
+				t.Logf("got : %s", got.JSON())
 				t.Error("datum not equal")
 			}
 		})
