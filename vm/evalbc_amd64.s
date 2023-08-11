@@ -899,7 +899,7 @@ TEXT bccmpvk(SB), NOSPLIT|NOFRAME, $0
 
   VPBROADCASTD CONSTD_0x0F(), Z6                       // Z6 <- Constant(0xF)
   KMOVW 0(VIRT_VALUES)(CX*1), K2                       // K2 <- right boolean value
-  VPSRLD.Z $3, Z6, Z7                                  // Z7 <- Constant(1)
+  VPSRLD $3, Z6, Z7                                    // Z7 <- Constant(1)
 
   VPSRLD $4, Z4, Z5
   VPANDD Z6, Z5, Z5                                    // Z5 <- left ION type
