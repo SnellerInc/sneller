@@ -44,6 +44,8 @@ type LengthZ3 int
 
 var fullMask = kRegData{mask: 0xFFFF}
 
+var refImplStr = "\u001B[34mRefImpl\u001B[0m"
+
 func prettyName(op bcop) string {
 	switch op {
 	case opCmpStrEqCs:
@@ -3625,7 +3627,7 @@ func runContainsPreSufSub(t *testing.T, op bcop, inputK kRegData, data16 [16]Dat
 	// if manual values are provided (hasMan == true), then check the values of the reference implementation
 	if hasMan {
 		if err := reportIssueKS(&inputK, &manK, &expK, &manS, &expS); err != nil {
-			t.Errorf("RefImpl: %v\nneedle=%q\ndata=%v\n%v", prettyName(op), needle, prettyPrint(data16), err)
+			t.Errorf("%s: %v\nneedle=%q\ndata=%v\n%v", refImplStr, prettyName(op), needle, prettyPrint(data16), err)
 			return false
 		}
 	}
@@ -3700,7 +3702,7 @@ func TestContainsPreSufSubUT1(t *testing.T) {
 	t.Parallel()
 	type unitTest struct {
 		data      Data     // data at SI
-		needle    Needle   // prefix/suffix to test
+		needle    Needle   // prefix/suffix/substr to test
 		expLane   bool     // expected K1
 		expOffset OffsetZ2 // expected Z2
 		expLength LengthZ3 // expected Z3
@@ -3866,7 +3868,7 @@ func TestContainsPreSufSubUT1(t *testing.T) {
 func TestContainsPreSufSubUT2(t *testing.T) {
 	t.Parallel()
 	type unitTest struct {
-		needle     Needle // prefix/suffix to test
+		needle     Needle // prefix/suffix/substr to test
 		data16     [16]Data
 		expLanes   uint16
 		expOffsets [16]OffsetZ2
@@ -3912,6 +3914,14 @@ func TestContainsPreSufSubUT2(t *testing.T) {
 		{
 			op: opContainsSubstrCs,
 			unitTests: []unitTest{
+				{
+					data16:     [16]Data{"aaaa", "baaa", "abaa", "bbaa", "aaba", "baba", "abba", "bbba", "aaab", "baab", "abab", "bbab", "aabb", "babb", "abbb", "bbbb"},
+					needle:     "aaaa",
+					expLanes:   uint16(0b0000000000000001),
+					expOffsets: [16]OffsetZ2{4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+					expLengths: [16]LengthZ3{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+				},
+
 				{
 					data16:     [16]Data{"0100", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""},
 					needle:     "00",
@@ -4911,7 +4921,7 @@ func prettyPrint[V any](values [16]V) string {
 	sb := strings.Builder{}
 	sb.WriteByte('[')
 	for i := 0; i < len(values); i++ {
-		sb.WriteString(fmt.Sprintf("%v", values[i])) // NOTE strings.Join(values, ",") does not escape
+		sb.WriteString(fmt.Sprintf("\"%v\"", values[i])) // NOTE strings.Join(values, ",") does not escape
 		if i < len(values)-1 {
 			sb.WriteByte(',')
 		}
