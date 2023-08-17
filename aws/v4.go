@@ -287,6 +287,7 @@ type SigningKey struct {
 	Region    string    // AWS Region
 	Service   string    // AWS Service
 	AccessKey string    // AWS Access Key ID
+	Secret    string    // AWS Secret key
 	Token     string    // Token, if key is from STS
 	Derived   time.Time // time token was derived
 
@@ -325,9 +326,24 @@ func DeriveKey(baseURI, accessKey, secret, region, service string) *SigningKey {
 		Region:    region,
 		Service:   service,
 		AccessKey: accessKey,
+		Secret:    secret,
 		Derived:   now,
 		clamped0:  derive(secret, now, region, service),
 		clamped1:  derive(secret, now.Add(24*time.Hour), region, service),
+	}
+}
+
+func (s *SigningKey) InRegion(region string) *SigningKey {
+	return &SigningKey{
+		BaseURI:   s.BaseURI,
+		Region:    region,
+		Service:   s.Service,
+		AccessKey: s.AccessKey,
+		Secret:    s.Secret,
+		Token:     s.Token,
+		Derived:   s.Derived,
+		clamped0:  derive(s.Secret, s.Derived, region, s.Service),
+		clamped1:  derive(s.Secret, s.Derived.Add(24*time.Hour), region, s.Service),
 	}
 }
 
@@ -361,6 +377,8 @@ func (s *SigningKey) Encode(st *ion.Symtab, dst *ion.Buffer) {
 	dst.WriteString(s.Service)
 	dst.BeginField(st.Intern("access_key"))
 	dst.WriteString(s.AccessKey)
+	dst.BeginField(st.Intern("secret"))
+	dst.WriteString(s.Secret)
 	dst.BeginField(st.Intern("token"))
 	dst.WriteString(s.Token)
 	dst.BeginField(st.Intern("derived"))
@@ -390,6 +408,8 @@ func DecodeKey(d ion.Datum) (*SigningKey, error) {
 			s.Service, err = f.String()
 		case "access_key":
 			s.AccessKey, err = f.String()
+		case "secret":
+			s.Secret, err = f.String()
 		case "token":
 			s.Token, err = f.String()
 		case "derived":

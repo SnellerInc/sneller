@@ -21,7 +21,6 @@ package s3
 
 import (
 	"context"
-	"encoding/xml"
 	"errors"
 	"fmt"
 	"io"
@@ -396,8 +395,8 @@ func BucketRegion(k *aws.SigningKey, bucket string) (string, error) {
 	if k.BaseURI != "" {
 		return k.Region, nil
 	}
-	uri := rawURI(k, bucket, "?location=")
-	req, err := http.NewRequest(http.MethodGet, uri, nil)
+	uri := rawURI(k, bucket, "")
+	req, err := http.NewRequest(http.MethodHead, uri, nil)
 	if err != nil {
 		return "", err
 	}
@@ -410,18 +409,14 @@ func BucketRegion(k *aws.SigningKey, bucket string) (string, error) {
 	if res.StatusCode == 403 {
 		return k.Region, nil
 	}
-	if res.StatusCode != 200 {
+	if res.StatusCode != 200 && res.StatusCode != 301 {
 		return "", fmt.Errorf("s3.BucketRegion: %s %q", res.Status, extractMessage(res.Body))
 	}
-	var ret string
-	err = xml.NewDecoder(res.Body).Decode(&ret)
-	if err != nil {
-		return "", fmt.Errorf("s3.BucketRegion: decoding response: %w", err)
+	region := res.Header.Get("x-amz-bucket-region")
+	if region == "" {
+		return k.Region, nil
 	}
-	if ret == "" || ret == "null" {
-		return "us-east-1", nil
-	}
-	return ret, nil
+	return region, nil
 }
 
 // DeriveForBucket can be passed to aws.AmbientCreds

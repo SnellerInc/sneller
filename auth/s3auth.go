@@ -197,8 +197,9 @@ func S3Tenant(ctx context.Context, id string, root *db.S3FS, key *blockfmt.Key, 
 		cfg:  cfg,
 	}
 	t.Client = root.Client
-	t.DeriveKey = func(string) (*aws.SigningKey, error) {
-		return t.root.Key, nil
+	var bkc bucketKeyCache
+	t.DeriveKey = func(bucket string) (*aws.SigningKey, error) {
+		return bkc.BucketKey(bucket, t.root.Key)
 	}
 	return t
 }
