@@ -211,7 +211,7 @@ TEXT bcAggTDigest(SB), NOSPLIT|NOFRAME, $0
 
 //; calculate mean maximum
 //; reduce_max_ps: IN Z15, K1
-  VPBROADCASTD  CONSTF32_NEGATIVE_INF(),Z1  //;DDC16052 bcst constant -inf            ;Z1=inter_result;
+  VPBROADCASTD  CONSTF32_NEGATIVE_INF(),Z1 //;DDC16052 bcst constant -inf             ;Z1=inter_result;
   VMOVDQA32     Z15, K1,  Z1              //;DDBA46F2 set dead lanes to -inf          ;Z1=inter_result; K1=lane_active; Z15=mean2;
   VEXTRACTF32X8 $1,  Z1,  Y6              //;C77F6E74 extract top 256 bits            ;Z6=scratch; Z1=inter_result;
   VMAXPS        Y1,  Y6,  Y1              //;B03AEB40 inter_result := max(scratch, inter_result);Z1=inter_result; Z6=scratch;
@@ -225,7 +225,7 @@ TEXT bcAggTDigest(SB), NOSPLIT|NOFRAME, $0
 
 //; calculate mean minimum
 //; reduce_min_ps: IN Z15, K1
-  VPBROADCASTD  CONSTF32_POSITIVE_INF(),Z2  //;69727A96 bcst constant +inf            ;Z2=inter_result;
+  VPBROADCASTD  CONSTF32_POSITIVE_INF(),Z2 //;69727A96 bcst constant +inf             ;Z2=inter_result;
   VMOVDQA32     Z15, K1,  Z2              //;9F647579 set dead lanes to +inf          ;Z2=inter_result; K1=lane_active; Z15=mean2;
   VEXTRACTF32X8 $1,  Z2,  Y6              //;EA38B7F6 extract top 256 bits            ;Z6=scratch; Z2=inter_result;
   VMINPS        Y2,  Y6,  Y2              //;7DC194FB inter_result := min(scratch, inter_result);Z2=inter_result; Z6=scratch;
@@ -341,7 +341,7 @@ TEXT bcAggTDigest(SB), NOSPLIT|NOFRAME, $0
 
   MOVL          (R13),X7                  //;479DBA73 load current total weight from data-structure;Z7=scratch_Z7; R13=agg_local_ptr;
   VADDSS        X0,  X7,  X0              //;C60D1361 weigth_sum += scratch_Z7        ;Z0=weigth_sum; Z7=scratch_Z7;
-  MOVL          X0,  0(R13)               //;2937EC6B store the new total weight in data-structure;R13=agg_local_ptr; Z0=weigth_sum;
+  MOVL          X0,  (R13)                //;2937EC6B store the new total weight in data-structure;R13=agg_local_ptr; Z0=weigth_sum;
   VPBROADCASTD  X0,  Z28                  //;1F013204 bcst weight_total               ;Z28=weight_total; Z0=weigth_sum;
 
   MOVL          4(R13),X7                 //;633AF2BF load current mean max from data-structure;Z7=scratch_Z7; R13=agg_local_ptr;
@@ -708,15 +708,15 @@ loop:
   VMULPS.BCST   CONSTF32_2(),Z0,  Z0      //;2CC7F539 interm := interm * 2            ;Z0=interm;
   VSUBPS.BCST   CONSTF32_1(),Z0,  Z0      //;2E3C326F interm--                        ;Z0=interm;
   CALL          asinf32(SB)               //;AF60F98E INOUT Z0; destroyed: Z2..Z25    ;
-  VADDPS.BCST   CONSTF32_HALF_PI(),Z0,  Z0  //;4DD2F908 interm += HALF_PI             ;Z0=interm;
-  VMULPS.BCST   CONSTF32_16_TIMES_PI_RECI(),Z0,  Z0  //;BD2CABC9 interm := interm * 16_TIMES_PI_RECI;Z0=interm;
+  VADDPS.BCST   CONSTF32_HALF_PI(),Z0,  Z0 //;4DD2F908 interm += HALF_PI              ;Z0=interm;
+  VMULPS.BCST   CONSTF32_16_TIMES_PI_RECI(),Z0,  Z0 //;BD2CABC9 interm := interm * 16_TIMES_PI_RECI;Z0=interm;
   VADDPS.BCST   CONSTF32_1(),Z0,  Z0      //;BF419CC0 interm++                        ;Z0=interm;
   VMINPS.BCST   CONSTF32_16(),Z0,  Z0     //;F1B7194C interm := min(interm, 16)       ;Z0=interm;
-  VMULPS.BCST   CONSTF32_PI_TIMES_16_RECI(),Z0,  Z0  //;D4246F72 interm := interm * PI_TIMES_16_RECI;Z0=interm;
-  VSUBPS.BCST   CONSTF32_HALF_PI(),Z0,  Z0  //;7AE6857D interm -= HALF_PI             ;Z0=interm;
+  VMULPS.BCST   CONSTF32_PI_TIMES_16_RECI(),Z0,  Z0 //;D4246F72 interm := interm * PI_TIMES_16_RECI;Z0=interm;
+  VSUBPS.BCST   CONSTF32_HALF_PI(),Z0,  Z0 //;7AE6857D interm -= HALF_PI              ;Z0=interm;
   CALL          sinf32(SB)                //;C8A18194 INOUT Z0; destroyed: R8, R15, Z2..Z25;
   VADDPS.BCST   CONSTF32_1(),Z0,  Z0      //;29F1DE62 interm++                        ;Z0=interm;
-  VMULPS.BCST   CONSTF32_2_RECI(),Z0,  Z0  //;652B20D3 interm := interm * 2_RECI      ;Z0=interm;
+  VMULPS.BCST   CONSTF32_2_RECI(),Z0,  Z0 //;652B20D3 interm := interm * 2_RECI       ;Z0=interm;
   VMULPS        Z28, Z0,  Z0              //;3E91F7DD interm := interm * weight_total ;Z0=interm; Z28=weight_total;
   VMOVDQU32     Z0,  6*64(R14)            //;851EFAE0 store weight limits 0           ;R14=ptr_in; Z0=interm;
 
@@ -724,15 +724,15 @@ loop:
   VMULPS.BCST   CONSTF32_2(),Z0,  Z0      //;2CC7F539 interm := interm * 2            ;Z0=interm;
   VSUBPS.BCST   CONSTF32_1(),Z0,  Z0      //;2E3C326F interm--                        ;Z0=interm;
   CALL          asinf32(SB)               //;AF60F98E INOUT Z0; destroyed: Z2..Z25    ;
-  VADDPS.BCST   CONSTF32_HALF_PI(),Z0,  Z0  //;4DD2F908 interm += HALF_PI             ;Z0=interm;
-  VMULPS.BCST   CONSTF32_16_TIMES_PI_RECI(),Z0,  Z0  //;BD2CABC9 interm := interm * 16_TIMES_PI_RECI;Z0=interm;
+  VADDPS.BCST   CONSTF32_HALF_PI(),Z0,  Z0 //;4DD2F908 interm += HALF_PI              ;Z0=interm;
+  VMULPS.BCST   CONSTF32_16_TIMES_PI_RECI(),Z0,  Z0 //;BD2CABC9 interm := interm * 16_TIMES_PI_RECI;Z0=interm;
   VADDPS.BCST   CONSTF32_1(),Z0,  Z0      //;BF419CC0 interm++                        ;Z0=interm;
   VMINPS.BCST   CONSTF32_16(),Z0,  Z0     //;F1B7194C interm := min(interm, 16)       ;Z0=interm;
-  VMULPS.BCST   CONSTF32_PI_TIMES_16_RECI(),Z0,  Z0  //;D4246F72 interm := interm * PI_TIMES_16_RECI;Z0=interm;
-  VSUBPS.BCST   CONSTF32_HALF_PI(),Z0,  Z0  //;7AE6857D interm -= HALF_PI             ;Z0=interm;
+  VMULPS.BCST   CONSTF32_PI_TIMES_16_RECI(),Z0,  Z0 //;D4246F72 interm := interm * PI_TIMES_16_RECI;Z0=interm;
+  VSUBPS.BCST   CONSTF32_HALF_PI(),Z0,  Z0 //;7AE6857D interm -= HALF_PI              ;Z0=interm;
   CALL          sinf32(SB)                //;C8A18194 INOUT Z0; destroyed: R8, R15, Z2..Z25;
   VADDPS.BCST   CONSTF32_1(),Z0,  Z0      //;29F1DE62 interm++                        ;Z0=interm;
-  VMULPS.BCST   CONSTF32_2_RECI(),Z0,  Z0  //;652B20D3 interm := interm * 2_RECI      ;Z0=interm;
+  VMULPS.BCST   CONSTF32_2_RECI(),Z0,  Z0 //;652B20D3 interm := interm * 2_RECI       ;Z0=interm;
   VMULPS        Z28, Z0,  Z0              //;3DC14449 interm := interm * weight_total ;Z0=interm; Z28=weight_total;
   VMOVDQU32     Z0,  7*64(R14)            //;3D97C714 store weight limits 1           ;R14=ptr_in; Z0=interm;
 
@@ -740,15 +740,15 @@ loop:
   VMULPS.BCST   CONSTF32_2(),Z0,  Z0      //;2CC7F539 interm := interm * 2            ;Z0=interm;
   VSUBPS.BCST   CONSTF32_1(),Z0,  Z0      //;2E3C326F interm--                        ;Z0=interm;
   CALL          asinf32(SB)               //;AF60F98E INOUT Z0; destroyed: Z2..Z25    ;
-  VADDPS.BCST   CONSTF32_HALF_PI(),Z0,  Z0  //;4DD2F908 interm += HALF_PI             ;Z0=interm;
-  VMULPS.BCST   CONSTF32_16_TIMES_PI_RECI(),Z0,  Z0  //;BD2CABC9 interm := interm * 16_TIMES_PI_RECI;Z0=interm;
+  VADDPS.BCST   CONSTF32_HALF_PI(),Z0,  Z0 //;4DD2F908 interm += HALF_PI              ;Z0=interm;
+  VMULPS.BCST   CONSTF32_16_TIMES_PI_RECI(),Z0,  Z0 //;BD2CABC9 interm := interm * 16_TIMES_PI_RECI;Z0=interm;
   VADDPS.BCST   CONSTF32_1(),Z0,  Z0      //;BF419CC0 interm++                        ;Z0=interm;
   VMINPS.BCST   CONSTF32_16(),Z0,  Z0     //;F1B7194C interm := min(interm, 16)       ;Z0=interm;
-  VMULPS.BCST   CONSTF32_PI_TIMES_16_RECI(),Z0,  Z0  //;D4246F72 interm := interm * PI_TIMES_16_RECI;Z0=interm;
-  VSUBPS.BCST   CONSTF32_HALF_PI(),Z0,  Z0  //;7AE6857D interm -= HALF_PI             ;Z0=interm;
+  VMULPS.BCST   CONSTF32_PI_TIMES_16_RECI(),Z0,  Z0 //;D4246F72 interm := interm * PI_TIMES_16_RECI;Z0=interm;
+  VSUBPS.BCST   CONSTF32_HALF_PI(),Z0,  Z0 //;7AE6857D interm -= HALF_PI              ;Z0=interm;
   CALL          sinf32(SB)                //;C8A18194 INOUT Z0; destroyed: R8, R15, Z2..Z25;
   VADDPS.BCST   CONSTF32_1(),Z0,  Z0      //;29F1DE62 interm++                        ;Z0=interm;
-  VMULPS.BCST   CONSTF32_2_RECI(),Z0,  Z0  //;652B20D3 interm := interm * 2_RECI      ;Z0=interm;
+  VMULPS.BCST   CONSTF32_2_RECI(),Z0,  Z0 //;652B20D3 interm := interm * 2_RECI       ;Z0=interm;
   VMULPS        Z28, Z0,  Z0              //;78F1A289 interm := interm * weight_total ;Z0=interm; Z28=weight_total;
   VMOVDQU32     Z0,  8*64(R14)            //;3706F680 store weight limits 2           ;R14=ptr_in; Z0=interm;
 
@@ -768,7 +768,7 @@ loop:
   VMOVDQU32     Z0,  0*64(R11)            //;E1240A74 set weights to zero             ;R11=ptr_out; Z0=scratch;
   VMOVDQU32     Z0,  1*64(R11)            //;494CE8BD set weights to zero             ;R11=ptr_out; Z0=scratch;
 
-  VPBROADCASTD  CONSTF32_POSITIVE_INF(),Z0  //;B5198451                               ;Z0=scratch;
+  VPBROADCASTD  CONSTF32_POSITIVE_INF(),Z0 //;B5198451                                ;Z0=scratch;
   VMOVDQU32     Z0,  2*64(R11)            //;618F3945 set mean to +inf                ;R11=ptr_out; Z0=scratch;
   VMOVDQU32     Z0,  3*64(R11)            //;3414844D set mean to +inf                ;R11=ptr_out; Z0=scratch;
 
@@ -836,7 +836,7 @@ init:
   VMOVDQA32     Z12, Z10                  //;B848296B weight0 := weight2              ;Z10=weight0; Z12=weight2;
   VPXORD        Z11, Z11, Z11             //;4E4A4410 weight1 := 0                    ;Z11=weight1;
 
-  MOVL          X0,  0(R13)               //;A41C6C61 store weight sum                ;R13=agg_local_ptr; Z0=weigth_sum;
+  MOVL          X0,  (R13)                //;A41C6C61 store weight sum                ;R13=agg_local_ptr; Z0=weigth_sum;
   MOVL          X1,  4(R13)               //;A8ECB213 store mean maximum              ;R13=agg_local_ptr; Z1=mean_max;
   MOVL          X2,  8(R13)               //;886588A7 store mean minimum              ;R13=agg_local_ptr; Z2=mean_min;
 
