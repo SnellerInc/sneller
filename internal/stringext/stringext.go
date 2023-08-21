@@ -857,7 +857,7 @@ func EncodeContainsSuffixCI(needle Needle) string {
 
 // EncodeContainsSuffixUTF8CI encodes the provided string for usage with bcContainsSuffixUTF8Ci
 func EncodeContainsSuffixUTF8CI(needle Needle) string {
-	return genNeedleUTF8Ci(needle, true, true, false)
+	return genNeedleUTF8Ci(needle, true, true, true)
 }
 
 // EncodeContainsSubstrCS encodes the provided string for usage with bcContainsSubstrCs

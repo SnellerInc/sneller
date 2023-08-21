@@ -3896,6 +3896,13 @@ func TestContainsPreSufSubUT2(t *testing.T) {
 			op: opContainsSuffixUTF8Ci,
 			unitTests: []unitTest{
 				{
+					needle:     "\x00\x00\x00\x00𐍈", //note: 𐍈 needs 4 bytes to be encoded (in UTF8)
+					data16:     [16]Data{"0𐍈", "0", "0", "0", "0", "", "", "", "", "", "", "", "", "", "", ""},
+					expLanes:   uint16(0b0000000000000000),
+					expOffsets: [16]OffsetZ2{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+					expLengths: [16]LengthZ3{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+				},
+				{
 					needle:     "s",
 					data16:     [16]Data{"ſſ", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""},
 					expLanes:   uint16(0b0000000000000001),
@@ -4249,6 +4256,7 @@ func FuzzContainsPreSufSubFT(f *testing.F) {
 	f.Add(uint16(0xFFFF), "a", "a;", "a\n", "a𐍈", "𐍈a", "𐍈", "aaa", "abbb", "accc", "a𐍈", "𐍈aaa", "𐍈aa", "aaa", "bbba", "cca", "da", "a")
 	f.Add(uint16(0xFFFF), "a", "a;", "a\n", "a𐍈", "𐍈a", "𐍈", "aaa", "abbb", "accc", "a𐍈", "𐍈aaa", "𐍈aa", "aaa", "bbba", "cca", "da", "𐍈")
 	f.Add(uint16(0xFFFF), "M", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "м")
+	f.Add(uint16(0xFFFF), "0", "0", "0", "0", "", "", "0", "0", "0", "0𐍈", "", "", "0", "0", "0", "0", "\x00\x00\x00\x00𐍈")
 
 	testSuites := []bcop{
 		opContainsPrefixCs,

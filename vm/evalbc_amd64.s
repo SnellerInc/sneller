@@ -10528,13 +10528,12 @@ TEXT bcContainsSuffixUTF8Ci(SB), NOSPLIT|NOFRAME, $0
   BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
   BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
 
+//; load parameters
   MOVQ          (R14),R14                 //;D2647DF0 load needle_ptr                 ;R14=needle_ptr; R14=needle_slice;
   MOVL          (R14),CX                  //;5B83F09F load number of code-points      ;CX=n_runes; R14=needle_ptr;
-  VPBROADCASTD  CX,  Z26                  //;485C8362 bcst number of code-points      ;Z26=scratch_Z26; CX=n_runes;
-  VPTESTMD      Z26, Z26, K1,  K1         //;CD49D8A5 K1 &= (scratch_Z26 != 0); empty needles are dead lanes;K1=lane_active; Z26=scratch_Z26;
 
-  VPCMPD        $2,  Z3,  Z26, K1,  K1    //;B73A4F83 K1 &= (scratch_Z26<=data_len)   ;K1=lane_active; Z26=scratch_Z26; Z3=data_len; 2=LessEq;
-  KTESTW        K1,  K1                   //;5746030A any lanes still alive?          ;K1=lane_active;
+  VPCMPD.BCST   $5,  24(R14),Z3,  K1,  K1 //;7C50EFFB K1 &= (data_len>=[needle_ptr+24]);K1=lane_active; Z3=data_len; R14=needle_ptr; 5=GreaterEq;
+  KTESTW        K1,  K1                   //;67E2F74E any lanes still alive           ;K1=lane_active;
   JZ            next                      //;B763A908 no, exit; jump if zero (ZF = 1) ;
 
   ADDQ          $4,  R14                  //;7B0665F3 calc alt_ptr offset             ;R14=needle_ptr;
@@ -10548,11 +10547,11 @@ TEXT bcContainsSuffixUTF8Ci(SB), NOSPLIT|NOFRAME, $0
   VPBROADCASTD  CONSTD_1(),Z10            //;6F57EE92 load constant 1                 ;Z10=1;
   VPADDD        Z10, Z10, Z14             //;EDD57CAF load constant 2                 ;Z14=2; Z10=1;
   VPADDD        Z10, Z14, Z12             //;7E7A1CB0 load constant 3                 ;Z12=3; Z14=2; Z10=1;
-  VPADDD        Z10, Z12, Z20             //;9CFA6ADD load constant 4                 ;Z20=4; Z12=3; Z10=1;
+  VPADDD        Z14, Z14, Z20             //;9CFA6ADD load constant 4                 ;Z20=4; Z14=2;
   VPADDD.Z      Z3,  Z2,  K1,  Z4         //;813A5F04 data_end := data_off + data_len ;Z4=data_end; K1=lane_active; Z2=data_off; Z3=data_len;
 
 loop:
-  VPCMPD        $5,  Z10, Z3,  K1,  K1    //;790C4E82 K1 &= (data_len>=1); empty data are dead lanes;K1=lane_active; Z3=data_len; Z10=1; 5=GreaterEq;
+  VPCMPD.BCST   $5,  20(R14),Z3,  K1,  K1 //;790C4E82 K1 &= (data_len>=[needle_ptr+20]);K1=lane_active; Z3=data_len; R14=needle_ptr; 5=GreaterEq;
   VPTESTMD      Z3,  Z3,  K1,  K3         //;6639548B K3 := K1 & (data_len != 0)      ;K3=tmp_mask; K1=lane_active; Z3=data_len;
 //; calculate offset that is always positive
   VPMINUD       Z20, Z3,  Z31             //;B086F272 adjust := min(data_len, 4)      ;Z31=adjust; Z3=data_len; Z20=4;
@@ -10575,7 +10574,7 @@ loop:
   VPORD.Z       Z8,  Z9,  K1,  Z26        //;3692D686 scratch_Z26 := needle | data    ;Z26=scratch_Z26; K1=lane_active; Z9=needle; Z8=data;
   VPMOVB2M      Z26, K3                   //;5303B427 get 64 sign-bits                ;K3=tmp_mask; Z26=scratch_Z26;
   KTESTQ        K3,  K3                   //;A2B0951C all sign-bits zero?             ;K3=tmp_mask;
-  JNZ           mixed_ascii               //;303EFD4D no, found a non-ascii char; jump if not zero (ZF = 0);
+  JNZ           mixed_ascii               //;303EFD4D no, found a non-ASCII char; jump if not zero (ZF = 0);
 
 //; str_to_upper: IN zmm8; OUT zmm13
   VPCMPB        $5,  Z16, Z8,  K3         //;30E9B9FD K3 := (data>=char_a)            ;K3=tmp_mask; Z8=data; Z16=char_a; 5=GreaterEq;
@@ -10584,12 +10583,10 @@ loop:
   VPTERNLOGD    $0b01001100,Z15, Z8,  Z13 //;1BB96D97                                 ;Z13=data_msg_upper; Z8=data; Z15=c_0b00100000;
 //; compare data with needle for 4 ASCIIs
   VPCMPD        $0,  Z13, Z9,  K1,  K1    //;BBBDF880 K1 &= (needle==data_msg_upper)  ;K1=lane_active; Z9=needle; Z13=data_msg_upper; 0=Eq;
-  KTESTW        K1,  K1                   //;5746030A any lanes still alive?          ;K1=lane_active;
-  JZ            next                      //;B763A908 no, exit; jump if zero (ZF = 1) ;
 //; advance to the next 4 ASCIIs
   VPSUBD.Z      Z20, Z4,  K1,  Z4         //;D7CC90DD data_end -= 4                   ;Z4=data_end; K1=lane_active; Z20=4;
   VPSUBD        Z20, Z3,  K1,  Z3         //;83ADFEDA data_len -= 4                   ;Z3=data_len; K1=lane_active; Z20=4;
-  ADDQ          $80, R14                  //;F0BC3163 needle_ptr += 80                ;R14=needle_ptr;
+  ADDQ          $4*24,R14                 //;F0BC3163 needle_ptr += 4*24              ;R14=needle_ptr;
   SUBL          $4,  CX                   //;646B86C9 n_runes -= 4                    ;CX=n_runes;
   JG            loop                      //;1EBC2C20 jump if greater ((ZF = 0) and (SF = OF));
   JMP           next                      //;2230EE05                                 ;
@@ -10615,6 +10612,7 @@ mixed_ascii:
   VPCMPD.BCST   $0,  4(R14),Z8,  K1,  K4  //;EFD0A9A3 K4 := K1 & (data==[needle_ptr+4]);K4=alt2_match; K1=lane_active; Z8=data; R14=needle_ptr; 0=Eq;
   VPCMPD.BCST   $0,  8(R14),Z8,  K1,  K5  //;CAC0FAC6 K5 := K1 & (data==[needle_ptr+8]);K5=alt3_match; K1=lane_active; Z8=data; R14=needle_ptr; 0=Eq;
   VPCMPD.BCST   $0,  12(R14),Z8,  K1,  K6 //;50C70740 K6 := K1 & (data==[needle_ptr+12]);K6=alt4_match; K1=lane_active; Z8=data; R14=needle_ptr; 0=Eq;
+  ADDQ          $24, R14                  //;1F8D79B1 needle_ptr += 24                ;R14=needle_ptr;
   KORW          K3,  K4,  K3              //;58E49245 tmp_mask |= alt2_match          ;K3=tmp_mask; K4=alt2_match;
   KORW          K3,  K5,  K3              //;BDCB8940 tmp_mask |= alt3_match          ;K3=tmp_mask; K5=alt3_match;
   KORW          K6,  K3,  K1              //;AAF6ED91 lane_active := tmp_mask | alt4_match;K1=lane_active; K3=tmp_mask; K6=alt4_match;
@@ -10623,7 +10621,6 @@ mixed_ascii:
 //; advance to the next rune
   VPSUBD        Z7,  Z4,  K1,  Z4         //;D35D27FB data_end -= n_bytes_data        ;Z4=data_end; K1=lane_active; Z7=n_bytes_data;
   VPSUBD        Z7,  Z3,  K1,  Z3         //;24E04BE7 data_len -= n_bytes_data        ;Z3=data_len; K1=lane_active; Z7=n_bytes_data;
-  ADDQ          $20, R14                  //;1F8D79B1 needle_ptr += 20                ;R14=needle_ptr;
   DECL          CX                        //;A99E9290 n_runes--                       ;CX=n_runes;
   JG            loop                      //;80013DFA jump if greater ((ZF = 0) and (SF = OF));
 
