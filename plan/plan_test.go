@@ -15,12 +15,11 @@
 package plan
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/SnellerInc/sneller/expr/partiql"
 	"github.com/SnellerInc/sneller/ion/blockfmt"
-
-	"golang.org/x/exp/slices"
 )
 
 func mksized(size int64) *Input {

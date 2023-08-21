@@ -16,9 +16,8 @@ package main
 
 import (
 	"fmt"
+	"slices"
 	"strings"
-
-	"golang.org/x/exp/slices"
 )
 
 // Opcode represents all parameters for the given opcode

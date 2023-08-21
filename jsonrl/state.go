@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"math/bits"
 	"os"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -31,8 +32,6 @@ import (
 
 	"github.com/SnellerInc/sneller/date"
 	"github.com/SnellerInc/sneller/ion"
-
-	"golang.org/x/exp/slices"
 )
 
 //go:generate gofmt -w .

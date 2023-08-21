@@ -24,6 +24,7 @@ import (
 	"io/fs"
 	"os"
 	"runtime/trace"
+	"slices"
 
 	"github.com/SnellerInc/sneller/db"
 	"github.com/SnellerInc/sneller/fsutil"
@@ -33,7 +34,6 @@ import (
 	"github.com/SnellerInc/sneller/vm"
 	"github.com/dchest/siphash"
 	"golang.org/x/exp/constraints"
-	"golang.org/x/exp/slices"
 )
 
 var CanVMOpen = false

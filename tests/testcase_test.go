@@ -18,8 +18,9 @@ import (
 	"strings"
 	"testing"
 
+	"slices"
+
 	"golang.org/x/exp/maps"
-	"golang.org/x/exp/slices"
 )
 
 func TestReadTestcase(t *testing.T) {

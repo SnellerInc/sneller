@@ -17,12 +17,11 @@ package vm
 import (
 	"fmt"
 	"io"
+	"slices"
 	"strings"
 
 	"github.com/SnellerInc/sneller/expr"
 	"github.com/SnellerInc/sneller/ion"
-
-	"golang.org/x/exp/slices"
 )
 
 // Selection represents a set of

@@ -16,12 +16,11 @@ package vm
 
 import (
 	"fmt"
+	"slices"
 	"unsafe"
 
 	"github.com/SnellerInc/sneller/ion"
 	"github.com/SnellerInc/sneller/ion/zion/zll"
-
-	"golang.org/x/exp/slices"
 )
 
 type zionState struct {

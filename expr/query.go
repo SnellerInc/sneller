@@ -16,11 +16,10 @@ package expr
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/SnellerInc/sneller/ion"
-
-	"golang.org/x/exp/slices"
 )
 
 // CTE is one arm of a "common table expression"

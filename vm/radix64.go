@@ -19,9 +19,8 @@ import (
 	"fmt"
 	"math"
 	"math/bits"
+	"slices"
 	"sync/atomic"
-
-	"golang.org/x/exp/slices"
 
 	"github.com/SnellerInc/sneller/ion"
 )

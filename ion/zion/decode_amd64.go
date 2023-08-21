@@ -18,12 +18,12 @@ package zion
 
 import (
 	"errors"
+	"slices"
 	"unsafe"
 
 	"github.com/SnellerInc/sneller/ion"
 	"github.com/SnellerInc/sneller/ion/zion/zll"
 
-	"golang.org/x/exp/slices"
 	"golang.org/x/sys/cpu"
 )
 

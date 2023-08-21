@@ -16,10 +16,9 @@ package main
 
 import (
 	"math/rand"
+	"slices"
 	"sort"
 	"strings"
-
-	"golang.org/x/exp/slices"
 )
 
 // packstrings finds a single string that contains all strings

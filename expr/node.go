@@ -25,7 +25,7 @@ import (
 	"github.com/SnellerInc/sneller/internal/stringext"
 	"github.com/SnellerInc/sneller/ion"
 
-	"golang.org/x/exp/slices"
+	"slices"
 )
 
 // Visitor is an interface that must

@@ -16,8 +16,7 @@ package zion
 
 import (
 	"encoding/binary"
-
-	"golang.org/x/exp/slices"
+	"slices"
 )
 
 // shapeEncoder encodes the shape

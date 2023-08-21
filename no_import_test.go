@@ -19,10 +19,9 @@ import (
 	"bytes"
 	"encoding/json"
 	"os/exec"
+	"slices"
 	"sync"
 	"testing"
-
-	"golang.org/x/exp/slices"
 )
 
 func TestImports(t *testing.T) {

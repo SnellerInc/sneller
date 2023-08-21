@@ -24,11 +24,10 @@ import (
 	"io"
 	"io/fs"
 	"path"
+	"slices"
 	"strings"
 
 	"github.com/SnellerInc/sneller/ion/blockfmt"
-
-	"golang.org/x/exp/slices"
 )
 
 // TablePrefix returns the prefix

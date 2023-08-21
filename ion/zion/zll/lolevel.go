@@ -21,10 +21,9 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"slices"
 
 	"github.com/SnellerInc/sneller/ion"
-
-	"golang.org/x/exp/slices"
 )
 
 type Symtab interface {

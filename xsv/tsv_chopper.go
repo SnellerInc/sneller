@@ -18,8 +18,7 @@ import (
 	"bufio"
 	"bytes"
 	"io"
-
-	"golang.org/x/exp/slices"
+	"slices"
 )
 
 // TsvChopper reads a TSV formatted file

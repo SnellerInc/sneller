@@ -16,12 +16,12 @@ package vm
 
 import (
 	"bytes"
+	"slices"
 	"testing"
 
 	"github.com/SnellerInc/sneller/ion"
 	"github.com/SnellerInc/sneller/ion/zion"
 	"github.com/SnellerInc/sneller/ion/zion/zll"
-	"golang.org/x/exp/slices"
 )
 
 func TestZionFlatten(t *testing.T) {

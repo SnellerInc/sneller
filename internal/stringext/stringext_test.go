@@ -16,9 +16,8 @@ package stringext
 
 import (
 	"fmt"
+	"slices"
 	"testing"
-
-	"golang.org/x/exp/slices"
 )
 
 func TestIndexByteEscape(t *testing.T) {

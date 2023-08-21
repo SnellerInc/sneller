@@ -16,8 +16,7 @@ package iguana
 
 import (
 	"encoding/binary"
-
-	"golang.org/x/exp/slices"
+	"slices"
 )
 
 // This experimental arithmetic compression/decompression functionality is based on

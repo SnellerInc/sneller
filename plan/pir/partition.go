@@ -15,9 +15,9 @@
 package pir
 
 import (
-	"github.com/SnellerInc/sneller/expr"
+	"slices"
 
-	"golang.org/x/exp/slices"
+	"github.com/SnellerInc/sneller/expr"
 )
 
 func isPartition(s Step, e expr.Node, it *IterTable) (expr.Ident, *IterTable, bool) {

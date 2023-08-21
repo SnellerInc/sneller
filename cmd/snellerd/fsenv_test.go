@@ -39,7 +39,7 @@ import (
 	"github.com/SnellerInc/sneller/ion/blockfmt"
 	"github.com/SnellerInc/sneller/tenant"
 
-	"golang.org/x/exp/slices"
+	"slices"
 )
 
 func TestMain(m *testing.M) {

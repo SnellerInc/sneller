@@ -19,13 +19,12 @@ import (
 	"crypto/rand"
 	"path"
 	"reflect"
+	"slices"
 	"testing"
 	"time"
 
 	"github.com/SnellerInc/sneller/date"
 	"github.com/SnellerInc/sneller/expr"
-
-	"golang.org/x/exp/slices"
 )
 
 func TestIndirectTree(t *testing.T) {

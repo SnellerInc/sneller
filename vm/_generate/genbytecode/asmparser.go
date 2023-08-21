@@ -16,9 +16,8 @@ package main
 
 import (
 	"fmt"
+	"slices"
 	"strings"
-
-	"golang.org/x/exp/slices"
 )
 
 // Assembler parser extract from the source individual opcodes, including

@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"io/fs"
 	"path"
+	"slices"
 	"sync"
 	"time"
 
@@ -28,7 +29,6 @@ import (
 	"github.com/SnellerInc/sneller/ion/blockfmt"
 
 	"golang.org/x/exp/maps"
-	"golang.org/x/exp/slices"
 )
 
 // RemoveFS is an fs.FS with a Remove operation.

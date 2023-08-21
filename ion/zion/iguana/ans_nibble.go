@@ -17,8 +17,9 @@ package iguana
 import (
 	"encoding/binary"
 
+	"slices"
+
 	"github.com/SnellerInc/sneller/ints"
-	"golang.org/x/exp/slices"
 )
 
 // For theoretical background, please refer to Jaroslaw Duda's seminal paper on rANS:

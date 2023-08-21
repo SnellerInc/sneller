@@ -24,8 +24,9 @@ import (
 	"github.com/SnellerInc/sneller/ion"
 	"github.com/SnellerInc/sneller/ion/blockfmt"
 
+	"slices"
+
 	"github.com/dchest/siphash"
-	"golang.org/x/exp/slices"
 )
 
 // A Descriptor describes a single input object.

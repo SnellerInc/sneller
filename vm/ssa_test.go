@@ -18,14 +18,13 @@ import (
 	"bytes"
 	"os"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/SnellerInc/sneller/expr"
 	"github.com/SnellerInc/sneller/internal/stringext"
-
-	"golang.org/x/exp/slices"
 )
 
 func TestArgMatch(t *testing.T) {

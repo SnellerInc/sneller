@@ -15,10 +15,10 @@
 package iguana
 
 import (
+	"slices"
 	"unsafe"
 
 	"github.com/SnellerInc/sneller/ints"
-	"golang.org/x/exp/slices"
 )
 
 // Decoder is a stateless decoder for iguana-compressed data.

@@ -15,7 +15,8 @@
 package iguana
 
 import (
-	"golang.org/x/exp/slices"
+	"slices"
+
 	"golang.org/x/sys/cpu"
 )
 

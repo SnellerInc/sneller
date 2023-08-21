@@ -16,11 +16,10 @@ package regexp2
 
 import (
 	"fmt"
+	"slices"
 	"unicode"
 
 	"golang.org/x/exp/maps"
-
-	"golang.org/x/exp/slices"
 )
 
 type nfa struct {

@@ -18,6 +18,7 @@ import (
 	"bytes"
 	"io"
 	"math/bits"
+	"slices"
 	"sync/atomic"
 	"unsafe"
 
@@ -25,7 +26,6 @@ import (
 	"github.com/SnellerInc/sneller/internal/atomicext"
 	"github.com/SnellerInc/sneller/ints"
 	"github.com/SnellerInc/sneller/ion"
-	"golang.org/x/exp/slices"
 )
 
 const (
@@ -220,7 +220,7 @@ func (u *kernelUnpivotAsAt) writeRows(rows []vmref, params *rowParams) error {
 				k = cap(u.dummy)
 			}
 			// both len(v) > 0 and k > 0 here, then so must be m
-			m := ints.Min(k, len(v))
+			m := min(k, len(v))
 			fillVMrefs(&u.dummy, vmref{0, 0}, m)
 			fillVMrefs(&u.params.auxbound[0], symref, m)
 			copyVMrefs(&u.params.auxbound[1], &v[0], m)
@@ -295,7 +295,7 @@ func (u *kernelUnpivotAs) writeRows(rows []vmref, params *rowParams) error {
 				k = cap(u.dummy)
 			}
 			// both len(v) > 0 and k > 0 here, then so must be m
-			m := ints.Min(k, len(v))
+			m := min(k, len(v))
 			fillVMrefs(&u.dummy, vmref{0, 0}, m)
 			copyVMrefs(&u.params.auxbound[0], &v[0], m)
 			v = v[m:]
@@ -374,7 +374,7 @@ func (u *kernelUnpivotAt) writeRows(rows []vmref, params *rowParams) error {
 				k = cap(u.dummy)
 			}
 			// both len(v) > 0 and k > 0 here, then so must be m
-			m := ints.Min(k, len(v))
+			m := min(k, len(v))
 			fillVMrefs(&u.dummy, vmref{0, 0}, m)
 			fillVMrefs(&u.params.auxbound[0], symref, m)
 			v = v[m:]

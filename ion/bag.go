@@ -16,8 +16,7 @@ package ion
 
 import (
 	"io"
-
-	"golang.org/x/exp/slices"
+	"slices"
 )
 
 // Bag is a (possibly empty) sequence of ion datums.

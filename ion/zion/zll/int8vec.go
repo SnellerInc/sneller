@@ -16,10 +16,10 @@ package zll
 
 import (
 	"fmt"
+	"slices"
 
 	"github.com/SnellerInc/sneller/ion"
 
-	"golang.org/x/exp/slices"
 	"golang.org/x/sys/cpu"
 )
 

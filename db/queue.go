@@ -31,8 +31,9 @@ import (
 	"github.com/SnellerInc/sneller/fsutil"
 	"github.com/SnellerInc/sneller/ion/blockfmt"
 
+	"slices"
+
 	"golang.org/x/exp/maps"
-	"golang.org/x/exp/slices"
 )
 
 const (

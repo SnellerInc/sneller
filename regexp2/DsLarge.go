@@ -20,7 +20,7 @@ import (
 	"io"
 	"unicode/utf8"
 
-	"golang.org/x/exp/slices"
+	"slices"
 )
 
 // DsLarge is a data structure for the large DFA implementation

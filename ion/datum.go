@@ -19,9 +19,8 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"slices"
 	"strings"
-
-	"golang.org/x/exp/slices"
 
 	"github.com/SnellerInc/sneller/date"
 )

@@ -18,13 +18,12 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"slices"
 	"sort"
 	"sync"
 
 	"github.com/SnellerInc/sneller/ion"
 	"github.com/SnellerInc/sneller/utf8"
-
-	"golang.org/x/exp/slices"
 )
 
 // NewSystemDatashape constucts a QuerySink implementing

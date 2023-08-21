@@ -18,14 +18,13 @@ import (
 	"bytes"
 	"errors"
 	"os"
+	"slices"
 	"testing"
 
 	"github.com/SnellerInc/sneller/expr"
 	"github.com/SnellerInc/sneller/ion"
 	"github.com/SnellerInc/sneller/jsonrl"
 	"github.com/SnellerInc/sneller/vm"
-
-	"golang.org/x/exp/slices"
 )
 
 // for a block of ion data, compute the projection

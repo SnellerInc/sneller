@@ -31,8 +31,9 @@ import (
 	"github.com/SnellerInc/sneller/aws/s3"
 	"github.com/SnellerInc/sneller/ion"
 
+	"slices"
+
 	"golang.org/x/exp/maps"
-	"golang.org/x/exp/slices"
 )
 
 func checkLevel(t *testing.T, fs UploadFS, f *level, load, dirtyok bool) {

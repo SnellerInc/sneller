@@ -16,10 +16,9 @@ package percentile
 
 import (
 	"fmt"
+	"slices"
 	"sort"
 	"testing"
-
-	"golang.org/x/exp/slices"
 )
 
 // Sortnet16f32 sort network of 16 float32 elements (f32)

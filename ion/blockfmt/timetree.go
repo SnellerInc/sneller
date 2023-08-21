@@ -23,7 +23,7 @@ import (
 	"github.com/SnellerInc/sneller/date"
 	"github.com/SnellerInc/sneller/ion"
 
-	"golang.org/x/exp/slices"
+	"slices"
 )
 
 type timespan struct {

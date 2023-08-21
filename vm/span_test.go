@@ -16,9 +16,8 @@ package vm
 
 import (
 	"math/rand"
+	"slices"
 	"testing"
-
-	"golang.org/x/exp/slices"
 )
 
 func TestSpan(t *testing.T) {

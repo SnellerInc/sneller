@@ -25,7 +25,8 @@ import (
 	"strconv"
 	"strings"
 
-	"golang.org/x/exp/slices"
+	"slices"
+
 	"golang.org/x/sys/cpu"
 
 	"github.com/SnellerInc/sneller/date"

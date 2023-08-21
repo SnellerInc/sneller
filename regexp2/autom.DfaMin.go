@@ -16,10 +16,10 @@ package regexp2
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"golang.org/x/exp/maps"
-	"golang.org/x/exp/slices"
 )
 
 type queueT []nodeIDT

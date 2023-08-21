@@ -12,41 +12,12 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-package heap
+// Package asmutils provides helpers for assembly integration
+package asmutils
 
-import (
-	"math/rand"
-	"slices"
-	"testing"
-)
-
-func TestHeap(t *testing.T) {
-	x := make([]int, 0, 1000)
-	less := func(x, y int) bool {
-		return x < y
-	}
-	for len(x) < cap(x) {
-		PushSlice(&x, rand.Int(), less)
-	}
-	sorted := make([]int, 0, len(x))
-	for len(x) > 0 {
-		sorted = append(sorted, PopSlice(&x, less))
-	}
-	if !slices.IsSorted(sorted) {
-		t.Fatal("not sorted")
-	}
-
-	for len(x) < cap(x) {
-		PushSlice(&x, rand.Int(), less)
-	}
-	// disturb ordering, then Fix
-	x[len(x)/2] = 1
-	FixSlice(x, len(x)/2, less)
-	sorted = sorted[:0]
-	for len(x) > 0 {
-		sorted = append(sorted, PopSlice(&x, less))
-	}
-	if !slices.IsSorted(sorted) {
-		t.Fatal("not sorted after FixSlice")
-	}
+// SliceHeader restores the deprecated reflect.SliceHeader to make slices reachable from assembly
+type SliceHeader struct {
+	Data uintptr
+	Len  int
+	Cap  int
 }

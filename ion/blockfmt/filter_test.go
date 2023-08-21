@@ -24,7 +24,7 @@ import (
 	"github.com/SnellerInc/sneller/expr/partiql"
 	"github.com/SnellerInc/sneller/ion"
 
-	"golang.org/x/exp/slices"
+	"slices"
 )
 
 func TestFilter(t *testing.T) {

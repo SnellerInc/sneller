@@ -17,13 +17,12 @@ package plan
 import (
 	"fmt"
 	"io"
+	"slices"
 	"sync"
 
 	"github.com/SnellerInc/sneller/expr"
 	"github.com/SnellerInc/sneller/ion"
 	"github.com/SnellerInc/sneller/plan/pir"
-
-	"golang.org/x/exp/slices"
 )
 
 type replacement struct {

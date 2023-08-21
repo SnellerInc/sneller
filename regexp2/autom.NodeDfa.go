@@ -17,11 +17,11 @@ package regexp2
 import (
 	"fmt"
 	"math"
+	"slices"
 	"strconv"
 	"unicode"
 
 	"golang.org/x/exp/maps"
-	"golang.org/x/exp/slices"
 )
 
 const notInitialized = -1

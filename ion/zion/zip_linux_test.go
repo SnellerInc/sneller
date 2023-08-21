@@ -18,14 +18,13 @@ package zion
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"syscall"
 	"testing"
 
 	"github.com/SnellerInc/sneller/ion"
 	"github.com/SnellerInc/sneller/ion/zion/zll"
-
-	"golang.org/x/exp/slices"
 )
 
 func pad8(buf []byte) []byte {

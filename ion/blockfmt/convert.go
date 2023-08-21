@@ -25,6 +25,7 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
+	"slices"
 	"strings"
 
 	"github.com/SnellerInc/sneller/aws/s3"
@@ -34,7 +35,6 @@ import (
 	"github.com/SnellerInc/sneller/xsv"
 
 	"github.com/klauspost/compress/zstd"
-	"golang.org/x/exp/slices"
 )
 
 const (

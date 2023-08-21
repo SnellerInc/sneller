@@ -27,8 +27,9 @@ import (
 	"strconv"
 	"strings"
 
+	"slices"
+
 	"golang.org/x/exp/maps"
-	"golang.org/x/exp/slices"
 )
 
 func main() {

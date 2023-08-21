@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"slices"
 	"strings"
 	"text/scanner"
 	"unicode"
@@ -30,7 +31,6 @@ import (
 	"github.com/SnellerInc/sneller/rules"
 
 	"golang.org/x/exp/maps"
-	"golang.org/x/exp/slices"
 )
 
 var (

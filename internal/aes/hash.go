@@ -49,7 +49,6 @@
 package aes
 
 import (
-	"reflect"
 	"unsafe"
 
 	"golang.org/x/exp/constraints"
@@ -75,14 +74,12 @@ func HashWide[T Hashable](e *HashEngine, v T) WideHash {
 
 //go:nosplit
 func HashSlice[T Hashable](e *HashEngine, in []T) uint64 {
-	hdr := (*reflect.SliceHeader)(unsafe.Pointer(&in)) // Let the empty slice case be handled in assembly
-	return aesHash64((*ExpandedKey128Quad)(e), (*byte)(unsafe.Pointer(hdr.Data)), hdr.Len*int(unsafe.Sizeof(in[0])))
+	return aesHash64((*ExpandedKey128Quad)(e), (*byte)(unsafe.Pointer(unsafe.SliceData(in))), len(in)*int(unsafe.Sizeof(in[0])))
 }
 
 //go:nosplit
 func HashWideSlice[T Hashable](e *HashEngine, in []T) WideHash {
-	hdr := (*reflect.SliceHeader)(unsafe.Pointer(&in)) // Let the empty slice case be handled in assembly
-	return aesHashWide((*ExpandedKey128Quad)(e), (*byte)(unsafe.Pointer(hdr.Data)), hdr.Len*int(unsafe.Sizeof(in[0])))
+	return aesHashWide((*ExpandedKey128Quad)(e), (*byte)(unsafe.Pointer(unsafe.SliceData(in))), len(in)*int(unsafe.Sizeof(in[0])))
 }
 
 // HashCombine combines multiple uint64 hash values into a new one

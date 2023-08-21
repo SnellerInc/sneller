@@ -20,9 +20,10 @@ import (
 	"io"
 	"sync"
 
+	"slices"
+
 	"github.com/SnellerInc/sneller/ion"
 	"github.com/SnellerInc/sneller/ion/zion/zll"
-	"golang.org/x/exp/slices"
 )
 
 // QuerySink represents a sink for query outputs.

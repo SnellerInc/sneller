@@ -19,9 +19,8 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"slices"
 	"testing"
-
-	"golang.org/x/exp/slices"
 )
 
 func TestConcat(t *testing.T) {

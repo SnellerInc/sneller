@@ -19,12 +19,11 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"unsafe"
-
-	"golang.org/x/exp/slices"
 
 	"github.com/SnellerInc/sneller/date"
 	"github.com/SnellerInc/sneller/expr"

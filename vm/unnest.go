@@ -16,9 +16,9 @@ package vm
 
 import (
 	"io"
+	"slices"
 
 	"github.com/SnellerInc/sneller/expr"
-	"golang.org/x/exp/slices"
 )
 
 // Unnest un-nests an array and produces rows

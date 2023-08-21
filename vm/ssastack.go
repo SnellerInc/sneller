@@ -17,8 +17,7 @@ package vm
 import (
 	"fmt"
 	"math"
-
-	"golang.org/x/exp/slices"
+	"slices"
 )
 
 // stackslot is a relative offset into a virtual stack buffer

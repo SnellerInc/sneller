@@ -18,10 +18,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/SnellerInc/sneller/ion"
-	"golang.org/x/exp/slices"
 )
 
 const (

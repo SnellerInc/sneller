@@ -19,6 +19,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"sort"
 	"sync"
 
@@ -26,7 +27,6 @@ import (
 	"github.com/SnellerInc/sneller/ion"
 
 	"golang.org/x/exp/maps"
-	"golang.org/x/exp/slices"
 )
 
 // fentry is the last-level leaf contents

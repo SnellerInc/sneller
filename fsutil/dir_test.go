@@ -26,7 +26,7 @@ import (
 	"strings"
 	"testing"
 
-	"golang.org/x/exp/slices"
+	"slices"
 )
 
 func TestVisitDir(t *testing.T) {

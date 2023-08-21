@@ -20,13 +20,13 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"slices"
 	"strings"
 
 	"github.com/SnellerInc/sneller/auth"
 	"github.com/SnellerInc/sneller/db"
 
 	"golang.org/x/exp/maps"
-	"golang.org/x/exp/slices"
 )
 
 var (

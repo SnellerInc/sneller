@@ -31,11 +31,10 @@ package rules
 
 import (
 	"io"
+	"slices"
 	"strconv"
 	"strings"
 	"text/scanner"
-
-	"golang.org/x/exp/slices"
 )
 
 // Rule represents one rule. The rule package

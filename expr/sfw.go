@@ -21,7 +21,7 @@ import (
 
 	"github.com/SnellerInc/sneller/ion"
 
-	"golang.org/x/exp/slices"
+	"slices"
 )
 
 type Binding struct {

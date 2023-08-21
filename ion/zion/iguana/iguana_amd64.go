@@ -16,8 +16,9 @@
 package iguana
 
 import (
-	"reflect"
 	"unsafe"
+
+	"github.com/SnellerInc/sneller/internal/asmutils"
 
 	"golang.org/x/sys/cpu"
 )
@@ -34,10 +35,10 @@ func init() {
 	}
 }
 
-const offsSliceHeaderData = unsafe.Offsetof(reflect.SliceHeader{}.Data) //lint:ignore U1000 used in assembly
-const offsSliceHeaderLen = unsafe.Offsetof(reflect.SliceHeader{}.Len)   //lint:ignore U1000 used in assembly
-const offsSliceHeaderCap = unsafe.Offsetof(reflect.SliceHeader{}.Cap)   //lint:ignore U1000 used in assembly
-const sizeSliceHeader = unsafe.Sizeof(reflect.SliceHeader{})            //lint:ignore U1000 used in assembly
+const offsSliceHeaderData = unsafe.Offsetof(asmutils.SliceHeader{}.Data) //lint:ignore U1000 used in assembly
+const offsSliceHeaderLen = unsafe.Offsetof(asmutils.SliceHeader{}.Len)   //lint:ignore U1000 used in assembly
+const offsSliceHeaderCap = unsafe.Offsetof(asmutils.SliceHeader{}.Cap)   //lint:ignore U1000 used in assembly
+const sizeSliceHeader = unsafe.Sizeof(asmutils.SliceHeader{})            //lint:ignore U1000 used in assembly
 
 //go:noescape
 func bestMatchAVX512(src []byte, litmin, pos int32, hist *[4]int32) (int32, int32, int32)

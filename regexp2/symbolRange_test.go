@@ -15,9 +15,8 @@
 package regexp2
 
 import (
+	"slices"
 	"testing"
-
-	"golang.org/x/exp/slices"
 )
 
 func equalSymbolRanges(a, b []symbolRangeT) bool {

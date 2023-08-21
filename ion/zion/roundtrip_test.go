@@ -27,7 +27,7 @@ import (
 	"github.com/SnellerInc/sneller/ion/zion/zll"
 	"github.com/SnellerInc/sneller/jsonrl"
 
-	"golang.org/x/exp/slices"
+	"slices"
 )
 
 var validAlgs = []zll.BucketAlgo{

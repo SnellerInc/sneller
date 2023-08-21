@@ -22,7 +22,7 @@ import (
 	"github.com/SnellerInc/sneller/ion"
 	"github.com/SnellerInc/sneller/ion/zion/zll"
 
-	"golang.org/x/exp/slices"
+	"slices"
 )
 
 // faults are error codes returned from the assembly

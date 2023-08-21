@@ -19,11 +19,10 @@ import (
 	"encoding/base64"
 	"fmt"
 	"io"
+	"slices"
 	"strconv"
 
 	"github.com/SnellerInc/sneller/date"
-
-	"golang.org/x/exp/slices"
 )
 
 // Peek peeks at the type and size of

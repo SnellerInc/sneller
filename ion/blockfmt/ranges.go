@@ -17,7 +17,7 @@ package blockfmt
 import (
 	"strings"
 
-	"golang.org/x/exp/slices"
+	"slices"
 
 	"github.com/SnellerInc/sneller/date"
 	"github.com/SnellerInc/sneller/ion"

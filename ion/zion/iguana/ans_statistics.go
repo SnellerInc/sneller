@@ -15,8 +15,9 @@
 package iguana
 
 import (
+	"slices"
+
 	"github.com/SnellerInc/sneller/ints"
-	"golang.org/x/exp/slices"
 )
 
 const (

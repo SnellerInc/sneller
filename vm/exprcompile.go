@@ -20,14 +20,13 @@ import (
 	"fmt"
 	"math/big"
 	"net"
+	"slices"
 	"unicode/utf8"
 
 	"github.com/SnellerInc/sneller/expr"
 	"github.com/SnellerInc/sneller/internal/stringext"
 	"github.com/SnellerInc/sneller/ion"
 	"github.com/SnellerInc/sneller/regexp2"
-
-	"golang.org/x/exp/slices"
 )
 
 // compileLogical compiles a logical expression

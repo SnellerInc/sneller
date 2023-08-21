@@ -16,7 +16,6 @@
 package memops
 
 import (
-	"reflect"
 	"unsafe"
 )
 
@@ -26,8 +25,7 @@ type Pointerless interface {
 
 // ZeroMemory fills buf with zeros. CAUTION: must be used only for T not containing pointers!
 func ZeroMemory[T Pointerless](buf []T) {
-	hdr := (*reflect.SliceHeader)(unsafe.Pointer(&buf)) // Let the empty slice case be handled in assembly
-	zeroMemoryPointerless(unsafe.Pointer(hdr.Data), uintptr(hdr.Len*int(unsafe.Sizeof(buf[0]))))
+	zeroMemoryPointerless(unsafe.Pointer(unsafe.SliceData(buf)), uintptr(len(buf)*int(unsafe.Sizeof(buf[0]))))
 }
 
 //go:noescape

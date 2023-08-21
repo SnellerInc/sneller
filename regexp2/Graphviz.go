@@ -18,9 +18,8 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"slices"
 	"strings"
-
-	"golang.org/x/exp/slices"
 )
 
 type Graphviz struct {

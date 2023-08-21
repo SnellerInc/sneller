@@ -22,7 +22,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"golang.org/x/exp/slices"
+	"slices"
 )
 
 func testdata(t *testing.T, name string) []byte {

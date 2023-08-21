@@ -28,6 +28,7 @@ import (
 	"math/bits"
 	"math/rand"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -42,8 +43,6 @@ import (
 	"github.com/SnellerInc/sneller/plan"
 	"github.com/SnellerInc/sneller/tests"
 	"github.com/SnellerInc/sneller/vm"
-
-	"golang.org/x/exp/slices"
 )
 
 type Input interface {

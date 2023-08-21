@@ -18,11 +18,10 @@ package stringext
 import (
 	"encoding/binary"
 	"fmt"
+	"slices"
 	"strings"
 	"unicode"
 	"unicode/utf8"
-
-	"golang.org/x/exp/slices"
 )
 
 // Needle string type to distinguish from the Data string type

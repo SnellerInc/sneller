@@ -14,7 +14,7 @@
 
 package ints
 
-import "golang.org/x/exp/slices"
+import "slices"
 
 // Interval is a half-open interval [start, end)
 // (start is always less than or equal to end)

@@ -14,9 +14,7 @@
 
 package regexp2
 
-import (
-	"golang.org/x/exp/slices"
-)
+import "slices"
 
 func min(r1, r2 rune) rune {
 	if r1 < r2 {

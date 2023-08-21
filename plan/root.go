@@ -19,6 +19,7 @@ import (
 	"io"
 	"io/fs"
 	"runtime"
+	"slices"
 	"sync"
 	"sync/atomic"
 
@@ -28,8 +29,6 @@ import (
 	"github.com/SnellerInc/sneller/ion"
 	"github.com/SnellerInc/sneller/ion/blockfmt"
 	"github.com/SnellerInc/sneller/vm"
-
-	"golang.org/x/exp/slices"
 )
 
 // Runner is the caller-provided interface through

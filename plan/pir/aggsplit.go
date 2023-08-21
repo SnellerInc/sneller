@@ -16,11 +16,10 @@ package pir
 
 import (
 	"fmt"
+	"slices"
 
 	"github.com/SnellerInc/sneller/expr"
 	"github.com/SnellerInc/sneller/vm"
-
-	"golang.org/x/exp/slices"
 )
 
 type visitor func(e expr.Node) expr.Visitor

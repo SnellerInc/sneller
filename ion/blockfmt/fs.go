@@ -23,6 +23,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 
@@ -31,7 +32,6 @@ import (
 
 	"golang.org/x/crypto/blake2b"
 	"golang.org/x/exp/maps"
-	"golang.org/x/exp/slices"
 )
 
 // InputFS describes the FS implementation

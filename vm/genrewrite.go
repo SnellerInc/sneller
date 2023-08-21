@@ -27,7 +27,7 @@ import (
 
 	"github.com/SnellerInc/sneller/rules"
 
-	"golang.org/x/exp/slices"
+	"slices"
 )
 
 var stdout io.Writer

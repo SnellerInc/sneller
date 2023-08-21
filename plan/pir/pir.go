@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"io"
 	"path"
+	"slices"
 	"strings"
 
 	"github.com/SnellerInc/sneller/date"
@@ -26,7 +27,6 @@ import (
 	"github.com/SnellerInc/sneller/vm"
 
 	"golang.org/x/exp/maps"
-	"golang.org/x/exp/slices"
 )
 
 // table is the base type for operations

@@ -24,13 +24,13 @@ import (
 	"net/http"
 	"net/url"
 	"path"
+	"slices"
 	"sort"
 	"strings"
 	"time"
 
 	"github.com/SnellerInc/sneller/aws"
 	"github.com/SnellerInc/sneller/fsutil"
-	"golang.org/x/exp/slices"
 )
 
 // BucketFS implements fs.FS,

@@ -14,7 +14,7 @@
 
 package regexp2
 
-import "golang.org/x/exp/slices"
+import "slices"
 
 type vectorT[T comparable] []T
 

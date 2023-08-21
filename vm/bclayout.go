@@ -15,8 +15,9 @@
 package vm
 
 import (
-	"reflect"
 	"unsafe"
+
+	"github.com/SnellerInc/sneller/internal/asmutils"
 )
 
 type kRegData struct {
@@ -83,8 +84,8 @@ const (
 )
 
 func vRegDataFromVStackCast(vstack *[]uint64, count int) (out []vRegData) {
-	hdr := (*reflect.SliceHeader)(unsafe.Pointer(vstack))
-	outhdr := (*reflect.SliceHeader)(unsafe.Pointer(&out))
+	hdr := (*asmutils.SliceHeader)(unsafe.Pointer(vstack))
+	outhdr := (*asmutils.SliceHeader)(unsafe.Pointer(&out))
 	outhdr.Data = hdr.Data
 	outhdr.Len = count
 	outhdr.Cap = hdr.Cap / vRegSize
