@@ -41,6 +41,13 @@ type sRegData struct {
 	sizes   [bcLaneCount]uint32
 }
 
+func (s *sRegData) fill(v uint32) {
+	for i := 0; i < bcLaneCount; i++ {
+		s.offsets[i] = v
+		s.sizes[i] = v
+	}
+}
+
 type i64RegData struct {
 	values [bcLaneCount]int64
 }

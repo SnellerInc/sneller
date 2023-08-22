@@ -36,6 +36,7 @@ import (
 
 // exhaustive search space: all combinations are explored
 const exhaustive = -1
+const ir = 0x80000000 // ir to signal that the length/offset is irrelevant
 
 type Data = stringext.Data
 type Needle = stringext.Needle
@@ -302,7 +303,7 @@ func runStrCompare(t *testing.T, op bcop, inputK kRegData, data16 [16]Data, need
 	// if manual values are provided (hasMan == true), then check the values of the reference implementation
 	if hasMan {
 		if err := reportIssueK(&inputK, &manK, &expK); err != nil {
-			t.Errorf("RefImpl: %v\nneedle=%q\ndata=%v\n%v", prettyName(op), needle, prettyPrint(data16), err)
+			t.Errorf("%s: %v\nneedle=%q\ndata=%v\n%v", refImplStr, prettyName(op), needle, prettyPrint(data16), err)
 			return false
 		}
 	}
@@ -600,7 +601,7 @@ func runStrFuzzy(t *testing.T, op bcop, inputK kRegData, data16 [16]Data, needle
 	// if expected values are provided (hasMan == true), then check the values of the reference implementation
 	if hasMan {
 		if err := reportIssueK(&inputK, &manK, &expK); err != nil {
-			t.Errorf("RefImpl: %v\nneedle=%q\ndata=%v\nthreshold=%v\n%v", prettyName(op), needle, prettyPrint(data16), threshold, err)
+			t.Errorf("%s: %v\nneedle=%q\ndata=%v\nthreshold=%v\n%v", refImplStr, prettyName(op), needle, prettyPrint(data16), threshold, err)
 			return false
 		}
 	}
@@ -1497,8 +1498,8 @@ func TestRegexMatchUT1(t *testing.T) {
 		{
 			obsLane := ds.RegexGolang.MatchString(ut.data)
 			if ut.expLane != obsLane {
-				t.Errorf("refImpl: issue with data %q\nexpected %v while RegexGolang=%q yields observed %v",
-					ut.data, ut.expLane, ds.RegexGolang.String(), obsLane)
+				t.Errorf("%s: issue with data %q\nexpected %v while RegexGolang=%q yields observed %v",
+					refImplStr, ut.data, ut.expLane, ds.RegexGolang.String(), obsLane)
 			}
 		}
 
@@ -1616,8 +1617,8 @@ func TestRegexMatchUT2(t *testing.T) {
 				obsLane := ds.RegexGolang.MatchString(ut.data16[i])
 				expLane := expLanes.getBit(i)
 				if expLane != obsLane {
-					t.Errorf("refImpl: lane %v: issue with data %q\nexpected %v while RegexGolang=%q yields observed %v",
-						i, ut.data16[i], expLane, ds.RegexGolang.String(), obsLane)
+					t.Errorf("%s: lane %v: issue with data %q\nexpected %v while RegexGolang=%q yields observed %v",
+						refImplStr, i, ut.data16[i], expLane, ds.RegexGolang.String(), obsLane)
 				}
 			}
 		}
@@ -1836,8 +1837,8 @@ func runSubstr(t *testing.T, op bcop, inputK kRegData, data16 [16]Data, begin16,
 			if hasMan {
 				expRef := data16[i][expOffset : int(expOffset)+int(expLength)]
 				if expRef != manResults[i] {
-					t.Errorf("refImpl: input %q; begin=%v; length=%v; reference %q; expected %q",
-						data16[i], begin16[i], length16[i], expRef, manResults[i])
+					t.Errorf("%s: input %q; begin=%v; length=%v; reference %q; expected %q",
+						refImplStr, data16[i], begin16[i], length16[i], expRef, manResults[i])
 					return false
 				}
 			}
@@ -2103,7 +2104,7 @@ func runIsSubnetOfIP4(t *testing.T, op bcop, inputK kRegData, data16 [16]Data, m
 	// if expected values are provided (hasMan == true), then check the values of the reference implementation
 	if hasMan {
 		if err := reportIssueK(&inputK, &manK, &expK); err != nil {
-			t.Errorf("RefImpl: %v\ndata=%v\n%v", prettyName(op), prettyPrint(data16), err)
+			t.Errorf("%s: %v\ndata=%v\n%v", refImplStr, prettyName(op), prettyPrint(data16), err)
 			return false
 		}
 	}
@@ -2349,6 +2350,7 @@ func runSkip1Char(t *testing.T, op bcop, inputK kRegData, data16 [16]Data, hasMa
 	inputS := ctx.sRegFromStrings(data16[:])
 	var obsS, expS sRegData
 	var obsK, expK kRegData
+	expS.fill(ir)
 
 	// compute the expected results according to the reference implementation
 	ref := refFunc(op).(func(Data, int) (bool, OffsetZ2, LengthZ3))
@@ -2365,7 +2367,7 @@ func runSkip1Char(t *testing.T, op bcop, inputK kRegData, data16 [16]Data, hasMa
 	// if expected values are provided (hasMan == true), then check the values of the reference implementation
 	if hasMan {
 		if err := reportIssueKS(&inputK, &manK, &expK, &manS, &expS); err != nil {
-			t.Errorf("RefImpl: %v\ndata=%v\n%v", prettyName(op), prettyPrint(data16), err)
+			t.Errorf("%s: %v\ndata=%v\n%v", refImplStr, prettyName(op), prettyPrint(data16), err)
 			return false
 		}
 	}
@@ -2402,7 +2404,7 @@ func TestSkip1CharUT1(t *testing.T) {
 		{
 			op: opSkip1charLeft,
 			unitTests: []unitTest{
-				{"", false, 0, 0},
+				{"", false, ir, ir},
 				{"a", true, 1, 0},
 				{"aa", true, 1, 1},
 				{"aaa", true, 1, 2},
@@ -2426,7 +2428,7 @@ func TestSkip1CharUT1(t *testing.T) {
 		{
 			op: opSkip1charRight,
 			unitTests: []unitTest{
-				{"", false, 0, 0},
+				{"", false, ir, ir},
 				{"a", true, 0, 0},
 				{"aa", true, 0, 1},
 				{"aaa", true, 0, 2},
@@ -2453,7 +2455,7 @@ func TestSkip1CharUT1(t *testing.T) {
 		t.Run(prettyName(ts.op), func(t *testing.T) {
 			for _, ut := range ts.unitTests {
 				manK := kRegData{lane16(ut.expLane)}
-				manS := fillsRegData(make16(ut.expOffset), make16(ut.expLength))
+				manS := fillsRegData(manK, make16(ut.expOffset), make16(ut.expLength), true, make16(len(ut.data)))
 				runSkip1Char(t, ts.op, fullMask, make16(ut.data), true, manK, manS)
 			}
 		})
@@ -2531,6 +2533,7 @@ func runSkipNChar(t *testing.T, op bcop, inputK kRegData, data16 [16]Data, skipC
 	inputCount := i64RegData{}
 	var obsS, expS sRegData
 	var obsK, expK kRegData
+	expS.fill(ir)
 
 	// compute the expected results according to the reference implementation
 	ref := refFunc(op).(func(Data, int) (bool, OffsetZ2, LengthZ3))
@@ -2548,7 +2551,7 @@ func runSkipNChar(t *testing.T, op bcop, inputK kRegData, data16 [16]Data, skipC
 	// if expected values are provided (hasMan == true), then check the values of the reference implementation
 	if hasMan {
 		if err := reportIssueKS(&inputK, &manK, &expK, &manS, &expS); err != nil {
-			t.Errorf("RefImpl: %v\ndata=%v\n%v", prettyName(op), prettyPrint(data16), err)
+			t.Errorf("%s: %v\ndata=%v\n%v", refImplStr, prettyName(op), prettyPrint(data16), err)
 			return false
 		}
 	}
@@ -2585,7 +2588,7 @@ func TestSkipNCharUT1(t *testing.T) {
 		{
 			op: opSkipNcharLeft,
 			unitTests: []unitTest{
-				{"", 1, false, -1, -1}, //NOTE offset and length are irrelevant
+				{"", 1, false, ir, ir}, //NOTE offset and length are irrelevant
 				{"a", 1, true, 1, 0},
 				{"aa", 1, true, 1, 1},
 				{"aaa", 1, true, 1, 2},
@@ -2605,7 +2608,7 @@ func TestSkipNCharUT1(t *testing.T) {
 				{"a𐍈aaa", 1, true, 1, 7},
 				{"a𐍈aaaa", 1, true, 1, 8},
 
-				{"a", 2, false, -1, -1}, //NOTE offset and length are irrelevant
+				{"a", 2, false, ir, ir}, //NOTE offset and length are irrelevant
 				{"a𐍈", 2, true, 5, 0},
 				{"a𐍈a", 2, true, 5, 1},
 				{"a𐍈aa", 2, true, 5, 2},
@@ -2614,13 +2617,13 @@ func TestSkipNCharUT1(t *testing.T) {
 
 				{"", 0, true, 0, 0},
 				{"a", 0, true, 0, 1},
-				{"𐍈", 2, false, -1, -1},
+				{"𐍈", 2, false, ir, ir},
 			},
 		},
 		{
 			op: opSkipNcharRight,
 			unitTests: []unitTest{
-				{"", 1, false, -1, -1}, //NOTE offset and length are irrelevant
+				{"", 1, false, ir, ir}, //NOTE offset and length are irrelevant
 				{"a", 1, true, 0, 0},
 
 				{"aa", 1, true, 0, 1},
@@ -2641,7 +2644,7 @@ func TestSkipNCharUT1(t *testing.T) {
 				{"aaa𐍈a", 1, true, 0, 7},
 				{"aaaa𐍈a", 1, true, 0, 8},
 
-				{"a", 2, false, -1, -1}, //NOTE offset and length are irrelevant
+				{"a", 2, false, ir, ir}, //NOTE offset and length are irrelevant
 				{"𐍈a", 2, true, 0, 0},
 				{"a𐍈a", 2, true, 0, 1},
 				{"aa𐍈a", 2, true, 0, 2},
@@ -2650,7 +2653,7 @@ func TestSkipNCharUT1(t *testing.T) {
 
 				{"", 0, true, 0, 0},
 				{"a", 0, true, 0, 1},
-				{"𐍈", 2, false, -1, -1},
+				{"𐍈", 2, false, ir, ir},
 			},
 		},
 	}
@@ -2659,7 +2662,7 @@ func TestSkipNCharUT1(t *testing.T) {
 		t.Run(prettyName(ts.op), func(t *testing.T) {
 			for _, ut := range ts.unitTests {
 				manK := kRegData{lane16(ut.expLane)}
-				manS := fillsRegData(make16(ut.expOffset), make16(ut.expLength))
+				manS := fillsRegData(manK, make16(ut.expOffset), make16(ut.expLength), true, make16(len(ut.data)))
 				runSkipNChar(t, ts.op, fullMask, make16(ut.data), make16(ut.skipCount), true, manK, manS)
 			}
 		})
@@ -2794,6 +2797,7 @@ func runSplitPart(t *testing.T, op bcop, inputK kRegData, data16 [16]Data, idx [
 	inputS := ctx.sRegFromStrings(data16[:])
 	var obsS, expS sRegData
 	var obsK, expK kRegData
+	expS.fill(ir)
 
 	inputIndex := i64RegData{}
 	for i := 0; i < bcLaneCount; i++ {
@@ -2820,7 +2824,7 @@ func runSplitPart(t *testing.T, op bcop, inputK kRegData, data16 [16]Data, idx [
 	// if expected values are provided (hasMan == true), then check the values of the reference implementation
 	if hasMan {
 		if err := reportIssueKS(&inputK, &manK, &expK, &manS, &expS); err != nil {
-			t.Errorf("RefImpl: %v\nidx=%q\ndata=%v\n%v", prettyName(op), idx, prettyPrint(data16), err)
+			t.Errorf("%s: %v\nidx=%q\ndata=%v\n%v", refImplStr, prettyName(op), idx, prettyPrint(data16), err)
 			return false
 		}
 	}
@@ -2852,40 +2856,40 @@ func TestSplitPartUT1(t *testing.T) {
 	}
 	unitTests := []unitTest{
 
-		{"aa;bb", 0, ';', false, -1, -1}, // 0th part not present: offset and length are irrelevant
+		{"aa;bb", 0, ';', false, ir, ir}, // 0th part not present: offset and length are irrelevant
 		{"aa;bb", 1, ';', true, 0, 2},    // select "aa"
 		{"aa;bb", 2, ';', true, 3, 2},    // select "bb"
-		{"aa;bb", 3, ';', false, -1, -1}, // 3rd part not present: offset and length are irrelevant
+		{"aa;bb", 3, ';', false, ir, ir}, // 3rd part not present: offset and length are irrelevant
 
-		{";bb", 0, ';', false, -1, -1}, // 0th part not present
+		{";bb", 0, ';', false, ir, ir}, // 0th part not present
 		{";bb", 1, ';', true, 0, 0},    // select ""
 		{";bb", 2, ';', true, 1, 2},    // select "bb"
-		{";bb", 3, ';', false, -1, -1}, // 3rd part not present
+		{";bb", 3, ';', false, ir, ir}, // 3rd part not present
 
-		{";bbbbb", 0, ';', false, -1, -1}, // 0th part not present
+		{";bbbbb", 0, ';', false, ir, ir}, // 0th part not present
 		{";bbbbb", 1, ';', true, 0, 0},    // select ""
 		{";bbbbb", 2, ';', true, 1, 5},    // select "bbbbb"
-		{";bbbbb", 3, ';', false, -1, -1}, // 3rd part not present
+		{";bbbbb", 3, ';', false, ir, ir}, // 3rd part not present
 
-		{"aa", 0, ';', false, -1, -1}, // 0th part not present
+		{"aa", 0, ';', false, ir, ir}, // 0th part not present
 		{"aa", 1, ';', true, 0, 2},    // select "aa"
-		{"aa", 2, ';', false, -1, -1}, // 2nd not present
+		{"aa", 2, ';', false, ir, ir}, // 2nd not present
 
-		{"aa;", 0, ';', false, -1, -1}, // 0th part not present
+		{"aa;", 0, ';', false, ir, ir}, // 0th part not present
 		{"aa;", 1, ';', true, 0, 2},    // select "aa"
 		{"aa;", 2, ';', true, 3, 0},    // select ""
-		{"aa;", 3, ';', false, -1, -1}, // 3rd part not present
+		{"aa;", 3, ';', false, ir, ir}, // 3rd part not present
 
-		{"aa;;", 0, ';', false, -1, -1}, // 0th part not present
+		{"aa;;", 0, ';', false, ir, ir}, // 0th part not present
 		{"aa;;", 1, ';', true, 0, 2},    // select "aa"
 		{"aa;;", 2, ';', true, 3, 0},    // select ""
 		{"aa;;", 3, ';', true, 4, 0},    // select ""
-		{"aa;;", 4, ';', false, -1, -1}, // 4th part not present
+		{"aa;;", 4, ';', false, ir, ir}, // 4th part not present
 
-		{";", 0, ';', false, -1, -1}, // 0th part not present
+		{";", 0, ';', false, ir, ir}, // 0th part not present
 		{";", 1, ';', true, 0, 0},    // select ""
 		{";", 2, ';', true, 1, 0},    // select ""
-		{";", 3, ';', false, -1, -1}, // 3rd part not present
+		{";", 3, ';', false, ir, ir}, // 3rd part not present
 
 		{"𐍈;bb", 1, ';', true, 0, 4}, // select "𐍈"
 		{"𐍈;bb", 2, ';', true, 5, 2}, // select "bb"
@@ -2896,7 +2900,7 @@ func TestSplitPartUT1(t *testing.T) {
 	t.Run(prettyName(op), func(t *testing.T) {
 		for _, ut := range unitTests {
 			manK := kRegData{lane16(ut.expLane)}
-			manS := fillsRegData(make16(ut.expOffset), make16(ut.expLength))
+			manS := fillsRegData(manK, make16(ut.expOffset), make16(ut.expLength), true, make16(len(ut.data)))
 			runSplitPart(t, op, fullMask, make16(ut.data), make16(ut.idx), byte(ut.delimiter), true, manK, manS)
 		}
 	})
@@ -2997,7 +3001,7 @@ func runLengthStr(t *testing.T, op bcop, inputK kRegData, data16 [16]Data, hasMa
 	// if manual values are provided (hasMan == true), then check the values of the reference implementation
 	if hasMan {
 		if !verifyI64RegOutputP(t, &manS, &expS, &inputK) {
-			t.Errorf("refImpl: data %q", prettyPrint(data16))
+			t.Errorf("%s: data %q", refImplStr, prettyPrint(data16))
 			return false
 		}
 	}
@@ -3061,7 +3065,7 @@ func TestLengthStrUT1(t *testing.T) {
 	}
 }
 
-// TestSubstrUT2 unit-tests for: opcharlength
+// TestLengthStrUT2 unit-tests for: opcharlength
 func TestLengthStrUT2(t *testing.T) {
 	t.Parallel()
 	type unitTest struct {
@@ -3106,7 +3110,7 @@ func TestLengthStrUT2(t *testing.T) {
 	}
 }
 
-// TestSplitPartBF brute-force tests for: opcharlength
+// TestLengthStrBF brute-force tests for: opcharlength
 func TestLengthStrBF(t *testing.T) {
 	t.Parallel()
 	type testSuite struct {
@@ -3207,6 +3211,7 @@ func runTrimChar(t *testing.T, op bcop, inputK kRegData, data16 [16]Data, cutset
 	dictOffset := uint16(0)
 	inputS := ctx.sRegFromStrings(data16[:])
 	var obsS, expS sRegData
+	expS.fill(ir)
 
 	// compute the expected results according to the reference implementation
 	ref := refFunc(op).(func(Data, Needle) (OffsetZ2, LengthZ3))
@@ -3218,8 +3223,8 @@ func runTrimChar(t *testing.T, op bcop, inputK kRegData, data16 [16]Data, cutset
 			if hasMan {
 				expRef := data16[i][expOffset : int(expOffset)+int(expLength)]
 				if expRef != manResults[i] {
-					t.Errorf("refImpl: input %q; cutset=%v; reference %q; expected %q",
-						data16[i], cutset, expRef, manResults[i])
+					t.Errorf("%s: input %q; cutset=%v; reference %q; expected %q",
+						refImplStr, data16[i], cutset, expRef, manResults[i])
 					return false
 				}
 			}
@@ -3407,6 +3412,7 @@ func runTrimWhiteSpace(t *testing.T, op bcop, inputK kRegData, data16 [16]Data, 
 
 	inputS := ctx.sRegFromStrings(data16[:])
 	var obsS, expS sRegData
+	expS.fill(ir)
 
 	// compute the expected results according to the reference implementation
 	ref := refFunc(op).(func(Data) (OffsetZ2, LengthZ3))
@@ -3418,8 +3424,8 @@ func runTrimWhiteSpace(t *testing.T, op bcop, inputK kRegData, data16 [16]Data, 
 			if hasMan {
 				expRef := data16[i][expOffset : int(expOffset)+int(expLength)]
 				if expRef != manResults[i] {
-					t.Errorf("refImpl: input %q; reference %q; expected %q",
-						data16[i], expRef, manResults[i])
+					t.Errorf("%s: input %q; reference %q; expected %q",
+						refImplStr, data16[i], expRef, manResults[i])
 					return false
 				}
 			}
@@ -3610,6 +3616,7 @@ func runContainsPreSufSub(t *testing.T, op bcop, inputK kRegData, data16 [16]Dat
 	inputS := ctx.sRegFromStrings(data16[:])
 	var obsS, expS sRegData
 	var obsK, expK kRegData
+	expS.fill(ir)
 
 	// compute the expected results according to the reference implementation
 	ref := refFunc(op).(func(Data, Needle) (bool, OffsetZ2, LengthZ3))
@@ -3659,6 +3666,7 @@ func runContainsPat(t *testing.T, op bcop, inputK kRegData, data16 [16]Data, pat
 	inputS := ctx.sRegFromStrings(data16[:])
 	var obsS, expS sRegData
 	var obsK, expK kRegData
+	expS.fill(ir)
 
 	// compute the expected results according to the reference implementation
 	ref := refFunc(op).(func(Data, *stringext.Pattern) (bool, OffsetZ2, LengthZ3))
@@ -3676,7 +3684,7 @@ func runContainsPat(t *testing.T, op bcop, inputK kRegData, data16 [16]Data, pat
 	// if manual values are provided (hasMan == true), then check the values of the reference implementation
 	if hasMan {
 		if err := reportIssueKS(&inputK, &manK, &expK, &manS, &expS); err != nil {
-			t.Errorf("RefImpl: %v\npattern=%q\ndata=%v\n%v", prettyName(op), pattern, prettyPrint(data16), err)
+			t.Errorf("%s: %v\npattern=%q\ndata=%v\n%v", refImplStr, prettyName(op), pattern, prettyPrint(data16), err)
 			return false
 		}
 	}
@@ -3746,18 +3754,18 @@ func TestContainsPreSufSubUT1(t *testing.T) {
 				{"ssss", "ssss", true, 4, 0},
 				{"abc", "abc", true, 3, 0},
 				{"abcd", "abcd", true, 4, 0},
-				{"a", "aa", false, 1, 1},
+				{"a", "aa", false, ir, ir},
 				{"aa", "a", true, 1, 1},
 				{"ſb", "s", true, 2, 1},
 				{"sb", "ſ", true, 1, 1},
 				{"ſ", "s", true, 2, 0},
 				{"s", "ſ", true, 1, 0},
-				{"s", "", false, 0, 1}, //NOTE: empty needles are dead lanes
-				{"", "", false, 0, 0},  //NOTE: empty needles are dead lanes
+				{"s", "", false, ir, ir}, //NOTE: empty needles are dead lanes
+				{"", "", false, ir, ir},  //NOTE: empty needles are dead lanes
 				{"sſsſ", "ssss", true, 6, 0},
 				{"sſsſs", "sssss", true, 7, 0},
-				{"ss", "b", false, 0, 2},
-				{"a", "a\x00\x00\x00", false, 0, 1},
+				{"ss", "b", false, ir, ir},
+				{"a", "a\x00\x00\x00", false, ir, ir},
 			},
 		},
 		{
@@ -3854,7 +3862,7 @@ func TestContainsPreSufSubUT1(t *testing.T) {
 			for _, ut := range ts.unitTests {
 				encNeedle := encodeNeedleOp(ut.needle, ts.op)
 				manK := kRegData{lane16(ut.expLane)}
-				manS := fillsRegData(make16(ut.expOffset), make16(ut.expLength))
+				manS := fillsRegData(manK, make16(ut.expOffset), make16(ut.expLength), true, make16(len(ut.data)))
 				runContainsPreSufSub(t, ts.op, fullMask, make16(ut.data), ut.needle, encNeedle, true, manK, manS)
 			}
 		})
@@ -3887,8 +3895,8 @@ func TestContainsPreSufSubUT2(t *testing.T) {
 					needle:     "bb",
 					data16:     [16]Data{"abb", "a", "", "", "", "", "", "", "", "", "", "", "", "", "", ""},
 					expLanes:   uint16(0b0000000000000001),
-					expOffsets: [16]OffsetZ2{0, 0, 3, 3, 4, 5, 6, 1, 4, 4, 5, 6, 7, 1, 5, 5},
-					expLengths: [16]LengthZ3{1, 1, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 4, 0, 0},
+					expOffsets: [16]OffsetZ2{0, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir},
+					expLengths: [16]LengthZ3{1, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir},
 				},
 			},
 		},
@@ -3899,22 +3907,22 @@ func TestContainsPreSufSubUT2(t *testing.T) {
 					needle:     "\x00\x00\x00\x00𐍈", //note: 𐍈 needs 4 bytes to be encoded (in UTF8)
 					data16:     [16]Data{"0𐍈", "0", "0", "0", "0", "", "", "", "", "", "", "", "", "", "", ""},
 					expLanes:   uint16(0b0000000000000000),
-					expOffsets: [16]OffsetZ2{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-					expLengths: [16]LengthZ3{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+					expOffsets: [16]OffsetZ2{ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir},
+					expLengths: [16]LengthZ3{ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir},
 				},
 				{
 					needle:     "s",
 					data16:     [16]Data{"ſſ", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""},
 					expLanes:   uint16(0b0000000000000001),
-					expOffsets: [16]OffsetZ2{0, 0, 3, 3, 4, 5, 6, 1, 4, 4, 5, 6, 7, 1, 5, 5},
-					expLengths: [16]LengthZ3{2, 1, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 4, 0, 0},
+					expOffsets: [16]OffsetZ2{0, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir},
+					expLengths: [16]LengthZ3{2, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir},
 				},
 				{
 					needle:     "bb",
 					data16:     [16]Data{"abb", "a", "", "", "", "", "", "", "", "", "", "", "", "", "", ""},
 					expLanes:   uint16(0b0000000000000001),
-					expOffsets: [16]OffsetZ2{0, 0, 3, 3, 4, 5, 6, 1, 4, 4, 5, 6, 7, 1, 5, 5},
-					expLengths: [16]LengthZ3{1, 1, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 4, 0, 0},
+					expOffsets: [16]OffsetZ2{0, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir},
+					expLengths: [16]LengthZ3{1, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir},
 				},
 			},
 		},
@@ -3925,58 +3933,57 @@ func TestContainsPreSufSubUT2(t *testing.T) {
 					data16:     [16]Data{"aaaa", "baaa", "abaa", "bbaa", "aaba", "baba", "abba", "bbba", "aaab", "baab", "abab", "bbab", "aabb", "babb", "abbb", "bbbb"},
 					needle:     "aaaa",
 					expLanes:   uint16(0b0000000000000001),
-					expOffsets: [16]OffsetZ2{4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-					expLengths: [16]LengthZ3{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+					expOffsets: [16]OffsetZ2{4, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir},
+					expLengths: [16]LengthZ3{0, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir},
 				},
-
 				{
 					data16:     [16]Data{"0100", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""},
 					needle:     "00",
 					expLanes:   uint16(0b0000000000000001),
-					expOffsets: [16]OffsetZ2{4, 4, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-					expLengths: [16]LengthZ3{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+					expOffsets: [16]OffsetZ2{4, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir},
+					expLengths: [16]LengthZ3{0, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir},
 				},
 				{
 					data16:     [16]Data{"Ax", "xxxxAx", "", "", "", "", "", "", "", "", "", "", "", "", "", ""},
 					needle:     "A",
 					expLanes:   uint16(0b0000000000000011),
-					expOffsets: [16]OffsetZ2{1, 5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-					expLengths: [16]LengthZ3{1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+					expOffsets: [16]OffsetZ2{1, 7, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir},
+					expLengths: [16]LengthZ3{1, 1, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir},
 				},
 				{
 					data16:     [16]Data{"Axxxxxxx", "xxxxAxxx", "", "", "", "", "", "", "", "", "", "", "", "", "", ""},
 					needle:     "A",
 					expLanes:   uint16(0b0000000000000011),
-					expOffsets: [16]OffsetZ2{1, 5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-					expLengths: [16]LengthZ3{7, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+					expOffsets: [16]OffsetZ2{1, 13, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir},
+					expLengths: [16]LengthZ3{7, 3, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir},
 				},
 				{
 					data16:     [16]Data{"aaaa", "ab", "", "", "", "", "", "", "", "", "", "", "", "", "", ""},
 					needle:     "aa",
 					expLanes:   uint16(0b000000000000001),
-					expOffsets: [16]OffsetZ2{2, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-					expLengths: [16]LengthZ3{2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+					expOffsets: [16]OffsetZ2{2, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir},
+					expLengths: [16]LengthZ3{2, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir},
 				},
 				{
 					data16:     [16]Data{"aaaab", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""},
 					needle:     "aaaaa",
 					expLanes:   uint16(0b0000000000000000),
-					expOffsets: [16]OffsetZ2{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-					expLengths: [16]LengthZ3{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+					expOffsets: [16]OffsetZ2{ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir},
+					expLengths: [16]LengthZ3{ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir},
 				},
 				{
 					data16:     [16]Data{"aa", "ab", "", "", "", "", "", "", "", "", "", "", "", "", "", ""},
 					needle:     "aa",
 					expLanes:   uint16(0b0000000000000001),
-					expOffsets: [16]OffsetZ2{2, 2, 2, 3, 2, 2, 2, 3, 2, 2, 2, 3, 3, 3, 3, 4},
-					expLengths: [16]LengthZ3{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+					expOffsets: [16]OffsetZ2{2, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir},
+					expLengths: [16]LengthZ3{0, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir},
 				},
 				{
 					data16:     [16]Data{"0100000", "100000", "00000", "", "", "", "", "", "", "", "", "", "", "", "", ""},
 					needle:     "00000",
 					expLanes:   uint16(0b0000000000000111),
-					expOffsets: [16]OffsetZ2{7, 6, 5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-					expLengths: [16]LengthZ3{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+					expOffsets: [16]OffsetZ2{7, 13, 18, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir},
+					expLengths: [16]LengthZ3{0, 0, 0, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir},
 				},
 				{
 					data16: [16]Data{
@@ -3986,8 +3993,8 @@ func TestContainsPreSufSubUT2(t *testing.T) {
 						"xxxxxxxx", "xxxxxxxx", "xxxxxxxx", "xxxxxxxx"},
 					needle:     "A",
 					expLanes:   uint16(0b0000000000000111),
-					expOffsets: [16]OffsetZ2{1, 5, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-					expLengths: [16]LengthZ3{7, 3, 0, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8},
+					expOffsets: [16]OffsetZ2{1, 13, 17, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir},
+					expLengths: [16]LengthZ3{7, 3, 0, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir},
 				},
 				{
 					data16: [16]Data{
@@ -3997,8 +4004,8 @@ func TestContainsPreSufSubUT2(t *testing.T) {
 						"xxxxxxxx", "xxxxxxxx", "xxxxxxxx", "xxxxxxxx"},
 					needle:     "AA",
 					expLanes:   uint16(0b0000000000000011),
-					expOffsets: [16]OffsetZ2{2, 5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-					expLengths: [16]LengthZ3{6, 3, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8},
+					expOffsets: [16]OffsetZ2{2, 13, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir},
+					expLengths: [16]LengthZ3{6, 3, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir},
 				},
 			},
 		},
@@ -4009,8 +4016,8 @@ func TestContainsPreSufSubUT2(t *testing.T) {
 					data16:     [16]Data{"aAaA", "ab", "", "", "", "", "", "", "", "", "", "", "", "", "", ""},
 					needle:     "aa",
 					expLanes:   uint16(0b000000000000001),
-					expOffsets: [16]OffsetZ2{2, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-					expLengths: [16]LengthZ3{2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+					expOffsets: [16]OffsetZ2{2, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir},
+					expLengths: [16]LengthZ3{2, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir},
 				},
 			},
 		},
@@ -4021,64 +4028,64 @@ func TestContainsPreSufSubUT2(t *testing.T) {
 					data16:     [16]Data{"asa", "aaa", "", "", "", "", "", "", "", "", "", "", "", "", "", ""},
 					needle:     "asa",
 					expLanes:   uint16(0b0000000000000001),
-					expOffsets: [16]OffsetZ2{3, 3, 3, 4, 3, 3, 3, 4, 3, 3, 3, 4, 4, 4, 4, 5},
-					expLengths: [16]LengthZ3{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+					expOffsets: [16]OffsetZ2{3, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir},
+					expLengths: [16]LengthZ3{0, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir},
 				},
 				{
 					data16:     [16]Data{"ſſa", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""},
 					needle:     "sa",
 					expLanes:   uint16(0b0000000000000001),
-					expOffsets: [16]OffsetZ2{5, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-					expLengths: [16]LengthZ3{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+					expOffsets: [16]OffsetZ2{5, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir},
+					expLengths: [16]LengthZ3{0, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir},
 				},
 				{
 					data16:     [16]Data{"saa", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""},
 					needle:     "aa",
 					expLanes:   uint16(0b0000000000000001),
-					expOffsets: [16]OffsetZ2{3, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-					expLengths: [16]LengthZ3{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+					expOffsets: [16]OffsetZ2{3, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir},
+					expLengths: [16]LengthZ3{0, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir},
 				},
 				{
 					data16:     [16]Data{"aa", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""},
 					needle:     "aa",
 					expLanes:   uint16(0b000000000000001),
-					expOffsets: [16]OffsetZ2{2, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-					expLengths: [16]LengthZ3{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+					expOffsets: [16]OffsetZ2{2, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir},
+					expLengths: [16]LengthZ3{0, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir},
 				},
 				{
 					data16:     [16]Data{"aaa", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""},
 					needle:     "aa",
 					expLanes:   uint16(0b000000000000001),
-					expOffsets: [16]OffsetZ2{2, 3, 3, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-					expLengths: [16]LengthZ3{1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+					expOffsets: [16]OffsetZ2{2, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir},
+					expLengths: [16]LengthZ3{1, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir},
 				},
 				{
 					data16:     [16]Data{"aſ", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""},
 					needle:     "ass",
 					expLanes:   uint16(0b000000000000000),
-					expOffsets: [16]OffsetZ2{2, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-					expLengths: [16]LengthZ3{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+					expOffsets: [16]OffsetZ2{ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir},
+					expLengths: [16]LengthZ3{ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir},
 				},
 				{
 					data16:     [16]Data{"a", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""},
 					needle:     "A",
 					expLanes:   uint16(0b000000000000001),
-					expOffsets: [16]OffsetZ2{1, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-					expLengths: [16]LengthZ3{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+					expOffsets: [16]OffsetZ2{1, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir},
+					expLengths: [16]LengthZ3{0, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir},
 				},
 				{
 					data16:     [16]Data{"a", "s", "S", "ſ", "ſ", "ſ", "ſ", "ſ", "ſ", "ſ", "ſ", "ſ", "ſ", "ſ", "ſ", "ſ"},
 					needle:     "aa",
 					expLanes:   uint16(0b000000000000000),
-					expOffsets: [16]OffsetZ2{3, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-					expLengths: [16]LengthZ3{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+					expOffsets: [16]OffsetZ2{ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir},
+					expLengths: [16]LengthZ3{ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir},
 				},
 				{
 					data16:     [16]Data{"a", "s", "S", "ſ", "ſ", "ſ", "ſ", "ſ", "ſ", "ſ", "ſ", "ſ", "ſ", "ſ", "ſ", "ſ"},
 					needle:     "ss",
 					expLanes:   uint16(0b000000000000000),
-					expOffsets: [16]OffsetZ2{3, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-					expLengths: [16]LengthZ3{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+					expOffsets: [16]OffsetZ2{ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir},
+					expLengths: [16]LengthZ3{ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir},
 				},
 			},
 		},
@@ -4089,7 +4096,7 @@ func TestContainsPreSufSubUT2(t *testing.T) {
 			for _, ut := range ts.unitTests {
 				encNeedle := encodeNeedleOp(ut.needle, ts.op)
 				manK := kRegData{ut.expLanes}
-				manS := fillsRegData(ut.expOffsets, ut.expLengths)
+				manS := fillsRegData(manK, ut.expOffsets, ut.expLengths, false, make16(ir))
 				runContainsPreSufSub(t, ts.op, fullMask, ut.data16, ut.needle, encNeedle, true, manK, manS)
 			}
 		})
@@ -4322,7 +4329,7 @@ func TestContainsPatternUT1(t *testing.T) {
 				{"sb", stringext.NewPattern("s", wc, escape), true, 1, 1},
 				{"ssss", stringext.NewPattern("ssss", wc, escape), true, 4, 0},
 				{"sssss", stringext.NewPattern("sssss", wc, escape), true, 5, 0},
-				{"ss", stringext.NewPattern("b", wc, escape), false, 0, 2},
+				{"ss", stringext.NewPattern("b", wc, escape), false, ir, ir},
 			},
 		},
 		{
@@ -4359,7 +4366,7 @@ func TestContainsPatternUT1(t *testing.T) {
 			for _, ut := range ts.unitTests {
 				encPattern := encodePatternOp(&ut.pattern, ts.op)
 				manK := kRegData{lane16(ut.expLane)}
-				manS := fillsRegData(make16(ut.expOffset), make16(ut.expLength))
+				manS := fillsRegData(manK, make16(ut.expOffset), make16(ut.expLength), true, make16(len(ut.data)))
 				runContainsPat(t, ts.op, fullMask, make16(ut.data), &ut.pattern, encPattern, true, manK, manS)
 			}
 		})
@@ -4394,106 +4401,106 @@ func TestContainsPatternUT2(t *testing.T) {
 					pattern:    stringext.NewPattern("a", wc, escape),
 					data16:     [16]Data{"a¢", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""},
 					expLanes:   uint16(0b0000000000000001),
-					expOffsets: [16]OffsetZ2{1, 1, 3, 3, 4, 5, 6, 1, 4, 4, 5, 6, 7, 1, 5, 5},
-					expLengths: [16]LengthZ3{2, 2, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 4, 0, 0},
+					expOffsets: [16]OffsetZ2{1, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir},
+					expLengths: [16]LengthZ3{2, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir},
 				},
 				{
 					pattern:    stringext.NewPattern("b", wc, escape),
 					data16:     [16]Data{"ba", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""},
 					expLanes:   uint16(0b0000000000000001),
-					expOffsets: [16]OffsetZ2{1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-					expLengths: [16]LengthZ3{1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+					expOffsets: [16]OffsetZ2{1, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir},
+					expLengths: [16]LengthZ3{1, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir},
 				},
 				{
 					pattern:    stringext.NewPattern("a_b", wc, escape),
 					data16:     [16]Data{"", "a€x", "b", "", "", "", "", "", "", "", "", "", "", "", "", ""},
 					expLanes:   uint16(0b0000000000000000),
-					expOffsets: [16]OffsetZ2{6, 4, 4, 4, 5, 6, 7, 5, 5, 5, 6, 7, 8, 6, 6, 6},
-					expLengths: [16]LengthZ3{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+					expOffsets: [16]OffsetZ2{ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir},
+					expLengths: [16]LengthZ3{ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir},
 				},
 				{
 					pattern:    stringext.NewPattern("a_a", wc, escape),
 					data16:     [16]Data{"𐍈$a", "a¢a", "b¢a", "$¢a", "¢¢a", "€¢a", "𐍈¢a", "a€a", "b€a", "$€a", "¢€a", "€€a", "𐍈€a", "a𐍈a", "b𐍈a", "$𐍈a"},
 					expLanes:   uint16(0b0010000010000010),
-					expOffsets: [16]OffsetZ2{6, 4, 4, 4, 5, 6, 7, 5, 5, 5, 6, 7, 8, 6, 6, 6},
-					expLengths: [16]LengthZ3{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+					expOffsets: [16]OffsetZ2{ir, 10, ir, ir, ir, ir, ir, 41, ir, ir, ir, ir, ir, 78, ir, ir},
+					expLengths: [16]LengthZ3{ir, 0, ir, ir, ir, ir, ir, 0, ir, ir, ir, ir, ir, 0, ir, ir},
 				},
 				{
 					pattern:    stringext.NewPattern("a_a", wc, escape),
 					data16:     [16]Data{"aba", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""},
 					expLanes:   uint16(0b0000000000000001),
-					expOffsets: [16]OffsetZ2{3, 4, 4, 3, 4, 4, 3, 4, 4, 4, 4, 4, 4, 4, 4, 4},
-					expLengths: [16]LengthZ3{0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+					expOffsets: [16]OffsetZ2{3, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir},
+					expLengths: [16]LengthZ3{0, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir},
 				},
 				{ // read beyond end of data situation
 					pattern:    stringext.NewPattern("a_a", wc, escape),
 					data16:     [16]Data{"a¢", "a", "", "", "", "", "", "", "", "", "", "", "", "", "", ""},
 					expLanes:   uint16(0b0000000000000000),
-					expOffsets: [16]OffsetZ2{6, 4, 4, 4, 5, 6, 7, 5, 5, 5, 6, 7, 8, 6, 6, 6},
-					expLengths: [16]LengthZ3{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+					expOffsets: [16]OffsetZ2{ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir},
+					expLengths: [16]LengthZ3{ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir},
 				},
 				{
 					pattern:    stringext.NewPattern("00", wc, escape),
 					data16:     [16]Data{"0100", "100", "", "", "", "", "", "", "", "", "", "", "", "", "", ""},
 					expLanes:   uint16(0b0000000000000011),
-					expOffsets: [16]OffsetZ2{4, 3, 5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-					expLengths: [16]LengthZ3{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+					expOffsets: [16]OffsetZ2{4, 7, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir},
+					expLengths: [16]LengthZ3{0, 0, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir},
 				},
 				{
 					pattern:    stringext.NewPattern("ba", wc, escape),
 					data16:     [16]Data{"cb", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""},
 					expLanes:   uint16(0b0000000000000000),
-					expOffsets: [16]OffsetZ2{3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3},
-					expLengths: [16]LengthZ3{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+					expOffsets: [16]OffsetZ2{ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir},
+					expLengths: [16]LengthZ3{ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir},
 				},
 				{
 					pattern:    stringext.NewPattern("aaaaa", wc, escape),
 					data16:     [16]Data{"aaaabb", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""},
 					expLanes:   uint16(0b0000000000000000),
-					expOffsets: [16]OffsetZ2{2, 2, 2, 3, 2, 2, 2, 3, 2, 2, 2, 3, 3, 3, 3, 4},
-					expLengths: [16]LengthZ3{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+					expOffsets: [16]OffsetZ2{ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir},
+					expLengths: [16]LengthZ3{ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir},
 				},
 				{
 					pattern:    stringext.NewPattern("ba", wc, escape),
 					data16:     [16]Data{"bb", "bb", "bb", "bb", "bb", "bb", "bb", "bb", "bb", "bb", "bb", "bb", "bb", "bb", "bb", "bb"},
 					expLanes:   uint16(0b0000000000000000),
-					expOffsets: [16]OffsetZ2{2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2},
-					expLengths: [16]LengthZ3{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+					expOffsets: [16]OffsetZ2{ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir},
+					expLengths: [16]LengthZ3{ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir},
 				},
 				{
 					pattern:    stringext.NewPattern("aa", wc, escape),
 					data16:     [16]Data{"ab", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""},
 					expLanes:   uint16(0b0000000000000000),
-					expOffsets: [16]OffsetZ2{2, 2, 2, 3, 2, 2, 2, 3, 2, 2, 2, 3, 3, 3, 3, 4},
-					expLengths: [16]LengthZ3{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+					expOffsets: [16]OffsetZ2{ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir},
+					expLengths: [16]LengthZ3{ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir},
 				},
 				{
 					pattern:    stringext.NewPattern("aa", wc, escape),
 					data16:     [16]Data{"baabb", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""},
 					expLanes:   uint16(0b0000000000000001),
-					expOffsets: [16]OffsetZ2{3, 2, 2, 3, 2, 2, 2, 3, 2, 2, 2, 3, 3, 3, 3, 4},
-					expLengths: [16]LengthZ3{2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+					expOffsets: [16]OffsetZ2{3, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir},
+					expLengths: [16]LengthZ3{2, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir},
 				},
 				{
 					pattern:    stringext.NewPattern("aa", wc, escape),
 					data16:     [16]Data{"baabb", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""},
 					expLanes:   uint16(0b0000000000000001),
-					expOffsets: [16]OffsetZ2{3, 2, 2, 3, 2, 2, 2, 3, 2, 2, 2, 3, 3, 3, 3, 4},
-					expLengths: [16]LengthZ3{2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+					expOffsets: [16]OffsetZ2{3, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir},
+					expLengths: [16]LengthZ3{2, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir},
 				},
 				{
 					pattern:    stringext.NewPattern("aa", wc, escape),
 					data16:     [16]Data{"aa", "ab", "", "", "", "", "", "", "", "", "", "", "", "", "", ""},
 					expLanes:   uint16(0b0000000000000001),
-					expOffsets: [16]OffsetZ2{2, 2, 2, 3, 2, 2, 2, 3, 2, 2, 2, 3, 3, 3, 3, 4},
-					expLengths: [16]LengthZ3{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+					expOffsets: [16]OffsetZ2{2, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir},
+					expLengths: [16]LengthZ3{0, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir},
 				},
 				{
 					pattern:    stringext.NewPattern("00000", wc, escape),
 					data16:     [16]Data{"0100000", "100000", "00000", "", "", "", "", "", "", "", "", "", "", "", "", ""},
 					expLanes:   uint16(0b0000000000000111),
-					expOffsets: [16]OffsetZ2{7, 6, 5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-					expLengths: [16]LengthZ3{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+					expOffsets: [16]OffsetZ2{7, 13, 18, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir},
+					expLengths: [16]LengthZ3{0, 0, 0, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir},
 				},
 				{
 					pattern: stringext.NewPattern("A", wc, escape),
@@ -4503,8 +4510,8 @@ func TestContainsPatternUT2(t *testing.T) {
 						"xxxxxxxx", "xxxxxxxx", "xxxxxxxx", "xxxxxxxx",
 						"xxxxxxxx", "xxxxxxxx", "xxxxxxxx", "xxxxxxxx"},
 					expLanes:   uint16(0b0000000000000111),
-					expOffsets: [16]OffsetZ2{1, 5, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-					expLengths: [16]LengthZ3{7, 3, 0, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8},
+					expOffsets: [16]OffsetZ2{1, 13, 17, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir},
+					expLengths: [16]LengthZ3{7, 3, 0, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir},
 				},
 				{
 					pattern: stringext.NewPattern("AA", wc, escape),
@@ -4514,8 +4521,8 @@ func TestContainsPatternUT2(t *testing.T) {
 						"xxxxxxxx", "xxxxxxxx", "xxxxxxxx", "xxxxxxxx",
 						"xxxxxxxx", "xxxxxxxx", "xxxxxxxx", "xxxxxxxx"},
 					expLanes:   uint16(0b0000000000000011),
-					expOffsets: [16]OffsetZ2{2, 5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-					expLengths: [16]LengthZ3{6, 3, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8},
+					expOffsets: [16]OffsetZ2{2, 13, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir},
+					expLengths: [16]LengthZ3{6, 3, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir},
 				},
 				{
 					pattern: stringext.NewPattern("AA_BB", wc, escape),
@@ -4525,8 +4532,8 @@ func TestContainsPatternUT2(t *testing.T) {
 						"xxxxxxxx", "xxxxxxxx", "xxxxxxxx", "xxxxxxxx",
 						"xxxxxxxx", "xxxxxxxx", "xxxxxxxx", "xxxxxxxx"},
 					expLanes:   uint16(0b0000000000000001),
-					expOffsets: [16]OffsetZ2{5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-					expLengths: [16]LengthZ3{3, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8},
+					expOffsets: [16]OffsetZ2{5, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir},
+					expLengths: [16]LengthZ3{3, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir},
 				},
 			},
 		},
@@ -4667,7 +4674,7 @@ func TestContainsPatternUT2(t *testing.T) {
 			for _, ut := range ts.unitTests {
 				encPattern := encodePatternOp(&ut.pattern, ts.op)
 				manK := kRegData{ut.expLanes}
-				manS := fillsRegData(ut.expOffsets, ut.expLengths)
+				manS := fillsRegData(manK, ut.expOffsets, ut.expLengths, false, make16(len(encPattern)))
 				runContainsPat(t, ts.op, fullMask, ut.data16, &ut.pattern, encPattern, true, manK, manS)
 			}
 		})
@@ -4986,11 +4993,23 @@ func lane16(v bool) uint16 {
 	return 0
 }
 
-func fillsRegData(offset [16]OffsetZ2, length [16]LengthZ3) sRegData {
+func fillsRegData(lanes kRegData, offset [16]OffsetZ2, length [16]LengthZ3, incOffset bool, dataLen [16]int) sRegData {
 	result := sRegData{}
+	currOffset := 0
+
 	for i := 0; i < 16; i++ {
-		result.offsets[i] = uint32(offset[i])
-		result.sizes[i] = uint32(length[i])
+		if lanes.getBit(i) {
+			if incOffset {
+				result.offsets[i] = uint32(offset[i]) + uint32(currOffset)
+			} else {
+				result.offsets[i] = uint32(offset[i])
+			}
+			result.sizes[i] = uint32(length[i])
+		} else {
+			result.offsets[i] = ir
+			result.sizes[i] = ir
+		}
+		currOffset += dataLen[i]
 	}
 	return result
 }
@@ -5008,8 +5027,14 @@ func validNeedle(needle Needle) bool {
 	return (needle != "") && utf8.ValidString(string(needle))
 }
 
+// remDispl remove displacement
+func remDispl(offset uint32) uint32 {
+	return 0xFFFFF & offset
+}
+
 func reportIssueKS(initK, obsK, expK *kRegData, obsS, expS *sRegData) error {
 
+	//boolean to unsigned 8-bit int
 	btou := func(b bool) uint8 {
 		if b {
 			return 1
@@ -5018,15 +5043,27 @@ func reportIssueKS(initK, obsK, expK *kRegData, obsS, expS *sRegData) error {
 	}
 
 	toStringWithColor := func(initK, obsK, expK *kRegData, obsS, expS *sRegData) (result [6]string) {
+		// color codes:
+		//0	black
+		//1	red
+		//2	green
+		//3	yellow
+		//4	blue
+		//5	magenta
+		//6	cyan
+		//7	white
+
+		toString := func(v uint32) string {
+			if int(v) == ir {
+				return "\u001B[32mir\u001B[0m"
+			}
+			return fmt.Sprintf("%v", v)
+		}
+
 		colorRed := "\033[31m"
 		colorReset := "\033[0m"
 
-		result[0] = ""
-		result[1] = ""
-		result[2] = "["
-		result[3] = "["
-		result[4] = "["
-		result[5] = "["
+		result = [6]string{"", "", "[", "[", "[", "["}
 		for j := 0; j < bcLaneCount; j++ {
 			color1 := colorReset
 			color2 := colorReset
@@ -5040,7 +5077,7 @@ func reportIssueKS(initK, obsK, expK *kRegData, obsS, expS *sRegData) error {
 				if obsLane != expLane {
 					color1 = colorRed
 				}
-				if obsS.offsets[j] != expS.offsets[j] {
+				if remDispl(obsS.offsets[j]) != remDispl(expS.offsets[j]) {
 					color2 = colorRed
 				}
 				if obsS.sizes[j] != expS.sizes[j] {
@@ -5049,10 +5086,10 @@ func reportIssueKS(initK, obsK, expK *kRegData, obsS, expS *sRegData) error {
 			}
 			result[0] = fmt.Sprintf("%v%v%v", color1, btou(obsLane), colorReset) + result[0]
 			result[1] = fmt.Sprintf("%v%v%v", color1, btou(expLane), colorReset) + result[1]
-			result[2] += fmt.Sprintf("%v%v%v", color2, obsS.offsets[j], colorReset)
-			result[3] += fmt.Sprintf("%v%v%v", color2, expS.offsets[j], colorReset)
-			result[4] += fmt.Sprintf("%v%v%v", color3, obsS.sizes[j], colorReset)
-			result[5] += fmt.Sprintf("%v%v%v", color3, expS.sizes[j], colorReset)
+			result[2] += fmt.Sprintf("%v%v%v", color2, toString(obsS.offsets[j]), colorReset)
+			result[3] += fmt.Sprintf("%v%v%v", color2, toString(expS.offsets[j]), colorReset)
+			result[4] += fmt.Sprintf("%v%v%v", color3, toString(obsS.sizes[j]), colorReset)
+			result[5] += fmt.Sprintf("%v%v%v", color3, toString(expS.sizes[j]), colorReset)
 
 			if j == 15 {
 				result[0] = "0b" + result[0]
@@ -5069,21 +5106,22 @@ func reportIssueKS(initK, obsK, expK *kRegData, obsS, expS *sRegData) error {
 			}
 		}
 		return
-
 	}
 
 	for i := 0; i < bcLaneCount; i++ {
 		obsLane := obsK.getBit(i)
 		kMismatch := obsLane != expK.getBit(i)
-		sMismatch := obsLane && (obsS.offsets[i] != expS.offsets[i]) && (obsS.sizes[i] != expS.sizes[i])
+		offsetMismatch := remDispl(obsS.offsets[i]) != remDispl(expS.offsets[i])
+		sizeMismatch := obsS.sizes[i] != expS.sizes[i]
+		sMismatch := obsLane && (offsetMismatch || sizeMismatch)
 		if kMismatch || sMismatch {
 			str := toStringWithColor(initK, obsK, expK, obsS, expS)
 
 			sb := strings.Builder{}
 			sb.WriteString(fmt.Sprintf("issue with lane %v:\n", i))
 			sb.WriteString(fmt.Sprintf("initial:  lanes=0b%016b\n", initK.mask))
-			sb.WriteString(fmt.Sprintf("observed: lanes=%v, offset=%v, length=%v\n", str[0], str[2], str[4]))
-			sb.WriteString(fmt.Sprintf("expected: lanes=%v, offset=%v, length=%v\n", str[1], str[3], str[5]))
+			sb.WriteString(fmt.Sprintf("obs|man:  lanes=%v, offset=%v, length=%v\n", str[0], str[2], str[4]))
+			sb.WriteString(fmt.Sprintf("exp(ref): lanes=%v, offset=%v, length=%v\n", str[1], str[3], str[5]))
 			return fmt.Errorf(sb.String())
 		}
 	}
@@ -5323,7 +5361,7 @@ func next(x *[]byte, max, length int) bool {
 }
 
 // max returns the maximal value of slice, or 0 if slice is empty
-func max(slice []int) int {
+func maxSlice(slice []int) int {
 	if len(slice) == 0 {
 		return 0
 	}
@@ -5340,7 +5378,7 @@ func max(slice []int) int {
 func createSpaceExhaustive(dataLenSpace []int, alphabet []rune) [][16]Data {
 	result := make([][16]Data, 0)
 	alphabetSize := len(alphabet)
-	indices := make([]byte, max(dataLenSpace))
+	indices := make([]byte, maxSlice(dataLenSpace[:]))
 
 	for _, strLength := range dataLenSpace {
 		strRunes := make([]rune, strLength)
@@ -5396,7 +5434,7 @@ func createSpace(dataLenSpace []int, alphabet []rune, maxSize int) [][16]Data {
 	if maxSize == exhaustive {
 		return createSpaceExhaustive(dataLenSpace, alphabet)
 	}
-	return split16(createSpaceRandom(max(dataLenSpace), alphabet, maxSize))
+	return split16(createSpaceRandom(maxSlice(dataLenSpace), alphabet, maxSize))
 }
 
 // createSpaceExhaustive creates strings of length 1 upto maxLength over the provided alphabet
