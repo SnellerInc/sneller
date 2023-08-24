@@ -1,4 +1,4 @@
-FROM golang:1.20-alpine AS build
+FROM golang:1.21-alpine AS build
 RUN apk add --no-cache --update gcc g++ git
 ARG SRCROOT=.
 ENV GOPATH /app
