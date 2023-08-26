@@ -8927,7 +8927,7 @@ TEXT bcCmpStrFuzzyA3(SB), NOSPLIT|NOFRAME, $0
   VPBROADCASTD  CONSTD_0x10101(),Z19      //;2AB82DC0 load constant 0x10101           ;Z19=0x10101;
   VPBROADCASTD  CONSTD_0x10801(),Z22      //;A76098A3 load constant 0x10801           ;Z22=0x10801;
   VPBROADCASTD  CONSTD_0x400001(),Z23     //;3267BFF0 load constant 0x400001          ;Z23=0x400001;
-  VPSLLD        $1,  Z19, Z20             //;68F49F35 0x20202 := 0x10101<<1           ;Z20=0x20202; Z19=0x10101;
+  VPADDD        Z19, Z19, Z20             //;68F49F35 0x20202 := 0x10101<<1           ;Z20=0x20202; Z19=0x10101;
   VPSLLD        $2,  Z19, Z21             //;2789BA9D 0x40404 := 0x10101<<2           ;Z21=0x40404; Z19=0x10101;
   VMOVDQU32     FUZZY_ROR_APPROX3(),Z25   //;2CEF25D2 load ror approx3                ;Z25=ror_a3;
   VMOVDQU32     CONST_TAIL_INV_MASK(),Z18 //;9653E713 load tail_inv_mask_data         ;Z18=tail_mask_data;
@@ -9109,7 +9109,7 @@ loop2:
   VPCMPD        $0,  Z8,  Z21, K5         //;00000000 K5 := (n2==d0)                  ;K5=scratch2; Z21=n2; Z8=d0; 0=Eq;
   VPSLLD.Z      $6,  Z10, K3,  Z21        //;00000000 key := 1<<6                     ;Z21=key; K3=tmp_mask; Z10=1;
   VPSLLD.Z      $5,  Z10, K4,  Z27        //;00000000 scratch2 := 1<<5                ;Z27=scratch2; K4=scratch1; Z10=1;
-  VPSLLD.Z      $1,  Z10, K5,  Z29        //;00000000 scratch3 := 1<<1                ;Z29=scratch3; K5=scratch2; Z10=1;
+  VPADDD.Z      Z10, Z10, K5,  Z29        //;00000000 scratch3 := 1<<1                ;Z29=scratch3; K5=scratch2; Z10=1;
   VPTERNLOGD    $0b11111110,Z29, Z27, Z21 //;00000000                                 ;Z21=key; Z27=scratch2; Z29=scratch3;
 
   VPCMPD        $0,  Z28, Z20, K3         //;00000000 K3 := (n1==d2)                  ;K3=tmp_mask; Z20=n1; Z28=d2; 0=Eq;
@@ -9205,7 +9205,7 @@ TEXT bcHasSubstrFuzzyA3(SB), NOSPLIT|NOFRAME, $0
   VPBROADCASTD  CONSTD_0x10101(),Z19      //;2AB82DC0 load constant 0x10101           ;Z19=0x10101;
   VPBROADCASTD  CONSTD_0x10801(),Z22      //;A76098A3 load constant 0x10801           ;Z22=0x10801;
   VPBROADCASTD  CONSTD_0x400001(),Z23     //;3267BFF0 load constant 0x400001          ;Z23=0x400001;
-  VPSLLD        $1,  Z19, Z20             //;68F49F35 0x20202 := 0x10101<<1           ;Z20=0x20202; Z19=0x10101;
+  VPADDD        Z19, Z19, Z20             //;68F49F35 0x20202 := 0x10101<<1           ;Z20=0x20202; Z19=0x10101;
   VPSLLD        $2,  Z19, Z21             //;2789BA9D 0x40404 := 0x10101<<2           ;Z21=0x40404; Z19=0x10101;
   VMOVDQU32     CONST_TAIL_INV_MASK(),Z18 //;9653E713 load tail_inv_mask_data         ;Z18=tail_mask_data;
   VMOVDQU32     FUZZY_ROR_APPROX3(),Z25   //;2CEF25D2 load ror approx3                ;Z25=ror_a3;
@@ -9408,7 +9408,7 @@ loop1:
   VPCMPD        $0,  Z8,  Z21, K5         //;00000000 K5 := (n2==d0)                  ;K5=scratch2; Z21=n2; Z8=d0; 0=Eq;
   VPSLLD.Z      $6,  Z10, K3,  Z21        //;00000000 key := 1<<6                     ;Z21=key; K3=tmp_mask; Z10=1;
   VPSLLD.Z      $5,  Z10, K4,  Z27        //;00000000 scratch2 := 1<<5                ;Z27=scratch2; K4=scratch1; Z10=1;
-  VPSLLD.Z      $1,  Z10, K5,  Z29        //;00000000 scratch3 := 1<<1                ;Z29=scratch3; K5=scratch2; Z10=1;
+  VPADDD.Z      Z10, Z10, K5,  Z29        //;00000000 scratch3 := 1<<1                ;Z29=scratch3; K5=scratch2; Z10=1;
   VPTERNLOGD    $0b11111110,Z29, Z27, Z21 //;00000000                                 ;Z21=key; Z27=scratch2; Z29=scratch3;
 
   VPCMPD        $0,  Z28, Z20, K3         //;00000000 K3 := (n1==d2)                  ;K3=tmp_mask; Z20=n1; Z28=d2; 0=Eq;
@@ -12669,7 +12669,7 @@ loop_edges_done:
   VPMOVD2M      Z6,  K3                   //;E2246D80 retrieve RLZ bit                ;K3=scratch; Z6=next_state;
   VPCMPD        $0,  Z3,  Z11, K3,  K5    //;CF75D163 K5 := K3 & (0==str_len)         ;K5=rlz_condition; K3=scratch; Z11=0; Z3=str_len; 0=Eq;
 //; test accept condition
-  VPSLLD        $1,  Z6,  Z26             //;185F151B shift accept-bit into most sig pos;Z26=scratch_Z26; Z6=next_state;
+  VPADDD        Z6,  Z6,  Z26             //;185F151B shift accept-bit into most sig pos;Z26=scratch_Z26; Z6=next_state;
   VPMOVD2M      Z26, K3                   //;38627E18 retrieve accept bit             ;K3=scratch; Z26=scratch_Z26;
 //; update lane_todo and lane_active
   KORW          K5,  K3,  K3              //;D1E8D8B6 scratch |= rlz_condition        ;K3=scratch; K5=rlz_condition;
