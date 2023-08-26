@@ -1,0 +1,8 @@
+# go test -run=^$ -bench=BenchmarkTestQueries/0062-string-similar-to/string-similar-to-4ilike -v
+#WHERE (name_eng ILIKE '%r_n_k')
+#WHERE (name_eng SIMILAR TO '(?i)%r_n_k')
+#WHERE (name_eng ~ '(?i)%r_n_k')
+#NOTE: the character 'k', has three case-equivalent character, two ASCII 'k', and 'K' and an unicode code-point
+SELECT name
+FROM 'data.jsonrl'
+WHERE (name_eng ILIKE '%r_n_k')

@@ -1,11 +1,11 @@
-# go test -bench BenchmarkTestQueries/0036-similar-to
+# go test -run=^$ -bench=BenchmarkTestQueries/0062-string-similar-to/string-similar-to-2reg -v
 #FROM input WHERE str SIMILAR TO '(?:[0-9]{1,3}.){3}[0-9]{1,3}'
 #FROM input WHERE str ~          '^(?:[0-9]{1,3}\\.){3}[0-9]{1,3}'
 #FROM input WHERE str SIMILAR TO '(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?).){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)'
 #FROM input WHERE str ~          '^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)'
 
 SELECT *
-FROM input WHERE str SIMILAR TO '(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?).){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)'
+FROM input WHERE str ~ '^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)'
 ---
 {"str": "0.0.0.0"}
 {"str": "1.1.1.1"}

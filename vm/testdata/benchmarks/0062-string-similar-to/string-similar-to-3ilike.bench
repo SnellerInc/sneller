@@ -1,0 +1,7 @@
+# go test -run=^$ -bench=BenchmarkTestQueries/0062-string-similar-to/string-similar-to-3ilike -v
+#WHERE (name_eng ILIKE '%r_n')
+#WHERE (name_eng SIMILAR TO '(?i)%r_n')
+#WHERE (name_eng ~ '(?i).*r.n')
+SELECT name
+FROM 'data.jsonrl'
+WHERE (name_eng ILIKE '%r_n')

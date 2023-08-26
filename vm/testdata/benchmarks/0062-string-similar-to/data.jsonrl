@@ -1,12 +1,3 @@
-# go test -bench BenchmarkTestQueries/0036-similar-to
-#WHERE (name_eng ILIKE '%r_n_k')
-#WHERE (name_eng SIMILAR TO '(?i)%r_n_k')
-#WHERE (name_eng ~ '(?i)%r_n_k')
-#NOTE: the character 'k', has three case-equivalent character, two ASCII 'k', and 'K' and an unicode code-point
-SELECT name
-FROM input
-WHERE (name_eng ILIKE '%r_n_k')
----
 {"country_eng": "Armenia", "name_eng": "Aram Khachatryan", "country": "Հայաստան", "name": "Արամ Խաչատրյան"}
 {"country_eng": "Australia", "name_eng": "Nicole Kidman", "country": "Australia", "name": "Nicole Kidman"}
 {"country_eng": "Austria", "name_eng": "Johann Strauss", "country": "Österreich", "name": "Johann Strauß"}
