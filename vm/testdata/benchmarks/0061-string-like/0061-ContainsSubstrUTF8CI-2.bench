@@ -1,0 +1,3 @@
+# go test -run=NONE -bench=BenchmarkTestQueries/0061-ContainsSubstrUTF8CI -v
+SELECT name FROM 'data2.jsonrl'
+WHERE (name ILIKE '%ssss𐍈𐍈%') # NOTE: ascii 'S' and ascii 'K' have a non-ascii non-normalized code-point

@@ -1,0 +1,3 @@
+# go test -run=NONE -bench=BenchmarkTestQueries/0061-ContainsPrefixCS -v
+SELECT name FROM 'data.jsonrl'
+WHERE (name LIKE 'Nicole%')

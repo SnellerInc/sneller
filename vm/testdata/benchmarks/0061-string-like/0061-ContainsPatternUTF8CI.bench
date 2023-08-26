@@ -1,3 +1,3 @@
-# go test -bench BenchmarkTestQueries/0021-like-ContainsPatternUTF8CI
+# go test -run=NONE -bench=BenchmarkTestQueries/0061-ContainsPatternUTF8CI -v
 SELECT name FROM 'data.jsonrl'
 WHERE (name ILIKE '%N_c_łe%k_d%') # NOTE: ascii 'S' and ascii 'K' have a non-ascii non-normalized code-point

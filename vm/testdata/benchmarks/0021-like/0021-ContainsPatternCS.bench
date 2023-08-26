@@ -1,3 +1,0 @@
-# go test -bench BenchmarkTestQueries/0021-like-ContainsPatternCS
-SELECT name FROM 'data.jsonrl'
-WHERE (name LIKE '%N_c_le%')

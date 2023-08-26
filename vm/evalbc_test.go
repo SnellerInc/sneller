@@ -3904,6 +3904,13 @@ func TestContainsPreSufSubUT2(t *testing.T) {
 			op: opContainsSuffixUTF8Ci,
 			unitTests: []unitTest{
 				{
+					needle:     "sssss",
+					data16:     [16]Data{"ſſſſſ", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""},
+					expLanes:   uint16(0b0000000000000001),
+					expOffsets: [16]OffsetZ2{0, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir},
+					expLengths: [16]LengthZ3{0, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir, ir},
+				},
+				{
 					needle:     "\x00\x00\x00\x00𐍈", //note: 𐍈 needs 4 bytes to be encoded (in UTF8)
 					data16:     [16]Data{"0𐍈", "0", "0", "0", "0", "", "", "", "", "", "", "", "", "", "", ""},
 					expLanes:   uint16(0b0000000000000000),

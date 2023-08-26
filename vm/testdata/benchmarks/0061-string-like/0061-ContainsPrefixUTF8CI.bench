@@ -1,3 +1,3 @@
-# go test -bench BenchmarkTestQueries/0021-like-ContainsPrefixCI
+# go test -run=NONE -bench=BenchmarkTestQueries/0061-ContainsPrefixUTF8CI -v
 SELECT name FROM 'data.jsonrl'
 WHERE (name ILIKE 'Nicołe%') # NOTE: ascii 'S' and ascii 'K' have a non-ascii non-normalized code-point

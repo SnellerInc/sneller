@@ -1,3 +1,0 @@
-# go test -bench BenchmarkTestQueries/0021-like-ContainsSubstrCS
-SELECT name FROM 'data.jsonrl'
-WHERE (name LIKE '%Nicole%')

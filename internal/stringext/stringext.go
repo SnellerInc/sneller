@@ -842,7 +842,7 @@ func EncodeContainsPrefixCI(needle Needle) string {
 
 // EncodeContainsPrefixUTF8CI encodes the provided string for usage with bcContainsPrefixUTF8Ci
 func EncodeContainsPrefixUTF8CI(needle Needle) string {
-	return genNeedleUTF8Ci(needle, false, true, false)
+	return genNeedleUTF8Ci(needle, false, true, true)
 }
 
 // EncodeContainsSuffixCS encodes the provided string for usage with bcContainsSuffixCs
@@ -872,7 +872,7 @@ func EncodeContainsSubstrCI(needle Needle) string {
 
 // EncodeContainsSubstrUTF8CI encodes the provided string for usage with bcContainsSubstrUTF8Ci
 func EncodeContainsSubstrUTF8CI(needle Needle) string {
-	return genNeedleUTF8Ci(needle, false, false, false)
+	return genNeedleUTF8Ci(needle, false, false, true)
 }
 
 // EncodeContainsPatternCS encodes the provided string for usage with bcContainsPatternCs
