@@ -44,7 +44,7 @@ func to4ByteArray(value int) []byte {
 	return buf
 }
 
-func stringAlternatives(str string, reversed, addASCII, addBounds bool) (alt []byte) {
+func stringAlternatives(str string, reversed, addASCII, addLowerBounds, addUpperBounds bool) (alt []byte) {
 
 	// maximal length (in bytes) of data that can match with the needle
 	byteLengthBounds := func(pos int, runeAlternatives [][4]rune) (lowerBound, upperBound int) {
@@ -104,20 +104,29 @@ func stringAlternatives(str string, reversed, addASCII, addBounds bool) (alt []b
 	upper := []byte(string(upperRunes))
 	upper = append(upper, 0, 0, 0)
 
-	lowerBounds := make([]int, nRunes)
-	if addBounds {
+	var lowerBounds []int
+	var upperBounds []int
+
+	if addLowerBounds || addUpperBounds {
+
+		lowerBounds = make([]int, nRunes)
+		upperBounds = make([]int, nRunes)
+
 		for i := 0; i < nRunes; i++ {
-			lowerBound, _ := byteLengthBounds(i, runeAlternatives)
-			lowerBounds[i] = lowerBound
+			lowerBounds[i], upperBounds[i] = byteLengthBounds(i, runeAlternatives)
 		}
 		if reversed {
 			reverseSlice(lowerBounds)
+			reverseSlice(upperBounds)
 		}
 	}
 
 	for i := 0; i < nRunes; i++ {
 		if reversed {
-			if addBounds {
+			if addUpperBounds {
+				alt = append(to4ByteArray(upperBounds[i]), alt...)
+			}
+			if addLowerBounds {
 				alt = append(to4ByteArray(lowerBounds[i]), alt...)
 			}
 			if addASCII {
@@ -151,8 +160,11 @@ func stringAlternatives(str string, reversed, addASCII, addBounds bool) (alt []b
 			if addASCII {
 				alt = append(alt, upper[i+0], upper[i+1], upper[i+2], upper[i+3])
 			}
-			if addBounds {
+			if addLowerBounds {
 				alt = append(alt, to4ByteArray(lowerBounds[i])...)
+			}
+			if addUpperBounds {
+				alt = append(alt, to4ByteArray(upperBounds[i])...)
 			}
 		}
 	}
@@ -808,9 +820,9 @@ func (t StrCmpType) String() string {
 }
 
 // genNeedleUTF8Ci generates an extended string representation needed for UTF8 ci comparisons
-func genNeedleUTF8Ci(needle Needle, reversed, addASCII, addBounds bool) string {
+func genNeedleUTF8Ci(needle Needle, reversed, addASCII, addUpperBounds, addLowerBounds bool) string {
 	result := to4ByteArray(utf8.RuneCountInString(string(needle)))
-	result = append(result, stringAlternatives(string(needle), reversed, addASCII, addBounds)...)
+	result = append(result, stringAlternatives(string(needle), reversed, addASCII, addUpperBounds, addLowerBounds)...)
 	return string(result)
 }
 
@@ -827,7 +839,7 @@ func EncodeEqualStringCI(needle Needle) string {
 
 // EncodeEqualStringUTF8CI encodes the provided string for usage with bcStrCmpEqUTF8Ci
 func EncodeEqualStringUTF8CI(needle Needle) string {
-	return genNeedleUTF8Ci(needle, false, true, false)
+	return genNeedleUTF8Ci(needle, false, true, true, true)
 }
 
 // EncodeContainsPrefixCS encodes the provided string for usage with bcContainsPrefixCs
@@ -842,7 +854,7 @@ func EncodeContainsPrefixCI(needle Needle) string {
 
 // EncodeContainsPrefixUTF8CI encodes the provided string for usage with bcContainsPrefixUTF8Ci
 func EncodeContainsPrefixUTF8CI(needle Needle) string {
-	return genNeedleUTF8Ci(needle, false, true, true)
+	return genNeedleUTF8Ci(needle, false, true, true, false)
 }
 
 // EncodeContainsSuffixCS encodes the provided string for usage with bcContainsSuffixCs
@@ -857,7 +869,7 @@ func EncodeContainsSuffixCI(needle Needle) string {
 
 // EncodeContainsSuffixUTF8CI encodes the provided string for usage with bcContainsSuffixUTF8Ci
 func EncodeContainsSuffixUTF8CI(needle Needle) string {
-	return genNeedleUTF8Ci(needle, true, true, true)
+	return genNeedleUTF8Ci(needle, true, true, true, false)
 }
 
 // EncodeContainsSubstrCS encodes the provided string for usage with bcContainsSubstrCs
@@ -872,7 +884,7 @@ func EncodeContainsSubstrCI(needle Needle) string {
 
 // EncodeContainsSubstrUTF8CI encodes the provided string for usage with bcContainsSubstrUTF8Ci
 func EncodeContainsSubstrUTF8CI(needle Needle) string {
-	return genNeedleUTF8Ci(needle, false, false, true)
+	return genNeedleUTF8Ci(needle, false, false, true, false)
 }
 
 // EncodeContainsPatternCS encodes the provided string for usage with bcContainsPatternCs
@@ -901,7 +913,7 @@ func EncodeContainsPatternCI(pattern *Pattern) string {
 // EncodeContainsPatternUTF8CI encodes the provided string for usage with bcContainsPatternUTF8Ci
 func EncodeContainsPatternUTF8CI(pattern *Pattern) string {
 	result := to4ByteArray(utf8.RuneCountInString(string(pattern.Needle)))
-	result = append(result, stringAlternatives(string(pattern.Needle), false, false, false)...)
+	result = append(result, stringAlternatives(string(pattern.Needle), false, false, false, false)...)
 	needleRune := []rune(pattern.Needle)
 
 	for i := 0; i < len(needleRune); i++ {

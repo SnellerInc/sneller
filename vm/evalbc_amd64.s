@@ -8813,15 +8813,14 @@ TEXT bcCmpStrEqUTF8Ci(SB), NOSPLIT|NOFRAME, $0
   BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
   BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
 
-//; load parameters
+//; load parameters for quick exit
   MOVQ          (R14),R14                 //;D2647DF0 load needle_ptr                 ;R14=needle_ptr; R14=needle_slice;
-  MOVL          (R14),CX                  //;7DF7F141 load number of code-points      ;CX=needle_len; R14=needle_ptr;
-  VPBROADCASTD  CX,  Z26                  //;485C8362 bcst number of code-points      ;Z26=scratch_Z26; CX=needle_len;
-  VPTESTMD      Z26, Z26, K1,  K1         //;CD49D8A5 K1 &= (scratch_Z26 != 0); empty needles are dead lanes;K1=lane_active; Z26=scratch_Z26;
-  VPCMPD        $2,  Z3,  Z26, K1,  K1    //;B73A4F83 K1 &= (scratch_Z26<=str_len)    ;K1=lane_active; Z26=scratch_Z26; Z3=str_len; 2=LessEq;
-  KTESTW        K1,  K1                   //;5746030A any lanes still alive?          ;K1=lane_active;
+  VPCMPD.BCST   $5,  24(R14),Z3,  K1,  K1 //;7C50EFFB K1 &= (data_len>=[needle_ptr+24]);K1=lane_active; Z3=data_len; R14=needle_ptr; 5=GreaterEq;
+  VPCMPD.BCST   $2,  28(R14),Z3,  K1,  K1 //;86CD0092 K1 &= (data_len<=[needle_ptr+28]);K1=lane_active; Z3=data_len; R14=needle_ptr; 2=LessEq;
+  KTESTW        K1,  K1                   //;67E2F74E any lanes still todo?           ;K1=lane_active;
   JZ            next                      //;B763A908 no, exit; jump if zero (ZF = 1) ;
-
+//; load parameters
+  MOVL          (R14),CX                  //;7DF7F141 load number of code-points      ;CX=needle_len; R14=needle_ptr;
   ADDQ          $4,  R14                  //;7B0665F3 needle_ptr += 4                 ;R14=needle_ptr;
 //; load constants
   VMOVDQU32     CONST_TAIL_MASK(),Z18     //;7DB21CB0 load tail_mask_data             ;Z18=tail_mask_data;
@@ -8832,65 +8831,67 @@ TEXT bcCmpStrEqUTF8Ci(SB), NOSPLIT|NOFRAME, $0
   VPBROADCASTB  CONSTB_122(),Z17          //;8E2ED824 load constant ASCII z           ;Z17=char_z;
 
 loop:
-  VPTESTMD      Z3,  Z3,  K1,  K1         //;790C4E82 K1 &= (str_len != 0); empty data are dead lanes;K1=lane_active; Z3=str_len;
+  VPCMPD.BCST   $5,  20(R14),Z3,  K1,  K1 //;7C50EFFB K1 &= (data_len>=[needle_ptr+20]);K1=lane_active; Z3=data_len; R14=needle_ptr; 5=GreaterEq;
+  VPCMPD.BCST   $2,  24(R14),Z3,  K1,  K1 //;78B72102 K1 &= (data_len<=[needle_ptr+24]);K1=lane_active; Z3=data_len; R14=needle_ptr; 2=LessEq;
+  KTESTW        K1,  K1                   //;67E2F74E any lanes still todo?           ;K1=lane_active;
+  JZ            next                      //;677C9F60 jump if zero (ZF = 1)           ;
+
   KMOVW         K1,  K3                   //;723D04C9 copy eligible lanes             ;K3=tmp_mask; K1=lane_active;
-  VPGATHERDD    (VIRT_BASE)(Z2*1),K3,  Z8 //;E4967C89 gather data                     ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z2=str_start;
+  VPXORD        Z8,  Z8,  Z8              //;2D2EC61E data := 0                       ;Z8=data;
+  VPGATHERDD    (VIRT_BASE)(Z2*1),K3,  Z8 //;E4967C89 gather data                     ;Z8=data; K3=tmp_mask; SI=data_ptr; Z2=data_off;
 
 //; NOTE: debugging. If you jump from here to mixed_ascii you bypass the 4 ASCII optimization
   CMPL          CX,  $4                   //;E273EEEA are we in the needle tail?      ;CX=needle_len;
   JL            mixed_ascii               //;A8685FD7 yes, then jump; jump if less (SF neq OF);
   VPBROADCASTD.Z 16(R14),K1,  Z9          //;2694A02F load needle data                ;Z9=data_needle; K1=lane_active; R14=needle_ptr;
 //; determine if either data or needle has non-ASCII content
-  VPORD.Z       Z8,  Z9,  K1,  Z26        //;3692D686 scratch_Z26 := data_needle | data_msg;Z26=scratch_Z26; K1=lane_active; Z9=data_needle; Z8=data_msg;
+  VPORD.Z       Z8,  Z9,  K1,  Z26        //;3692D686 scratch_Z26 := data_needle | data;Z26=scratch_Z26; K1=lane_active; Z9=data_needle; Z8=data;
   VPMOVB2M      Z26, K3                   //;5303B427 get 64 sign-bits                ;K3=tmp_mask; Z26=scratch_Z26;
   KTESTQ        K3,  K3                   //;A2B0951C all sign-bits zero?             ;K3=tmp_mask;
-  JNZ           mixed_ascii               //;303EFD4D no, found a non-ascii char; jump if not zero (ZF = 0);
+  JNZ           mixed_ascii               //;303EFD4D no, found a non-ASCII char; jump if not zero (ZF = 0);
+
+  ADDQ          $4*28,R14                 //;F0BC3163 needle_ptr += 4*28              ;R14=needle_ptr;
 //; clear tail from data: IN zmm8; OUT zmm8
-  VPMINSD       Z3,  Z20, Z26             //;DEC17BF3 scratch_Z26 := min(4, str_len)  ;Z26=scratch_Z26; Z20=4; Z3=str_len;
+  VPMINSD       Z3,  Z20, Z26             //;DEC17BF3 scratch_Z26 := min(4, data_len) ;Z26=scratch_Z26; Z20=4; Z3=data_len;
   VPERMD        Z18, Z26, Z19             //;E5886CFE get tail_mask                   ;Z19=tail_mask; Z26=scratch_Z26; Z18=tail_mask_data;
-  VPANDD        Z8,  Z19, Z8              //;64208067 mask data from msg              ;Z8=data_msg; Z19=tail_mask;
+  VPANDD        Z8,  Z19, Z8              //;64208067 mask data from msg              ;Z8=data; Z19=tail_mask;
 //; str_to_upper: IN zmm8; OUT zmm13
-  VPCMPB        $5,  Z16, Z8,  K3         //;30E9B9FD K3 := (data_msg>=char_a)        ;K3=tmp_mask; Z8=data_msg; Z16=char_a; 5=GreaterEq;
-  VPCMPB        $2,  Z17, Z8,  K3,  K3    //;8CE85BA0 K3 &= (data_msg<=char_z)        ;K3=tmp_mask; Z8=data_msg; Z17=char_z; 2=LessEq;
+  VPCMPB        $5,  Z16, Z8,  K3         //;30E9B9FD K3 := (data>=char_a)            ;K3=tmp_mask; Z8=data; Z16=char_a; 5=GreaterEq;
+  VPCMPB        $2,  Z17, Z8,  K3,  K3    //;8CE85BA0 K3 &= (data<=char_z)            ;K3=tmp_mask; Z8=data; Z17=char_z; 2=LessEq;
   VPMOVM2B      K3,  Z13                  //;ADC21F45 mask with selected chars        ;Z13=data_msg_upper; K3=tmp_mask;
-  VPTERNLOGD    $0b01001100,Z15, Z8,  Z13 //;1BB96D97                                 ;Z13=data_msg_upper; Z8=data_msg; Z15=c_0b00100000;
+  VPTERNLOGD    $0b01001100,Z15, Z8,  Z13 //;1BB96D97                                 ;Z13=data_msg_upper; Z8=data; Z15=c_0b00100000;
 //; compare data with needle for 4 ASCIIs
   VPCMPD        $0,  Z13, Z9,  K1,  K1    //;BBBDF880 K1 &= (data_needle==data_msg_upper);K1=lane_active; Z9=data_needle; Z13=data_msg_upper; 0=Eq;
-  KTESTW        K1,  K1                   //;5746030A any lanes still alive?          ;K1=lane_active;
-  JZ            next                      //;B763A908 no, exit; jump if zero (ZF = 1) ;
 //; advance to the next 4 ASCIIs
-  VPADDD        Z20, Z2,  K1,  Z2         //;D7CC90DD str_start += 4                  ;Z2=str_start; K1=lane_active; Z20=4;
-  VPSUBD        Z20, Z3,  K1,  Z3         //;AEDCD850 str_len -= 4                    ;Z3=str_len; K1=lane_active; Z20=4;
-  ADDQ          $80, R14                  //;F0BC3163 needle_ptr += 80                ;R14=needle_ptr;
+  VPADDD        Z20, Z2,  K1,  Z2         //;D7CC90DD data_off += 4                   ;Z2=data_off; K1=lane_active; Z20=4;
+  VPSUBD        Z20, Z3,  K1,  Z3         //;AEDCD850 data_len -= 4                   ;Z3=data_len; K1=lane_active; Z20=4;
   SUBL          $4,  CX                   //;646B86C9 needle_len -= 4                 ;CX=needle_len;
   JG            loop                      //;1EBC2C20 jump if greater ((ZF = 0) and (SF = OF));
   JMP           next                      //;2230EE05                                 ;
 
 mixed_ascii:
 //; select next UTF8 byte sequence
-  VPSRLD        $4,  Z8,  Z26             //;FE5F1413 scratch_Z26 := data_msg>>4      ;Z26=scratch_Z26; Z8=data_msg;
+  VPSRLD        $4,  Z8,  Z26             //;FE5F1413 scratch_Z26 := data>>4          ;Z26=scratch_Z26; Z8=data;
   VPERMD        Z21, Z26, Z7              //;68FECBA0 get n_bytes_data                ;Z7=n_bytes_data; Z26=scratch_Z26; Z21=table_n_bytes_utf8;
   VPERMD        Z18, Z7,  Z19             //;E5886CFE get tail_mask                   ;Z19=tail_mask; Z7=n_bytes_data; Z18=tail_mask_data;
-  VPANDD        Z8,  Z19, Z8              //;FC6636EA mask data from msg              ;Z8=data_msg; Z19=tail_mask;
+  VPANDD        Z8,  Z19, Z8              //;FC6636EA mask data from msg              ;Z8=data; Z19=tail_mask;
 //; compare data with needle for 1 UTF8 byte sequence
-  VPCMPD.BCST   $0,  (R14),Z8,  K1,  K3   //;345D0BF3 K3 := K1 & (data_msg==[needle_ptr]);K3=tmp_mask; K1=lane_active; Z8=data_msg; R14=needle_ptr; 0=Eq;
-  VPCMPD.BCST   $0,  4(R14),Z8,  K1,  K4  //;EFD0A9A3 K4 := K1 & (data_msg==[needle_ptr+4]);K4=alt2_match; K1=lane_active; Z8=data_msg; R14=needle_ptr; 0=Eq;
-  VPCMPD.BCST   $0,  8(R14),Z8,  K1,  K5  //;CAC0FAC6 K5 := K1 & (data_msg==[needle_ptr+8]);K5=alt3_match; K1=lane_active; Z8=data_msg; R14=needle_ptr; 0=Eq;
-  VPCMPD.BCST   $0,  12(R14),Z8,  K1,  K6 //;50C70740 K6 := K1 & (data_msg==[needle_ptr+12]);K6=alt4_match; K1=lane_active; Z8=data_msg; R14=needle_ptr; 0=Eq;
+  VPCMPD.BCST   $0,  (R14),Z8,  K1,  K3   //;345D0BF3 K3 := K1 & (data==[needle_ptr]) ;K3=tmp_mask; K1=lane_active; Z8=data; R14=needle_ptr; 0=Eq;
+  VPCMPD.BCST   $0,  4(R14),Z8,  K1,  K4  //;EFD0A9A3 K4 := K1 & (data==[needle_ptr+4]);K4=alt2_match; K1=lane_active; Z8=data; R14=needle_ptr; 0=Eq;
+  VPCMPD.BCST   $0,  8(R14),Z8,  K1,  K5  //;CAC0FAC6 K5 := K1 & (data==[needle_ptr+8]);K5=alt3_match; K1=lane_active; Z8=data; R14=needle_ptr; 0=Eq;
+  VPCMPD.BCST   $0,  12(R14),Z8,  K1,  K6 //;50C70740 K6 := K1 & (data==[needle_ptr+12]);K6=alt4_match; K1=lane_active; Z8=data; R14=needle_ptr; 0=Eq;
+  ADDQ          $28, R14                  //;1F8D79B1 needle_ptr += 28                ;R14=needle_ptr;
   KORW          K3,  K4,  K3              //;58E49245 tmp_mask |= alt2_match          ;K3=tmp_mask; K4=alt2_match;
   KORW          K3,  K5,  K3              //;BDCB8940 tmp_mask |= alt3_match          ;K3=tmp_mask; K5=alt3_match;
   KORW          K6,  K3,  K1              //;AAF6ED91 lane_active := tmp_mask | alt4_match;K1=lane_active; K3=tmp_mask; K6=alt4_match;
-  KTESTW        K1,  K1                   //;5746030A any lanes still alive?          ;K1=lane_active;
-  JZ            next                      //;B763A908 no, exit; jump if zero (ZF = 1) ;
 //; advance to the next rune
-  VPADDD        Z7,  Z2,  K1,  Z2         //;DFE8D20B str_start += n_bytes_data       ;Z2=str_start; K1=lane_active; Z7=n_bytes_data;
-  VPSUBD        Z7,  Z3,  K1,  Z3         //;24E04BE7 str_len -= n_bytes_data         ;Z3=str_len; K1=lane_active; Z7=n_bytes_data;
-  ADDQ          $20, R14                  //;1F8D79B1 needle_ptr += 20                ;R14=needle_ptr;
+  VPADDD        Z7,  Z2,  K1,  Z2         //;DFE8D20B data_off += n_bytes_data        ;Z2=data_off; K1=lane_active; Z7=n_bytes_data;
+  VPSUBD        Z7,  Z3,  K1,  Z3         //;24E04BE7 data_len -= n_bytes_data        ;Z3=data_len; K1=lane_active; Z7=n_bytes_data;
   DECL          CX                        //;A99E9290 needle_len--                    ;CX=needle_len;
   JG            loop                      //;80013DFA jump if greater ((ZF = 0) and (SF = OF));
 
 next:
-  VPTESTNMD     Z3,  Z3,  K1,  K1         //;E555E77C K1 &= (str_len==0)              ;K1=lane_active; Z3=str_len;
+  VPTESTNMD     Z3,  Z3,  K1,  K1         //;E555E77C K1 &= (data_len==0)             ;K1=lane_active; Z3=data_len;
   BC_UNPACK_SLOT(0, OUT(DX))
   BC_STORE_K_TO_SLOT(IN(K1), IN(DX))
   NEXT_ADVANCE(BC_SLOT_SIZE*3 + BC_DICT_SIZE)
