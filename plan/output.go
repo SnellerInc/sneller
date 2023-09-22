@@ -98,6 +98,7 @@ func (up *uploadSink) Close() error {
 	}
 
 	var desc blockfmt.Descriptor
+	desc.Format = blockfmt.Version
 	desc.Trailer = up.mw.Trailer
 	err = statdesc(up.store, up.name, up.mw.Output, &desc)
 	if err != nil {
