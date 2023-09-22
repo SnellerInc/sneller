@@ -70,6 +70,7 @@ func DecodeS3FS(d ion.Datum) (*S3FS, error) {
 	if s.Bucket == "" {
 		return nil, fmt.Errorf("missing bucket")
 	}
+	s.Ctx = context.Background()
 	return s, nil
 }
 
