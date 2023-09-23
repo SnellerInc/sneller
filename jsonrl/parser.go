@@ -33,7 +33,7 @@ var startObjectSize = 2 * 1024
 // datum in the JSON input. Fields that exceed this
 // size are rejected. (In practice this is the upper bound
 // on the size of strings in the source data.)
-const MaxDatumSize = 512 * 1024
+const MaxDatumSize = 4 * 1024 * 1024
 
 // MaxObjectDepth is the maximum level of
 // recursion allowed in a JSON object.
