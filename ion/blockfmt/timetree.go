@@ -242,15 +242,11 @@ func (t *TimeIndex) appendBlocks(next *TimeIndex, i, j int) {
 		mj--
 	}
 	mi := 0
-	for mi < mj && next.min[mi].offset < i {
+	for mi+1 < mj && next.min[mi+1].offset < i {
 		mi++
 	}
-	if next.min[mi].offset > i {
-		// push a left-hand boundary
-		t.pushMin(next.min[mi].when, n+i)
-	}
 	for k := mi; k < mj; k++ {
-		t.pushMin(next.min[k].when, n+next.min[k].offset-i)
+		t.pushMin(next.min[k].when, max(n+next.min[k].offset-i, n+i))
 	}
 
 	// append maxes where i+1 <= max.offset < j+1
