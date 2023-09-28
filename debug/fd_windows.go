@@ -12,43 +12,20 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-//go:build linux
+//go:build !linux
 
-package cgroup
+// Package debug provides remote debugging tools
+package debug
 
 import (
-	"os"
-	"strings"
-	"testing"
+	"log"
 )
 
-func TestCgroup(t *testing.T) {
-	root, err := Root()
-	if err != nil {
-		t.Skip("couldn't find cgroup root")
-	}
-	self, err := Self()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.HasPrefix(string(self), string(root)) {
-		t.Errorf("current cgroup %s not within root %s", self, root)
-	}
-	t.Log("in cgroup", self)
-	owned, err := self.IsDelegated(os.Getuid(), os.Getgid())
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Logf("in delegated cgroup: %v", owned)
-	if !owned {
-		return
-	}
-	sub, err := self.Create("test", true)
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = sub.Remove()
-	if err != nil {
-		t.Fatal("removing sub:", err)
-	}
+// Fd binds an http server to the
+// provided file descriptor and starts
+// it asynchronously. If the server ever
+// stops running, the error returned
+// from http.Serve is passed to errorln.
+func Fd(fd int, lg *log.Logger) {
+	panic("unimplemented")
 }

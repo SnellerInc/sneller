@@ -12,6 +12,8 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+//go:build linux
+
 // Package cgroup implements a thin wrapper
 // around the Linux cgroupv2 filesystem API.
 // For more information, please consult the
