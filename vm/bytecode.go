@@ -18,7 +18,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"math"
-	"os"
 	"strings"
 	"unsafe"
 
@@ -397,19 +396,12 @@ func visitBytecode(bc *bytecode, fn func(offset int, op bcop, info *bcopinfo) er
 	offset := int(0)
 
 	for offset < size {
-		if size-offset < 8 {
-			return fmt.Errorf("cannot decode opcode of size %d while there is only %d bytes left", 8, size-offset)
+		if size-offset < 2 {
+			return fmt.Errorf("cannot decode opcode of size %d while there is only %d bytes left", 2, size-offset)
 		}
 
-		opaddr := uintptr(binary.LittleEndian.Uint64(compiled[offset:]))
-		offset += 8
-
-		op, ok := opcodeID(opaddr)
-		if !ok {
-			fmt.Fprintf(os.Stderr, "bytedode: %x\n", bc.compiled)
-			return fmt.Errorf("failed to translate opcode address 0x%x", opaddr)
-		}
-
+		op := bcop(binary.LittleEndian.Uint16(compiled[offset:]))
+		offset += 2
 		info := &opinfo[op]
 		startoff := offset
 

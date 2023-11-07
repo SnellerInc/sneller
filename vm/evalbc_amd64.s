@@ -29,9 +29,11 @@
 // decodes the next instruction from the virtual pc
 // register, advances virtual pc register, and jumps
 // into the next bytecode instruction.
-#define _NEXT(vm_pc, advance) \
-  ADDQ $(advance + 8), vm_pc  \
-  JMP  -8(vm_pc)
+#define _NEXT(vm_pc, advance)     \
+  ADDQ    $(advance + 2), vm_pc   \
+  LEAQ    opaddrs+0(SB), R8       \
+  MOVWQZX -2(vm_pc), CX           \
+  JMP     0(R8)(CX*8)
 
 // every bytecode instruction
 // other than 'ret' should end in
@@ -41,12 +43,14 @@
 
 #define NEXT_ADVANCE(advance) _NEXT(VIRT_PCREG, advance)
 
-#define BC_ADVANCE_REG(SrcReg)        \
-  ADDQ SrcReg, VIRT_PCREG             \
-  JMP -8(VIRT_PCREG)
+#define BC_ADVANCE_REG(SrcReg)\
+  ADDQ    SrcReg, VIRT_PCREG  \
+  LEAQ    opaddrs+0(SB), R8   \
+  MOVWQZX -2(VIRT_PCREG), CX  \
+  JMP     0(R8)(CX*8)
 
 #define BC_CALC_ADVANCE(ArgSize, Dst) \
-  MOVL $(8 + ArgSize), Dst
+  MOVL $(2 + ArgSize), Dst
 
 // RET_ABORT returns early
 // with the carry flag set to

@@ -59,9 +59,11 @@
 
 // BC_INVOKE implements the lowest-level VM entry mechanism. All the
 // required registers must be preset by the caller.
-#define BC_INVOKE()   \
-  ADDQ $8, VIRT_PCREG \
-  CALL -8(VIRT_PCREG)
+#define BC_INVOKE()       \
+  ADDQ    $2, VIRT_PCREG     \
+  MOVWQZX -2(VIRT_PCREG), CX \
+  LEAQ    opaddrs+0(SB), R8  \
+  CALL    0(R8)(CX*8)
 
 // BC_ENTER() sets up the VM control registers and jumps into the VM
 // instructions. Preconditions:

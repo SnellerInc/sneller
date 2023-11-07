@@ -46,10 +46,6 @@ func (a *assembler) emitImmU64(imm uint64) {
 	a.code = append(a.code, byte(imm), byte(imm>>8), byte(imm>>16), byte(imm>>24), byte(imm>>32), byte(imm>>40), byte(imm>>48), byte(imm>>56))
 }
 
-func (a *assembler) emitImmUPtr(imm uintptr) {
-	a.emitImmU64(uint64(imm))
-}
-
 // emitOpcodeValue emits a 16-bit opcode value to the assembler buffer
 // without any other arguments. In addition, it tracks the use of scratch
 // buffer and automatically increments `a.scratchuse` when the opcode
@@ -59,7 +55,7 @@ func (a *assembler) emitOpcodeValue(op bcop) {
 	if a.scratchuse > PageSize {
 		a.scratchuse = PageSize
 	}
-	a.emitImmUPtr(op.address())
+	a.code = append(a.code, byte(op), byte(op>>8))
 }
 
 // emitOpcodeArg emits a single argument to the assembler buffer.
