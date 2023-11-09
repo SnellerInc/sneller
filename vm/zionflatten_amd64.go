@@ -20,9 +20,9 @@ import (
 )
 
 func init() {
-	//    zionflatten = zionflattenAVX512BranchlessVarUint
-	zionflatten = zionflattenAVX512BranchingVarUint
-	//zionflatten = zionflattenAVX512Legacy
+	zionflatten = zionflattenAVX512BranchlessVarUint
+	// zionflatten = zionflattenAVX512BranchingVarUint
+	// zionflatten = zionflattenAVX512Legacy
 }
 
 //lint:ignore U1000 available for use
