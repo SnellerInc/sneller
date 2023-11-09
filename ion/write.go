@@ -65,7 +65,7 @@ func UnsafeAppendTag(dst []byte, tag Type, size uint) []byte {
 // have to be written after the header.
 //
 // FIXME: it's not possible to produce exact padding for all possible
-// padsize. The procedure never returns values that would execeed
+// padsize. The procedure never returns values that would exceed
 // the required padding.
 func NopPadding(dst []byte, padsize int) (int, int) {
 	if padsize <= 0 {

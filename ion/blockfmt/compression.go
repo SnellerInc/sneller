@@ -110,7 +110,12 @@ func CompressorByName(algo string) Compressor {
 
 func getCompressor(algo string) Compressor {
 	switch algo {
-	case "zion+iguana_v0", "zion+iguana_v0/specialized":
+	case "zion+iguana_v0":
+		e := zionEncPool.Get().(*zion.Encoder)
+		e.Reset()
+		e.Algo = zll.CompressIguanaV0
+		return &zionCompressor{enc: e}
+	case "zion+iguana_v0/specialized":
 		e := zionEncPool.Get().(*zion.Encoder)
 		e.Reset()
 		e.Algo = zll.CompressIguanaV0Specialized

@@ -455,6 +455,57 @@ func ReadUint(msg []byte) (uint64, []byte, error) {
 	return readmag(body), rest, nil
 }
 
+func ReadCoerceFloat64(msg []byte) (float64, []byte, error) {
+	t, l := DecodeTLV(msg[0])
+
+	switch t {
+	case IntType, UintType:
+		if l > 8 {
+			return 0, nil, fmt.Errorf("ion.ReadCoerceFloat64: integer of %d bytes out of range", l)
+		}
+
+		if len(msg) <= int(l) {
+			return 0, nil, toosmall(len(msg), int(l)+1, "ReadCoerceFloat64")
+		}
+
+		u := readmag(msg[1 : 1+int(l)])
+		if u > uint64(math.MaxInt64) {
+			return 0, nil, fmt.Errorf("ion.ReadCoerceFloat64: integer %d too large", u)
+		}
+
+		i := int64(u)
+		if t == IntType {
+			i = -i
+		}
+
+		f := float64(i)
+		if int64(f) != i {
+			return 0, nil, fmt.Errorf("ion.ReadCoerceFloat64: cannot coerce integer %d to float without a precision loss", i)
+		}
+
+		return f, msg[1+int(l):], nil
+
+	case FloatType:
+		if len(msg) <= int(l) {
+			return 0, nil, toosmall(len(msg), int(l)+1, "ReadCoerceFloat64")
+		}
+
+		if l == 8 {
+			return math.Float64frombits(binary.BigEndian.Uint64(msg[1:])), msg[9:], nil
+		}
+		if l == 4 {
+			return float64(math.Float32frombits(binary.BigEndian.Uint32(msg[1:]))), msg[5:], nil
+		}
+		if l == 0 {
+			return 0, msg[1:], nil
+		}
+
+		return 0, nil, fmt.Errorf("ion.ReadCoerceFloat64: invalid float64 TLV %x", msg[0])
+	}
+
+	return 0, nil, fmt.Errorf("ion.ReadCoerceFloat64: found type %s, wanted an integer/float type", t.String())
+}
+
 // ReadSymbol reads an ion symbol
 // from msg and returns the subsequent message bytes,
 // or an error if one is encountered.

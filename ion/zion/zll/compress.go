@@ -151,6 +151,7 @@ const (
 	iguanaUnspecialized = iota
 	// uvarint list lengths + identity-encoded int8 values:
 	iguanaRawInt8Vector
+	iguanaRawNumericVector
 	// specialized encoding: for future use
 )
 
@@ -165,30 +166,47 @@ func (a BucketAlgo) Compress(hints *BucketHints, src, dst []byte) ([]byte, error
 		return dst, nil
 	}
 	var err error
+
 	switch a {
 	case CompressIguanaV0Specialized:
-		if hints != nil && hints.Elements > 0 &&
-			hints.TypeSet == uint16(1)<<ion.ListType &&
-			hints.ListTypeSet == (uint16(1)<<ion.IntType)|(uint16(1)<<ion.UintType) {
-			out := append(dst, iguanaRawInt8Vector)
-			out, ok := tryInt8Vector(src, out)
-			if ok {
-				dst = out
-				break
+		if hints != nil && hints.Elements > 0 && hints.TypeSet == uint16(1)<<ion.ListType {
+			integerTypes := uint16(1<<ion.UintType) | uint16(1<<ion.IntType)
+			numericTypes := uint16(1<<ion.FloatType) | integerTypes
+
+			if (hints.ListTypeSet & ^integerTypes) == 0 {
+				out := append(dst, iguanaRawInt8Vector)
+				out, ok := tryInt8Vector(src, out)
+				if ok {
+					dst = out
+					break
+				}
+			}
+
+			if (hints.ListTypeSet & ^numericTypes) == 0 {
+				out := append(dst, iguanaRawNumericVector)
+				out, ok := compressNumericList(src, out)
+				if ok {
+					dst = out
+					break
+				}
 			}
 		}
-		// TODO: use hints
+
 		dst = append(dst, iguanaUnspecialized) // leading null byte
 		fallthrough
+
 	case CompressIguanaV0:
 		enc := iguanaEnc()
 		dst, err = enc.Compress(src, dst, iguana.DefaultEntropyRejectionThreshold)
 		dropIguanaEnc(enc)
+
 	case CompressZstd:
 		dst = enc.EncodeAll(src, dst)
+
 	default:
 		panic("BucketAlgo.Compress: unknown BucketAlgo")
 	}
+
 	if err != nil {
 		return nil, err
 	}
@@ -240,14 +258,16 @@ func (a BucketAlgo) Decompress(src, dst []byte) ([]byte, int, error) {
 			return nil, 0, fmt.Errorf("size %d does not fit bucket specialization byte", size)
 		}
 		switch src[3] {
-		default:
-			return nil, 0, fmt.Errorf("bad iguana/specialized bucket encoding %d", src[3])
-		case iguanaRawInt8Vector:
-			out, err = decodeInt8Vec(dst, src[4:size])
 		case iguanaUnspecialized:
 			dec := iguanaDec()
 			out, err = dec.DecompressTo(dst, src[4:size])
 			dropIguana(dec)
+		case iguanaRawInt8Vector:
+			out, err = decodeInt8Vec(dst, src[4:size])
+		case iguanaRawNumericVector:
+			out, err = decompressNumericList(src[4:size], dst)
+		default:
+			return nil, 0, fmt.Errorf("bad iguana/specialized bucket encoding %d", src[3])
 		}
 	case CompressIguanaV0:
 		dec := iguanaDec()
