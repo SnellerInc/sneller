@@ -15,12 +15,15 @@
 package vm
 
 import (
+	"encoding/binary"
 	"fmt"
 	"slices"
 	"unsafe"
 
 	"github.com/SnellerInc/sneller/ion"
 	"github.com/SnellerInc/sneller/ion/zion/zll"
+
+	"github.com/SnellerInc/sneller/internal/memops"
 )
 
 type zionState struct {
@@ -85,34 +88,25 @@ func (z *zionFlattener) symbolize(st *symtab, aux *auxbindings) error {
 	return z.rowConsumer.symbolize(st, &z.myaux)
 }
 
-// zionflatten unpacks the contents of buckets that match 'tape'
-// into the corresponding vmref slices
-//
-// prerequisites:
-//   - len(fields) == len(tape)*zionStride
-//   - len(shape) > 0
-//   - len(tape) > 0
-//
-//go:noescape
-func zionflatten(shape []byte, buckets *zll.Buckets, fields []vmref, tape []ion.Symbol) (in, out int)
-
 const (
 	//lint:ignore U1000 used in assembly
 	zllBucketPos          = unsafe.Offsetof(zll.Buckets{}.Pos)
 	zllBucketDecompressed = unsafe.Offsetof(zll.Buckets{}.Decompressed)
 
-	// we try to process zionStride rows at a time from the shape
-	zionStride = 256
+	// We try to process zionStride rows at a time from the shape. Must be a power of 2.
+	zionStrideLog2 = 8
+	zionStride     = 1 << zionStrideLog2
 )
 
 func empty(src []vmref, n int) []vmref {
-	if cap(src) < n {
-		return make([]vmref, n)
+	if cap(src) >= n {
+		for i := range src {
+			src[i] = vmref{}
+		}
+		return src[:n]
 	}
-	for i := range src {
-		src[i] = vmref{}
-	}
-	return src[:n]
+
+	return make([]vmref, n)
 }
 
 // convert a writeZion into a writeRows
@@ -146,7 +140,9 @@ func (z *zionFlattener) writeZion(state *zionState) error {
 	z.params.auxbound = shrink(z.params.auxbound, len(z.tape))
 	pos := state.shape.Start
 	for pos < len(state.shape.Bits) {
+
 		in, out := zionflatten(state.shape.Bits[pos:], &state.buckets, z.strided, z.tape)
+
 		pos += in
 		if pos > len(state.shape.Bits) {
 			panic("read out-of-bounds")
@@ -172,3 +168,122 @@ func (z *zionFlattener) writeZion(state *zionState) error {
 	state.buckets.Pos = posn // restore bucket positions
 	return err
 }
+
+func load64(buf []byte) uint64 {
+	if cap(buf) >= 8 {
+		return binary.LittleEndian.Uint64(buf[:8])
+	}
+	u := uint64(0)
+	for i, b := range buf {
+		u |= uint64(b) << (i * 8)
+	}
+	return u
+}
+
+func zionflattenReference(shape []byte, buckets *zll.Buckets, fields []vmref, tape []ion.Symbol) (in, out int) {
+	memops.ZeroMemory(fields)
+
+	// TODO: should be provided for testing purposes and for the non-x64 platforms
+	initShapeLen := len(shape)
+	outCnt := 0
+	fieldOffs := 0
+	tapeOffs := 0
+
+	for len(shape) > 0 {
+		fc := shape[0] & 0x1f
+		if fc > 16 {
+			fmt.Printf("zion.Decoder.walk: fc = %x", fc)
+			return 0, outCnt
+		}
+		skip := int((fc + 3) / 2)
+		if len(shape) < skip {
+			fmt.Printf("zion.Decoder.walk: skip %d > len(shape)=%d", skip, len(shape))
+			return 0, outCnt
+		}
+
+		// decode nibbles into structure fields
+		nibbles := load64(shape[1:])
+		shape = shape[skip:]
+		for i := 0; i < int(fc); i++ {
+			b := nibbles & 0xf
+			nibbles >>= 4
+			if buckets.Pos[b] < 0 {
+				continue // bucket not decompressed
+			}
+			buf := buckets.Decompressed[buckets.Pos[b]:]
+			if len(buf) == 0 {
+				fmt.Printf("zion.Decoder.walk: unexpected bucket EOF")
+				return 0, outCnt
+			}
+			sym, rest, err := ion.ReadLabel(buf)
+
+			if err != nil {
+				fmt.Printf("zion.Decoder.walk: %s (%d bytes remaining)", err, len(buf))
+				return 0, outCnt
+			}
+
+			for {
+				if tapeOffs >= len(tape) || sym < tape[tapeOffs] {
+					fieldsize := ion.SizeOf(rest)
+					if fieldsize <= 0 || fieldsize > len(rest) {
+						fmt.Printf("zion.Decoder.walk: SizeOf=%d", fieldsize)
+						return 0, outCnt
+					}
+					size := fieldsize + (len(buf) - len(rest))
+					buckets.Pos[b] += int32(size)
+					break
+				} else if sym == tape[tapeOffs] {
+					tapeOffs++
+					fieldsize := ion.SizeOf(rest)
+					if fieldsize <= 0 || fieldsize > len(rest) {
+						fmt.Printf("zion.Decoder.walk: SizeOf=%d", fieldsize)
+						return 0, outCnt
+					}
+					size := fieldsize + (len(buf) - len(rest))
+					buckets.Pos[b] += int32(size)
+
+					d, ok := vmdispl(rest)
+
+					if !ok {
+						fmt.Printf("vmdispl failed")
+						return 0, outCnt
+					}
+					fields[fieldOffs+outCnt] = vmref{d, uint32(fieldsize)}
+					fieldOffs += zionStride
+					break
+				} else { // sym > tape[tapeOffs]
+					fields[fieldOffs+outCnt] = vmref{0, 0}
+					fieldOffs += zionStride
+					tapeOffs++
+				}
+			}
+		}
+
+		if fc < 16 {
+			for tapeOffs < len(tape) {
+				fields[fieldOffs+outCnt] = vmref{0, 0}
+				fieldOffs += zionStride
+				tapeOffs++
+			}
+
+			outCnt++
+			if outCnt == zionStride {
+				break
+			}
+
+			fieldOffs = 0
+			tapeOffs = 0
+		}
+	}
+
+	return initShapeLen - len(shape), outCnt
+}
+
+// zionflatten unpacks the contents of buckets that match 'tape'
+// into the corresponding vmref slices
+//
+// prerequisites:
+//   - len(fields) == len(tape)*zionStride
+//   - len(shape) > 0
+//   - len(tape) > 0
+var zionflatten func(shape []byte, buckets *zll.Buckets, fields []vmref, tape []ion.Symbol) (in, out int) = zionflattenReference

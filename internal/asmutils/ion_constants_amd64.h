@@ -16,8 +16,9 @@
 
 // ION size decoding per https://amzn.github.io/ion-docs/docs/binary.html
 
-#define ION_SIZE_VARUINT $0x80
-#define ION_SIZE_INVALID $0x40
+#define ION_SIZE_VARUINT    0x80
+#define ION_SIZE_INVALID    0x40
+#define ION_SIZE_MASK       0x0f
 
 // NOP
 CONST_DATA_U8(consts_byte_ion_size_b, 0x00, $0)
@@ -34,24 +35,24 @@ CONST_DATA_U8(consts_byte_ion_size_b, 0x0a, $10)
 CONST_DATA_U8(consts_byte_ion_size_b, 0x0b, $11)
 CONST_DATA_U8(consts_byte_ion_size_b, 0x0c, $12)
 CONST_DATA_U8(consts_byte_ion_size_b, 0x0d, $13)
-CONST_DATA_U8(consts_byte_ion_size_b, 0x0e, ION_SIZE_VARUINT)
+CONST_DATA_U8(consts_byte_ion_size_b, 0x0e, $ION_SIZE_VARUINT)
 CONST_DATA_U8(consts_byte_ion_size_b, 0x0f, $0) // null.null
 // bool
 CONST_DATA_U8(consts_byte_ion_size_b, 0x10, $0) // bool.false
 CONST_DATA_U8(consts_byte_ion_size_b, 0x11, $0) // bool.true
-CONST_DATA_U8(consts_byte_ion_size_b, 0x12, ION_SIZE_INVALID)
-CONST_DATA_U8(consts_byte_ion_size_b, 0x13, ION_SIZE_INVALID)
-CONST_DATA_U8(consts_byte_ion_size_b, 0x14, ION_SIZE_INVALID)
-CONST_DATA_U8(consts_byte_ion_size_b, 0x15, ION_SIZE_INVALID)
-CONST_DATA_U8(consts_byte_ion_size_b, 0x16, ION_SIZE_INVALID)
-CONST_DATA_U8(consts_byte_ion_size_b, 0x17, ION_SIZE_INVALID)
-CONST_DATA_U8(consts_byte_ion_size_b, 0x18, ION_SIZE_INVALID)
-CONST_DATA_U8(consts_byte_ion_size_b, 0x19, ION_SIZE_INVALID)
-CONST_DATA_U8(consts_byte_ion_size_b, 0x1a, ION_SIZE_INVALID)
-CONST_DATA_U8(consts_byte_ion_size_b, 0x1b, ION_SIZE_INVALID)
-CONST_DATA_U8(consts_byte_ion_size_b, 0x1c, ION_SIZE_INVALID)
-CONST_DATA_U8(consts_byte_ion_size_b, 0x1d, ION_SIZE_INVALID)
-CONST_DATA_U8(consts_byte_ion_size_b, 0x1e, ION_SIZE_INVALID)
+CONST_DATA_U8(consts_byte_ion_size_b, 0x12, $ION_SIZE_INVALID)
+CONST_DATA_U8(consts_byte_ion_size_b, 0x13, $ION_SIZE_INVALID)
+CONST_DATA_U8(consts_byte_ion_size_b, 0x14, $ION_SIZE_INVALID)
+CONST_DATA_U8(consts_byte_ion_size_b, 0x15, $ION_SIZE_INVALID)
+CONST_DATA_U8(consts_byte_ion_size_b, 0x16, $ION_SIZE_INVALID)
+CONST_DATA_U8(consts_byte_ion_size_b, 0x17, $ION_SIZE_INVALID)
+CONST_DATA_U8(consts_byte_ion_size_b, 0x18, $ION_SIZE_INVALID)
+CONST_DATA_U8(consts_byte_ion_size_b, 0x19, $ION_SIZE_INVALID)
+CONST_DATA_U8(consts_byte_ion_size_b, 0x1a, $ION_SIZE_INVALID)
+CONST_DATA_U8(consts_byte_ion_size_b, 0x1b, $ION_SIZE_INVALID)
+CONST_DATA_U8(consts_byte_ion_size_b, 0x1c, $ION_SIZE_INVALID)
+CONST_DATA_U8(consts_byte_ion_size_b, 0x1d, $ION_SIZE_INVALID)
+CONST_DATA_U8(consts_byte_ion_size_b, 0x1e, $ION_SIZE_INVALID)
 CONST_DATA_U8(consts_byte_ion_size_b, 0x1f, $0) // null.bool
 // positive int
 CONST_DATA_U8(consts_byte_ion_size_b, 0x20, $0) // positive int 0
@@ -68,10 +69,10 @@ CONST_DATA_U8(consts_byte_ion_size_b, 0x2a, $10)
 CONST_DATA_U8(consts_byte_ion_size_b, 0x2b, $11)
 CONST_DATA_U8(consts_byte_ion_size_b, 0x2c, $12)
 CONST_DATA_U8(consts_byte_ion_size_b, 0x2d, $13)
-CONST_DATA_U8(consts_byte_ion_size_b, 0x2e, ION_SIZE_VARUINT)
+CONST_DATA_U8(consts_byte_ion_size_b, 0x2e, $ION_SIZE_VARUINT)
 CONST_DATA_U8(consts_byte_ion_size_b, 0x2f, $0) // null.int
 // negative int
-CONST_DATA_U8(consts_byte_ion_size_b, 0x30, ION_SIZE_INVALID)
+CONST_DATA_U8(consts_byte_ion_size_b, 0x30, $ION_SIZE_INVALID)
 CONST_DATA_U8(consts_byte_ion_size_b, 0x31, $1)
 CONST_DATA_U8(consts_byte_ion_size_b, 0x32, $2)
 CONST_DATA_U8(consts_byte_ion_size_b, 0x33, $3)
@@ -85,24 +86,24 @@ CONST_DATA_U8(consts_byte_ion_size_b, 0x3a, $10)
 CONST_DATA_U8(consts_byte_ion_size_b, 0x3b, $11)
 CONST_DATA_U8(consts_byte_ion_size_b, 0x3c, $12)
 CONST_DATA_U8(consts_byte_ion_size_b, 0x3d, $13)
-CONST_DATA_U8(consts_byte_ion_size_b, 0x3e, ION_SIZE_VARUINT)
+CONST_DATA_U8(consts_byte_ion_size_b, 0x3e, $ION_SIZE_VARUINT)
 CONST_DATA_U8(consts_byte_ion_size_b, 0x3f, $0) // null.int
 //float
 CONST_DATA_U8(consts_byte_ion_size_b, 0x40, $0) // float 0.0
-CONST_DATA_U8(consts_byte_ion_size_b, 0x41, ION_SIZE_INVALID)
-CONST_DATA_U8(consts_byte_ion_size_b, 0x42, ION_SIZE_INVALID)
-CONST_DATA_U8(consts_byte_ion_size_b, 0x43, ION_SIZE_INVALID)
+CONST_DATA_U8(consts_byte_ion_size_b, 0x41, $ION_SIZE_INVALID)
+CONST_DATA_U8(consts_byte_ion_size_b, 0x42, $ION_SIZE_INVALID)
+CONST_DATA_U8(consts_byte_ion_size_b, 0x43, $ION_SIZE_INVALID)
 CONST_DATA_U8(consts_byte_ion_size_b, 0x44, $4) // IEEE754 float32
-CONST_DATA_U8(consts_byte_ion_size_b, 0x45, ION_SIZE_INVALID)
-CONST_DATA_U8(consts_byte_ion_size_b, 0x46, ION_SIZE_INVALID)
-CONST_DATA_U8(consts_byte_ion_size_b, 0x47, ION_SIZE_INVALID)
+CONST_DATA_U8(consts_byte_ion_size_b, 0x45, $ION_SIZE_INVALID)
+CONST_DATA_U8(consts_byte_ion_size_b, 0x46, $ION_SIZE_INVALID)
+CONST_DATA_U8(consts_byte_ion_size_b, 0x47, $ION_SIZE_INVALID)
 CONST_DATA_U8(consts_byte_ion_size_b, 0x48, $8) // IEEE754 float64
-CONST_DATA_U8(consts_byte_ion_size_b, 0x49, ION_SIZE_INVALID)
-CONST_DATA_U8(consts_byte_ion_size_b, 0x4a, ION_SIZE_INVALID)
-CONST_DATA_U8(consts_byte_ion_size_b, 0x4b, ION_SIZE_INVALID)
-CONST_DATA_U8(consts_byte_ion_size_b, 0x4c, ION_SIZE_INVALID)
-CONST_DATA_U8(consts_byte_ion_size_b, 0x4d, ION_SIZE_INVALID)
-CONST_DATA_U8(consts_byte_ion_size_b, 0x4e, ION_SIZE_INVALID)
+CONST_DATA_U8(consts_byte_ion_size_b, 0x49, $ION_SIZE_INVALID)
+CONST_DATA_U8(consts_byte_ion_size_b, 0x4a, $ION_SIZE_INVALID)
+CONST_DATA_U8(consts_byte_ion_size_b, 0x4b, $ION_SIZE_INVALID)
+CONST_DATA_U8(consts_byte_ion_size_b, 0x4c, $ION_SIZE_INVALID)
+CONST_DATA_U8(consts_byte_ion_size_b, 0x4d, $ION_SIZE_INVALID)
+CONST_DATA_U8(consts_byte_ion_size_b, 0x4e, $ION_SIZE_INVALID)
 CONST_DATA_U8(consts_byte_ion_size_b, 0x4f, $0) // null.float
 // decimal
 CONST_DATA_U8(consts_byte_ion_size_b, 0x50, $0) // decimal 0.0
@@ -119,11 +120,11 @@ CONST_DATA_U8(consts_byte_ion_size_b, 0x5a, $10)
 CONST_DATA_U8(consts_byte_ion_size_b, 0x5b, $11)
 CONST_DATA_U8(consts_byte_ion_size_b, 0x5c, $12)
 CONST_DATA_U8(consts_byte_ion_size_b, 0x5d, $13)
-CONST_DATA_U8(consts_byte_ion_size_b, 0x5e, ION_SIZE_VARUINT)
+CONST_DATA_U8(consts_byte_ion_size_b, 0x5e, $ION_SIZE_VARUINT)
 CONST_DATA_U8(consts_byte_ion_size_b, 0x5f, $0) // null.decimal
 // timestamp
-CONST_DATA_U8(consts_byte_ion_size_b, 0x60, ION_SIZE_INVALID)
-CONST_DATA_U8(consts_byte_ion_size_b, 0x61, ION_SIZE_INVALID)
+CONST_DATA_U8(consts_byte_ion_size_b, 0x60, $ION_SIZE_INVALID)
+CONST_DATA_U8(consts_byte_ion_size_b, 0x61, $ION_SIZE_INVALID)
 CONST_DATA_U8(consts_byte_ion_size_b, 0x62, $2)
 CONST_DATA_U8(consts_byte_ion_size_b, 0x63, $3)
 CONST_DATA_U8(consts_byte_ion_size_b, 0x64, $4)
@@ -136,7 +137,7 @@ CONST_DATA_U8(consts_byte_ion_size_b, 0x6a, $10)
 CONST_DATA_U8(consts_byte_ion_size_b, 0x6b, $11)
 CONST_DATA_U8(consts_byte_ion_size_b, 0x6c, $12)
 CONST_DATA_U8(consts_byte_ion_size_b, 0x6d, $13)
-CONST_DATA_U8(consts_byte_ion_size_b, 0x6e, ION_SIZE_VARUINT)
+CONST_DATA_U8(consts_byte_ion_size_b, 0x6e, $ION_SIZE_VARUINT)
 CONST_DATA_U8(consts_byte_ion_size_b, 0x6f, $0) // null.timestamp
 // symbol
 CONST_DATA_U8(consts_byte_ion_size_b, 0x70, $0) // symbol 0
@@ -153,7 +154,7 @@ CONST_DATA_U8(consts_byte_ion_size_b, 0x7a, $10)
 CONST_DATA_U8(consts_byte_ion_size_b, 0x7b, $11)
 CONST_DATA_U8(consts_byte_ion_size_b, 0x7c, $12)
 CONST_DATA_U8(consts_byte_ion_size_b, 0x7d, $13)
-CONST_DATA_U8(consts_byte_ion_size_b, 0x7e, ION_SIZE_VARUINT)
+CONST_DATA_U8(consts_byte_ion_size_b, 0x7e, $ION_SIZE_VARUINT)
 CONST_DATA_U8(consts_byte_ion_size_b, 0x7f, $0) // null.symbol
 // string
 CONST_DATA_U8(consts_byte_ion_size_b, 0x80, $0) // string empty
@@ -170,7 +171,7 @@ CONST_DATA_U8(consts_byte_ion_size_b, 0x8a, $10)
 CONST_DATA_U8(consts_byte_ion_size_b, 0x8b, $11)
 CONST_DATA_U8(consts_byte_ion_size_b, 0x8c, $12)
 CONST_DATA_U8(consts_byte_ion_size_b, 0x8d, $13)
-CONST_DATA_U8(consts_byte_ion_size_b, 0x8e, ION_SIZE_VARUINT)
+CONST_DATA_U8(consts_byte_ion_size_b, 0x8e, $ION_SIZE_VARUINT)
 CONST_DATA_U8(consts_byte_ion_size_b, 0x8f, $0) // null.string
 // clob
 CONST_DATA_U8(consts_byte_ion_size_b, 0x90, $0) // clob empty
@@ -187,7 +188,7 @@ CONST_DATA_U8(consts_byte_ion_size_b, 0x9a, $10)
 CONST_DATA_U8(consts_byte_ion_size_b, 0x9b, $11)
 CONST_DATA_U8(consts_byte_ion_size_b, 0x9c, $12)
 CONST_DATA_U8(consts_byte_ion_size_b, 0x9d, $13)
-CONST_DATA_U8(consts_byte_ion_size_b, 0x9e, ION_SIZE_VARUINT)
+CONST_DATA_U8(consts_byte_ion_size_b, 0x9e, $ION_SIZE_VARUINT)
 CONST_DATA_U8(consts_byte_ion_size_b, 0x9f, $0) // null.clob
 // blob
 CONST_DATA_U8(consts_byte_ion_size_b, 0xa0, $0) // blob empty
@@ -204,7 +205,7 @@ CONST_DATA_U8(consts_byte_ion_size_b, 0xaa, $10)
 CONST_DATA_U8(consts_byte_ion_size_b, 0xab, $11)
 CONST_DATA_U8(consts_byte_ion_size_b, 0xac, $12)
 CONST_DATA_U8(consts_byte_ion_size_b, 0xad, $13)
-CONST_DATA_U8(consts_byte_ion_size_b, 0xae, ION_SIZE_VARUINT)
+CONST_DATA_U8(consts_byte_ion_size_b, 0xae, $ION_SIZE_VARUINT)
 CONST_DATA_U8(consts_byte_ion_size_b, 0xaf, $0) // null.blob
 // list
 CONST_DATA_U8(consts_byte_ion_size_b, 0xb0, $0) // list empty
@@ -221,7 +222,7 @@ CONST_DATA_U8(consts_byte_ion_size_b, 0xba, $10)
 CONST_DATA_U8(consts_byte_ion_size_b, 0xbb, $11)
 CONST_DATA_U8(consts_byte_ion_size_b, 0xbc, $12)
 CONST_DATA_U8(consts_byte_ion_size_b, 0xbd, $13)
-CONST_DATA_U8(consts_byte_ion_size_b, 0xbe, ION_SIZE_VARUINT)
+CONST_DATA_U8(consts_byte_ion_size_b, 0xbe, $ION_SIZE_VARUINT)
 CONST_DATA_U8(consts_byte_ion_size_b, 0xbf, $0) // null.list
 // sexp
 CONST_DATA_U8(consts_byte_ion_size_b, 0xc0, $0) // sexp empty
@@ -238,11 +239,11 @@ CONST_DATA_U8(consts_byte_ion_size_b, 0xca, $10)
 CONST_DATA_U8(consts_byte_ion_size_b, 0xcb, $11)
 CONST_DATA_U8(consts_byte_ion_size_b, 0xcc, $12)
 CONST_DATA_U8(consts_byte_ion_size_b, 0xcd, $13)
-CONST_DATA_U8(consts_byte_ion_size_b, 0xce, ION_SIZE_VARUINT)
+CONST_DATA_U8(consts_byte_ion_size_b, 0xce, $ION_SIZE_VARUINT)
 CONST_DATA_U8(consts_byte_ion_size_b, 0xcf, $0) // null.sexp
 // struct
 CONST_DATA_U8(consts_byte_ion_size_b, 0xd0, $0) // struct empty
-CONST_DATA_U8(consts_byte_ion_size_b, 0xd1, ION_SIZE_VARUINT) // the struct has at least one symbol/value pair, the length field exists, and the field name integers are sorted in increasing order
+CONST_DATA_U8(consts_byte_ion_size_b, 0xd1, $ION_SIZE_VARUINT) // the struct has at least one symbol/value pair, the length field exists, and the field name integers are sorted in increasing order
 CONST_DATA_U8(consts_byte_ion_size_b, 0xd2, $2)
 CONST_DATA_U8(consts_byte_ion_size_b, 0xd3, $3)
 CONST_DATA_U8(consts_byte_ion_size_b, 0xd4, $4)
@@ -255,13 +256,13 @@ CONST_DATA_U8(consts_byte_ion_size_b, 0xda, $10)
 CONST_DATA_U8(consts_byte_ion_size_b, 0xdb, $11)
 CONST_DATA_U8(consts_byte_ion_size_b, 0xdc, $12)
 CONST_DATA_U8(consts_byte_ion_size_b, 0xdd, $13)
-CONST_DATA_U8(consts_byte_ion_size_b, 0xde, ION_SIZE_VARUINT)
+CONST_DATA_U8(consts_byte_ion_size_b, 0xde, $ION_SIZE_VARUINT)
 CONST_DATA_U8(consts_byte_ion_size_b, 0xdf, $0) // null.struct
 // version marker
 CONST_DATA_U8(consts_byte_ion_size_b, 0xe0, $0)
 // annotation
-CONST_DATA_U8(consts_byte_ion_size_b, 0xe1, ION_SIZE_INVALID)
-CONST_DATA_U8(consts_byte_ion_size_b, 0xe2, ION_SIZE_INVALID)
+CONST_DATA_U8(consts_byte_ion_size_b, 0xe1, $ION_SIZE_INVALID)
+CONST_DATA_U8(consts_byte_ion_size_b, 0xe2, $ION_SIZE_INVALID)
 CONST_DATA_U8(consts_byte_ion_size_b, 0xe3, $3)
 CONST_DATA_U8(consts_byte_ion_size_b, 0xe4, $4)
 CONST_DATA_U8(consts_byte_ion_size_b, 0xe5, $5)
@@ -273,28 +274,28 @@ CONST_DATA_U8(consts_byte_ion_size_b, 0xea, $10)
 CONST_DATA_U8(consts_byte_ion_size_b, 0xeb, $11)
 CONST_DATA_U8(consts_byte_ion_size_b, 0xec, $12)
 CONST_DATA_U8(consts_byte_ion_size_b, 0xed, $13)
-CONST_DATA_U8(consts_byte_ion_size_b, 0xee, ION_SIZE_VARUINT)
-CONST_DATA_U8(consts_byte_ion_size_b, 0xef, ION_SIZE_INVALID)
+CONST_DATA_U8(consts_byte_ion_size_b, 0xee, $ION_SIZE_VARUINT)
+CONST_DATA_U8(consts_byte_ion_size_b, 0xef, $ION_SIZE_INVALID)
 // reserved
-CONST_DATA_U8(consts_byte_ion_size_b, 0xf0, ION_SIZE_INVALID)
-CONST_DATA_U8(consts_byte_ion_size_b, 0xf1, ION_SIZE_INVALID)
-CONST_DATA_U8(consts_byte_ion_size_b, 0xf2, ION_SIZE_INVALID)
-CONST_DATA_U8(consts_byte_ion_size_b, 0xf3, ION_SIZE_INVALID)
-CONST_DATA_U8(consts_byte_ion_size_b, 0xf4, ION_SIZE_INVALID)
-CONST_DATA_U8(consts_byte_ion_size_b, 0xf5, ION_SIZE_INVALID)
-CONST_DATA_U8(consts_byte_ion_size_b, 0xf6, ION_SIZE_INVALID)
-CONST_DATA_U8(consts_byte_ion_size_b, 0xf7, ION_SIZE_INVALID)
-CONST_DATA_U8(consts_byte_ion_size_b, 0xf8, ION_SIZE_INVALID)
-CONST_DATA_U8(consts_byte_ion_size_b, 0xf9, ION_SIZE_INVALID)
-CONST_DATA_U8(consts_byte_ion_size_b, 0xfa, ION_SIZE_INVALID)
-CONST_DATA_U8(consts_byte_ion_size_b, 0xfb, ION_SIZE_INVALID)
-CONST_DATA_U8(consts_byte_ion_size_b, 0xfc, ION_SIZE_INVALID)
-CONST_DATA_U8(consts_byte_ion_size_b, 0xfd, ION_SIZE_INVALID)
-CONST_DATA_U8(consts_byte_ion_size_b, 0xfe, ION_SIZE_INVALID)
-CONST_DATA_U8(consts_byte_ion_size_b, 0xff, ION_SIZE_INVALID)
+CONST_DATA_U8(consts_byte_ion_size_b, 0xf0, $ION_SIZE_INVALID)
+CONST_DATA_U8(consts_byte_ion_size_b, 0xf1, $ION_SIZE_INVALID)
+CONST_DATA_U8(consts_byte_ion_size_b, 0xf2, $ION_SIZE_INVALID)
+CONST_DATA_U8(consts_byte_ion_size_b, 0xf3, $ION_SIZE_INVALID)
+CONST_DATA_U8(consts_byte_ion_size_b, 0xf4, $ION_SIZE_INVALID)
+CONST_DATA_U8(consts_byte_ion_size_b, 0xf5, $ION_SIZE_INVALID)
+CONST_DATA_U8(consts_byte_ion_size_b, 0xf6, $ION_SIZE_INVALID)
+CONST_DATA_U8(consts_byte_ion_size_b, 0xf7, $ION_SIZE_INVALID)
+CONST_DATA_U8(consts_byte_ion_size_b, 0xf8, $ION_SIZE_INVALID)
+CONST_DATA_U8(consts_byte_ion_size_b, 0xf9, $ION_SIZE_INVALID)
+CONST_DATA_U8(consts_byte_ion_size_b, 0xfa, $ION_SIZE_INVALID)
+CONST_DATA_U8(consts_byte_ion_size_b, 0xfb, $ION_SIZE_INVALID)
+CONST_DATA_U8(consts_byte_ion_size_b, 0xfc, $ION_SIZE_INVALID)
+CONST_DATA_U8(consts_byte_ion_size_b, 0xfd, $ION_SIZE_INVALID)
+CONST_DATA_U8(consts_byte_ion_size_b, 0xfe, $ION_SIZE_INVALID)
+CONST_DATA_U8(consts_byte_ion_size_b, 0xff, $ION_SIZE_INVALID)
 // 4 guard bytes to allow undisturbed reading past the LUT above, should the linker put it at the page boundary
-CONST_DATA_U8(consts_byte_ion_size_b, 0x100, ION_SIZE_INVALID)
-CONST_DATA_U8(consts_byte_ion_size_b, 0x101, ION_SIZE_INVALID)
-CONST_DATA_U8(consts_byte_ion_size_b, 0x102, ION_SIZE_INVALID)
-CONST_DATA_U8(consts_byte_ion_size_b, 0x103, ION_SIZE_INVALID)
+CONST_DATA_U8(consts_byte_ion_size_b, 0x100, $ION_SIZE_INVALID)
+CONST_DATA_U8(consts_byte_ion_size_b, 0x101, $ION_SIZE_INVALID)
+CONST_DATA_U8(consts_byte_ion_size_b, 0x102, $ION_SIZE_INVALID)
+CONST_DATA_U8(consts_byte_ion_size_b, 0x103, $ION_SIZE_INVALID)
 CONST_GLOBAL(consts_byte_ion_size_b, $260)
