@@ -22,7 +22,7 @@ import (
 )
 
 // Key128 represents a 128-bit AES key
-type Key128 [2]uint64
+type Key128 [4]uint32
 
 // Key128Quad represents a quad of 128-bit AES keys. Quads enable the full potential
 // of the four-lane hardware AES encryption/decryption support; otherwise the operations
@@ -45,14 +45,6 @@ func (p *ExpandedKey128Quad) ExpandFrom(quad Key128Quad) { auxExpandFromKey128Qu
 
 // ToQuad broadcast key to form a key quad
 func (key Key128) ToQuad() Key128Quad { return Key128Quad{key, key, key, key} }
-
-//go:noescape
-//go:nosplit
-func auxExpandFromKey128(p *ExpandedKey128, key Key128)
-
-//go:noescape
-//go:nosplit
-func auxExpandFromKey128Quad(p *ExpandedKey128Quad, quad Key128Quad)
 
 // RandomKey128 creates a 128-bit key with cryptographically strong RNG values
 func RandomKey128() (Key128, error) {

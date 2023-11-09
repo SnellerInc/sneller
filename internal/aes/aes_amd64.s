@@ -30,7 +30,7 @@
 //
 // Clobbers:
 //  DI, X1, X2
-
+//
 TEXT aesExpandKeyCore128<>(SB), NOSPLIT | NOFRAME, $0-0
     VMOVDQU             X0, (DI)
     ADDQ                DX, DI
