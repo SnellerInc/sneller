@@ -394,6 +394,29 @@ func formatArgs(bc *bytecode, dst *strings.Builder, compiled []byte, args []bcAr
 	return offset
 }
 
+// compute the width of a bytecode op *not including the 2-byte opcode itself!*
+func bcwidth(bc *bytecode, pc int) int {
+	op := bcop(binary.LittleEndian.Uint16(bc.compiled[pc:]))
+	info := &opinfo[op]
+	size := 0
+	for _, argtype := range info.out {
+		size += argtype.immWidth()
+	}
+	for _, argtype := range info.in {
+		size += argtype.immWidth()
+	}
+	if len(info.va) != 0 {
+		vaLength := int(binary.LittleEndian.Uint32(bc.compiled[pc+size+2:]))
+		size += 4
+		width := 0
+		for _, argtype := range info.va {
+			width += argtype.immWidth()
+		}
+		size += width * vaLength
+	}
+	return size
+}
+
 func visitBytecode(bc *bytecode, fn func(offset int, op bcop, info *bcopinfo) error) error {
 	compiled := bc.compiled
 	size := len(compiled)

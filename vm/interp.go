@@ -263,6 +263,8 @@ func evalfiltergolanes(bc *bytecode, delims []vmref) uint16 {
 	}
 	mask := uint16(0xffff)
 	mask >>= bcLaneCount - len(delims)
+	k7 := mask
+	var alt bytecode
 	for pc < l && bc.err == 0 {
 		op := bcop(bcword(bc.compiled, pc))
 		switch op {
@@ -282,13 +284,39 @@ func evalfiltergolanes(bc *bytecode, delims []vmref) uint16 {
 		default:
 			pc += 2
 			fn := opinfo[op].portable
-			if fn == nil {
+			if fn != nil {
+				pc = fn(bc, pc)
+			} else if cpu.X86.HasAVX512 {
+				pc = runSingle(bc, &alt, pc, k7)
+			} else {
 				bc.err = bcerrNotSupported
 				return 0
 			}
-			pc = fn(bc, pc)
 		}
 	}
 	// we should hit bcretk
 	panic("invalid bytecode")
+}
+
+//go:noescape
+func bcenter(bc *bytecode, k7 uint16)
+
+// run a single bytecode instruction @ pc
+func runSingle(bc, alt *bytecode, pc int, k7 uint16) int {
+	// copy over everything except the compiled bytestream:
+	compiled := alt.compiled
+	*alt = *bc
+	alt.compiled = compiled[:0]
+
+	// create a new compiled bytestream with the single instr + return
+	width := bcwidth(bc, pc-2)
+	alt.compiled = append(alt.compiled, bc.compiled[pc-2:pc+width]...)
+	alt.compiled = append(alt.compiled, byte(opret), byte(opret>>8))
+
+	// evaluate the bytecode and copy back the error state
+	bcenter(alt, k7)
+	bc.err = alt.err
+	bc.errpc = alt.errpc
+	bc.errinfo = alt.errinfo
+	return pc + width
 }

@@ -98,6 +98,16 @@ TEXT bctrap(SB), NOSPLIT|NOFRAME, $0
   CLC                                     \
   RET
 
+TEXT ·bcenter(SB), NOSPLIT, $0
+  NO_LOCAL_POINTERS
+  MOVQ  bc+0(FP), VIRT_BCPTR
+  KMOVW k7+8(FP), K7
+  XORQ  R9, R9
+  XORQ  R10, R10
+  MOVQ  ·vmm+0(SB), VIRT_BASE
+  BC_ENTER()
+  RET
+
 // the 'return' instruction
 //
 // _ = ret()
