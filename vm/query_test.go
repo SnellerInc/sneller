@@ -280,6 +280,15 @@ func BenchmarkTestQueries(b *testing.B) {
 // as quickly as possible, tests are
 // run in parallel.
 func TestQueries(t *testing.T) {
+	noavx512 := vm.SetPortable(true)
+	t.Run("portable", testQueries)
+	if !noavx512 {
+		vm.SetPortable(false)
+		t.Run("avx512", testQueries)
+	}
+}
+
+func testQueries(t *testing.T) {
 	test, err := findQueries("./testdata/queries/", testQueryKind, *symLinkFlag)
 	if err != nil {
 		t.Fatal(err)

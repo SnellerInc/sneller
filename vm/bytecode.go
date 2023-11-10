@@ -261,6 +261,7 @@ type bytecode struct {
 	// additional error information;
 	// error-specific
 	errinfo int
+	truth   uint16
 }
 
 type bcFormatFlags uint
@@ -523,7 +524,7 @@ func formatBytecode(bc *bytecode, flags bcFormatFlags) string {
 }
 
 func (b *bytecode) String() string {
-	return formatBytecode(b, bcFormatRedacted)
+	return formatBytecode(b, bcFormatRedacted|bcFormatSymbols)
 }
 
 // finalize append the final 'return' instruction

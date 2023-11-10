@@ -3332,9 +3332,9 @@ func (p *prog) rpo(out []*value) []*value {
 func (p *prog) optimize() {
 	var pi proginfo
 	// optimization passes
-	p.simplify(&pi)
-	p.exprs = nil // invalidated in ordersyms
 	p.ordersyms(&pi)
+	p.exprs = nil // invalidated in ordersyms
+	p.simplify(&pi)
 
 	// final dead code elimination and scheduling
 	order := p.finalorder(p.order(&pi), p.numbering(&pi))

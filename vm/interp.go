@@ -17,6 +17,7 @@ package vm
 import (
 	"encoding/binary"
 	"os"
+	"sync/atomic"
 	"unsafe"
 
 	"golang.org/x/sys/cpu"
@@ -24,7 +25,18 @@ import (
 	"github.com/SnellerInc/sneller/ion"
 )
 
-var portable = os.Getenv("SNELLER_PORTABLE") != "" || !cpu.X86.HasAVX512
+var portable atomic.Bool
+
+// SetPortable disables assembly code if [b] is true,
+// or re-enables it if [b] is false. The return values is
+// the previous portability setting.
+func SetPortable(b bool) bool {
+	return portable.Swap(b)
+}
+
+func init() {
+	portable.Store(os.Getenv("SNELLER_PORTABLE") != "" || !cpu.X86.HasAVX512)
+}
 
 type opfn func(bc *bytecode, pc int) int
 
@@ -66,18 +78,19 @@ func evalfiltergo(bc *bytecode, delims []vmref) int {
 	for i < len(delims) {
 		next := delims[i:]
 		next = next[:min(len(next), bcLaneCount)]
+		apos := bc.auxpos
 		mask := evalfiltergolanes(bc, next)
 		if bc.err != 0 {
 			return j
 		}
+		// compress delims + auxvals
 		for k := range next {
 			if mask == 0 {
 				break
 			}
-			// compress delims + auxvals
 			if (mask & 1) != 0 {
 				for l := range bc.auxvals {
-					bc.auxvals[l][j] = bc.auxvals[l][k]
+					bc.auxvals[l][j] = bc.auxvals[l][apos+k]
 				}
 				delims[j] = next[k]
 				j++
@@ -117,12 +130,17 @@ func bcfindsymgo(bc *bytecode, pc int) int {
 	srcmask := srck.mask
 	retmask := uint16(0)
 
+outer:
 	for i := 0; i < bcLaneCount; i++ {
+		start := src.offsets[i]
+		width := src.sizes[i]
+		dstv.offsets[i] = start
+		dstv.sizes[i] = 0
+		dstv.typeL[i] = 0
+		dstv.headerSize[i] = 0
 		if srcmask&(1<<i) == 0 {
 			continue
 		}
-		start := src.offsets[i]
-		width := src.sizes[i]
 		mem := vmref{start, width}.mem()
 		var sym ion.Symbol
 		var err error
@@ -130,16 +148,18 @@ func bcfindsymgo(bc *bytecode, pc int) int {
 		for len(mem) > 0 {
 			sym, mem, err = ion.ReadLabel(mem)
 			if err != nil {
-				panic(err)
+				bc.err = bcerrCorrupt
+				break outer
 			}
+			if sym > symbol {
+				break symsearch
+			}
+			dstv.offsets[i] = start + width - uint32(len(mem))
+			dstv.sizes[i] = uint32(ion.SizeOf(mem))
+			dstv.typeL[i] = byte(mem[0])
+			dstv.headerSize[i] = byte(ion.HeaderSizeOf(mem))
 			if sym == symbol {
 				retmask |= (1 << i)
-			}
-			if sym >= symbol {
-				dstv.offsets[i] = start + width - uint32(len(mem))
-				dstv.sizes[i] = uint32(ion.SizeOf(mem))
-				dstv.typeL[i] = byte(mem[0])
-				dstv.headerSize[i] = byte(ion.HeaderSizeOf(mem))
 				break symsearch
 			}
 			mem = mem[ion.SizeOf(mem):]
@@ -247,12 +267,30 @@ func bctuplego(bc *bytecode, pc int) int {
 	return pc + 8
 }
 
+func bcxnorkgo(bc *bytecode, pc int) int {
+	kdst := argptr[kRegData](bc, pc)
+	k0 := argptr[kRegData](bc, pc+2)
+	k1 := argptr[kRegData](bc, pc+4)
+	kdst.mask = (k0.mask ^ (^k1.mask)) & bc.truth
+	return pc + 6
+}
+
+func bcandkgo(bc *bytecode, pc int) int {
+	kdst := argptr[kRegData](bc, pc)
+	k0 := argptr[kRegData](bc, pc+2)
+	k1 := argptr[kRegData](bc, pc+4)
+	kdst.mask = k0.mask & k1.mask
+	return pc + 6
+}
+
 func init() {
 	opinfo[opauxval].portable = bcauxvalgo
 	opinfo[opfindsym].portable = bcfindsymgo
 	opinfo[opcmpvi64imm].portable = bccmpvi64immgo
 	opinfo[opcmplti64imm].portable = bccmplti64immgo
 	opinfo[optuple].portable = bctuplego
+	opinfo[opandk].portable = bcandkgo
+	opinfo[opxnork].portable = bcxnorkgo
 }
 
 func evalfiltergolanes(bc *bytecode, delims []vmref) uint16 {
@@ -263,7 +301,7 @@ func evalfiltergolanes(bc *bytecode, delims []vmref) uint16 {
 	}
 	mask := uint16(0xffff)
 	mask >>= bcLaneCount - len(delims)
-	k7 := mask
+	bc.truth = mask
 	var alt bytecode
 	for pc < l && bc.err == 0 {
 		op := bcop(bcword(bc.compiled, pc))
@@ -287,7 +325,7 @@ func evalfiltergolanes(bc *bytecode, delims []vmref) uint16 {
 			if fn != nil {
 				pc = fn(bc, pc)
 			} else if cpu.X86.HasAVX512 {
-				pc = runSingle(bc, &alt, pc, k7)
+				pc = runSingle(bc, &alt, pc, bc.truth)
 			} else {
 				bc.err = bcerrNotSupported
 				return 0

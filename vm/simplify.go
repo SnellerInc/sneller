@@ -155,7 +155,6 @@ func (p *prog) simplify(pi *proginfo) {
 			if eliminateMovs(p, v) {
 				changed = true
 			}
-
 			out, ok := rewrite(p, v)
 			if ok {
 				changed = true

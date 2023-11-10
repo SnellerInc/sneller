@@ -180,7 +180,7 @@ func (w *wherebc) writeRows(delims []vmref, rp *rowParams) error {
 
 	w.bc.prepare(rp)
 	var valid int
-	if portable {
+	if portable.Load() {
 		valid = evalfiltergo(&w.bc, delims)
 	} else {
 		valid = evalfilterbc(&w.bc, delims)

@@ -286,4 +286,9 @@ func zionflattenReference(shape []byte, buckets *zll.Buckets, fields []vmref, ta
 //   - len(fields) == len(tape)*zionStride
 //   - len(shape) > 0
 //   - len(tape) > 0
-var zionflatten func(shape []byte, buckets *zll.Buckets, fields []vmref, tape []ion.Symbol) (in, out int) = zionflattenReference
+func zionflatten(shape []byte, buckets *zll.Buckets, fields []vmref, tape []ion.Symbol) (int, int) {
+	if portable.Load() {
+		return zionflattenReference(shape, buckets, fields, tape)
+	}
+	return zionFlattenAsm(shape, buckets, fields, tape)
+}

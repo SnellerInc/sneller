@@ -19,12 +19,8 @@ import (
 	"github.com/SnellerInc/sneller/ion/zion/zll"
 )
 
-func init() {
-	if !portable {
-		zionflatten = zionflattenAVX512BranchlessVarUint
-	}
-	// zionflatten = zionflattenAVX512BranchingVarUint
-	// zionflatten = zionflattenAVX512Legacy
+func zionFlattenAsm(shape []byte, buckets *zll.Buckets, fields []vmref, tape []ion.Symbol) (int, int) {
+	return zionflattenAVX512BranchlessVarUint(shape, buckets, fields, tape)
 }
 
 //lint:ignore U1000 available for use
