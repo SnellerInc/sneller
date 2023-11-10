@@ -64,7 +64,7 @@ func pack(args []string) {
 	flags := flag.NewFlagSet(args[0], flag.ExitOnError)
 	flags.StringVar(&dashf, "f", "", "input file format (if empty, automatically inferred from file suffix)")
 	flags.StringVar(&dasho, "o", "", "output file")
-	flags.StringVar(&dashc, "c", "zion", "compression format (zion, zstd, zion+iguana_v0, ...)")
+	flags.StringVar(&dashc, "c", "zion+iguana_v0", "compression format (zion, zstd, zion+iguana_v0, ...)")
 	flags.Parse(args[1:])
 	args = flags.Args()
 	if dasho == "" {

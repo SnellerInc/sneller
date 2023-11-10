@@ -179,7 +179,12 @@ func (w *wherebc) writeRows(delims []vmref, rp *rowParams) error {
 	}
 
 	w.bc.prepare(rp)
-	valid := evalfilterbc(&w.bc, delims)
+	var valid int
+	if portable {
+		valid = evalfiltergo(&w.bc, delims)
+	} else {
+		valid = evalfilterbc(&w.bc, delims)
+	}
 	if w.bc.err != 0 {
 		return bytecodeerror("filter", &w.bc)
 	}

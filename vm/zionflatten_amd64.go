@@ -20,7 +20,9 @@ import (
 )
 
 func init() {
-	zionflatten = zionflattenAVX512BranchlessVarUint
+	if !portable {
+		zionflatten = zionflattenAVX512BranchlessVarUint
+	}
 	// zionflatten = zionflattenAVX512BranchingVarUint
 	// zionflatten = zionflattenAVX512Legacy
 }

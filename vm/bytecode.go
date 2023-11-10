@@ -157,9 +157,10 @@ type bcopinfo struct {
 	//   out ... in ... uint32(chunks) chunks...
 	//
 	// where each chunk is len(va) arguments consecutively
-	out, in []bcArgType
-	va      []bcArgType
-	scratch int // desired scratch space (up to PageSize)
+	out, in  []bcArgType
+	va       []bcArgType
+	scratch  int // desired scratch space (up to PageSize)
+	portable opfn
 }
 
 func (op bcop) scratch() int { return opinfo[op].scratch }
@@ -193,6 +194,7 @@ const (
 	// found symbols, but couldn't process them as
 	// there was no symbol table
 	bcerrNullSymbolTable
+	bcerrNotSupported
 )
 
 func (b bcerr) Error() string {
@@ -207,6 +209,8 @@ func (b bcerr) Error() string {
 		return "radix tree bounds-check failed"
 	case bcerrNullSymbolTable:
 		return "null symbol table"
+	case bcerrNotSupported:
+		return "bytecode op not supported in portable mode"
 	default:
 		return "unknown bytecode error"
 	}
