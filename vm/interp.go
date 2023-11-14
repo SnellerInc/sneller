@@ -339,9 +339,19 @@ func bcretgo(bc *bytecode, pc int) int {
 	return pc
 }
 
+func bcretskgo(bc *bytecode, pc int) int {
+	s := argptr[sRegData](bc, pc+0)
+	k := argptr[kRegData](bc, pc+2)
+	bc.vmState.sreg = *s
+	bc.vmState.outputLanes = *k
+	return pc + 4
+}
+
 func init() {
 	opinfo[opinit].portable = bcinitgo
+	opinfo[opret].portable = bcretgo
 	opinfo[opretbk].portable = bcretbkgo
+	opinfo[opretsk].portable = bcretskgo
 	opinfo[opauxval].portable = bcauxvalgo
 	opinfo[opfindsym].portable = bcfindsymgo
 	opinfo[opcmpvi64imm].portable = bccmpvi64immgo
@@ -349,7 +359,6 @@ func init() {
 	opinfo[optuple].portable = bctuplego
 	opinfo[opandk].portable = bcandkgo
 	opinfo[opxnork].portable = bcxnorkgo
-	opinfo[opret].portable = bcretgo
 	opinfo[opboxf64].portable = bcboxf64go
 }
 
@@ -390,6 +399,68 @@ func evalfindgo(bc *bytecode, delims []vmref, stride int) {
 		bc.vstack = bc.vstack[stride:]
 	}
 	bc.vstack = stack
+}
+
+func evalsplatgo(bc *bytecode, indelims, outdelims []vmref, perm []int32) (int, int) {
+	l := len(bc.compiled)
+	ipos, opos := 0, 0
+	var alt bytecode
+	for ipos < len(indelims) && opos < len(outdelims) {
+		next := indelims[ipos:]
+		mask := uint16(0xffff)
+		if len(next) < bcLaneCount {
+			mask >>= bcLaneCount - len(next)
+		}
+		setvmrefB(&bc.vmState.delims, indelims[ipos:])
+		bc.vmState.validLanes.mask = mask
+		bc.vmState.outputLanes.mask = 0
+		pc := 0
+		for pc < l && bc.err == 0 {
+			op := bcop(bcword(bc.compiled, pc))
+			pc += 2
+
+			fn := opinfo[op].portable
+			if fn != nil {
+				pc = fn(bc, pc)
+			} else if cpu.X86.HasAVX512 {
+				pc = runSingle(bc, &alt, pc, bc.vmState.validLanes.mask)
+			} else {
+				bc.err = bcerrNotSupported
+				return 0, 0
+			}
+		}
+		if bc.err != 0 {
+			return 0, 0
+		}
+		retmask := bc.vmState.outputLanes.mask
+		output := opos
+		lanes := min(bcLaneCount, len(next))
+		for i := 0; i < lanes; i++ {
+			if (retmask & (1 << i)) == 0 {
+				continue
+			}
+			start := bc.vmState.sreg.offsets[i]
+			width := bc.vmState.sreg.sizes[i]
+			slice := vmref{start, width}.mem()
+			for len(slice) > 0 {
+				if output == len(outdelims) || output == len(perm) {
+					// need to return early
+					return ipos, opos
+				}
+				s := ion.SizeOf(slice)
+				outdelims[output] = vmref{start, uint32(s)}
+				perm[output] = int32(i + ipos)
+				output++
+				slice = slice[s:]
+				start += uint32(s)
+			}
+		}
+		// checkpoint splat
+		opos = output
+		ipos += lanes
+		bc.auxpos += lanes
+	}
+	return ipos, opos
 }
 
 func evalfiltergolanes(bc *bytecode, delims []vmref) uint16 {

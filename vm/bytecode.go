@@ -223,6 +223,7 @@ func (b *bytecode) prepare(rp *rowParams) {
 
 type interpreterState struct {
 	delims      bRegData
+	sreg        sRegData
 	validLanes  kRegData
 	outputLanes kRegData
 }

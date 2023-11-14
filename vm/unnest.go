@@ -96,6 +96,13 @@ func (u *unnesting) symbolize(st *symtab, aux *auxbindings) error {
 	return u.dstrc.symbolize(st, aux)
 }
 
+func splat(bc *bytecode, indelims, outdelims []vmref, perm []int32) (int, int) {
+	if globalOptimizationLevel >= OptimizationLevelAVX512V1 {
+		return evalsplat(bc, indelims, outdelims, perm)
+	}
+	return evalsplatgo(bc, indelims, outdelims, perm)
+}
+
 //go:noescape
 func evalsplat(bc *bytecode, indelims, outdelims []vmref, perm []int32) (int, int)
 
@@ -165,7 +172,7 @@ func (u *unnesting) writeRows(delims []vmref, rp *rowParams) error {
 		// provide as much space as possible:
 		u.outer = u.outer[:cap(u.outer)]
 		u.perms = u.perms[:cap(u.perms)]
-		in, out := evalsplat(&u.splat, delims[consumed:], u.outer, u.perms)
+		in, out := splat(&u.splat, delims[consumed:], u.outer, u.perms)
 		if u.splat.err != 0 {
 			return bytecodeerror("unnest", &u.splat)
 		}
