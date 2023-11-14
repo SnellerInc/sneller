@@ -16,27 +16,12 @@ package vm
 
 import (
 	"encoding/binary"
-	"os"
-	"sync/atomic"
 	"unsafe"
 
 	"golang.org/x/sys/cpu"
 
 	"github.com/SnellerInc/sneller/ion"
 )
-
-var portable atomic.Bool
-
-// SetPortable disables assembly code if [b] is true,
-// or re-enables it if [b] is false. The return values is
-// the previous portability setting.
-func SetPortable(b bool) bool {
-	return portable.Swap(b)
-}
-
-func init() {
-	portable.Store(os.Getenv("SNELLER_PORTABLE") != "" || !cpu.X86.HasAVX512)
-}
 
 type opfn func(bc *bytecode, pc int) int
 
@@ -57,6 +42,14 @@ func slotcast[T any](b *bytecode, slot int) *T {
 
 func argptr[T any](b *bytecode, pc int) *T {
 	return slotcast[T](b, bcword(b.compiled, pc))
+}
+
+func setvmrefB(dst *bRegData, src []vmref) {
+	*dst = bRegData{}
+	for i := 0; i < min(bcLaneCount, len(src)); i++ {
+		dst.offsets[i] = src[i][0]
+		dst.sizes[i] = src[i][1]
+	}
 }
 
 func setvmref(dst *vRegData, src []vmref) {
@@ -117,6 +110,17 @@ func bcauxvalgo(bc *bytecode, pc int) int {
 	setvmref(dstv, lst)
 	dstk.mask = mask
 	return pc + 6
+}
+
+func bcinitgo(bc *bytecode, pc int) int {
+	delims := argptr[bRegData](bc, pc+0)
+	delims.offsets = bc.vmState.delims.offsets
+	delims.sizes = bc.vmState.delims.sizes
+
+	mask := argptr[kRegData](bc, pc+2)
+	mask.mask = bc.vmState.validLanes.mask
+
+	return pc + 4
 }
 
 func bcfindsymgo(bc *bytecode, pc int) int {
@@ -271,7 +275,7 @@ func bcxnorkgo(bc *bytecode, pc int) int {
 	kdst := argptr[kRegData](bc, pc)
 	k0 := argptr[kRegData](bc, pc+2)
 	k1 := argptr[kRegData](bc, pc+4)
-	kdst.mask = (k0.mask ^ (^k1.mask)) & bc.truth
+	kdst.mask = (k0.mask ^ (^k1.mask)) & bc.vmState.validLanes.mask
 	return pc + 6
 }
 
@@ -283,7 +287,20 @@ func bcandkgo(bc *bytecode, pc int) int {
 	return pc + 6
 }
 
+func opretbkgo(bc *bytecode, pc int) int {
+	b := argptr[bRegData](bc, pc+0)
+	k := argptr[kRegData](bc, pc+2)
+
+	bc.vmState.delims.offsets = b.offsets
+	bc.vmState.delims.sizes = b.sizes
+	bc.vmState.outputLanes.mask = k.mask
+
+	return pc + 4
+}
+
 func init() {
+	opinfo[opinit].portable = bcinitgo
+	opinfo[opretbk].portable = opretbkgo
 	opinfo[opauxval].portable = bcauxvalgo
 	opinfo[opfindsym].portable = bcfindsymgo
 	opinfo[opcmpvi64imm].portable = bccmpvi64immgo
@@ -301,39 +318,33 @@ func evalfiltergolanes(bc *bytecode, delims []vmref) uint16 {
 	}
 	mask := uint16(0xffff)
 	mask >>= bcLaneCount - len(delims)
-	bc.truth = mask
 	var alt bytecode
+
+	setvmrefB(&bc.vmState.delims, delims)
+	bc.vmState.validLanes.mask = mask
+	bc.vmState.outputLanes.mask = 0
+
 	for pc < l && bc.err == 0 {
 		op := bcop(bcword(bc.compiled, pc))
-		switch op {
-		case opinit:
-			// supply args
-			vsrc := argptr[vRegData](bc, pc+2)
-			setvmref(vsrc, delims)
-			ksrc := argptr[kRegData](bc, pc+4)
-			ksrc.mask = mask
-			pc += 6
-		case opretbk:
-			// ignoring the base part; it's just the delims
-			retk := argptr[kRegData](bc, pc+4)
-			mask = retk.mask
-			bc.auxpos += len(delims)
-			return mask
-		default:
-			pc += 2
-			fn := opinfo[op].portable
-			if fn != nil {
-				pc = fn(bc, pc)
-			} else if cpu.X86.HasAVX512 {
-				pc = runSingle(bc, &alt, pc, bc.truth)
-			} else {
-				bc.err = bcerrNotSupported
-				return 0
-			}
+		pc += 2
+
+		fn := opinfo[op].portable
+		if fn != nil {
+			pc = fn(bc, pc)
+		} else if cpu.X86.HasAVX512 {
+			pc = runSingle(bc, &alt, pc, bc.vmState.validLanes.mask)
+		} else {
+			bc.err = bcerrNotSupported
+			return 0
 		}
 	}
-	// we should hit bcretk
-	panic("invalid bytecode")
+
+	if bc.err != 0 {
+		return 0
+	}
+
+	bc.auxpos += len(delims)
+	return bc.vmState.outputLanes.mask
 }
 
 //go:noescape

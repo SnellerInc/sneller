@@ -280,10 +280,12 @@ func BenchmarkTestQueries(b *testing.B) {
 // as quickly as possible, tests are
 // run in parallel.
 func TestQueries(t *testing.T) {
-	noavx512 := vm.SetPortable(true)
+	vm.SetOptimizationLevel(vm.OptimizationLevelNone)
 	t.Run("portable", testQueries)
-	if !noavx512 {
-		vm.SetPortable(false)
+
+	detectedOptLevel := vm.DetectOptimizationLevel()
+	if detectedOptLevel != vm.OptimizationLevelNone {
+		vm.SetOptimizationLevel(detectedOptLevel)
 		t.Run("avx512", testQueries)
 	}
 }

@@ -180,11 +180,12 @@ func (w *wherebc) writeRows(delims []vmref, rp *rowParams) error {
 
 	w.bc.prepare(rp)
 	var valid int
-	if portable.Load() {
-		valid = evalfiltergo(&w.bc, delims)
-	} else {
+	if globalOptimizationLevel >= OptimizationLevelAVX512V1 {
 		valid = evalfilterbc(&w.bc, delims)
+	} else {
+		valid = evalfiltergo(&w.bc, delims)
 	}
+
 	if w.bc.err != 0 {
 		return bytecodeerror("filter", &w.bc)
 	}

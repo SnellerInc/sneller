@@ -221,6 +221,12 @@ func (b *bytecode) prepare(rp *rowParams) {
 	b.auxpos = 0
 }
 
+type interpreterState struct {
+	delims      bRegData
+	validLanes  kRegData
+	outputLanes kRegData
+}
+
 type bytecode struct {
 	// XXX struct offsets known to assembly!
 	compiled []byte   // actual opcodes
@@ -238,7 +244,7 @@ type bytecode struct {
 	scratchtotal int
 	// allocation epoch; see symtab.epoch
 	epoch int
-	// relative displacment of scratch relative to vmm
+	// relative displacement of scratch relative to vmm
 	scratchoff uint32
 
 	// savedlit is the saved literal contents
@@ -261,7 +267,10 @@ type bytecode struct {
 	// additional error information;
 	// error-specific
 	errinfo int
-	truth   uint16
+
+	// currently only used by the interpreter to hold states that are otherwise
+	// passed / retrieved in registers
+	vmState interpreterState
 }
 
 type bcFormatFlags uint
