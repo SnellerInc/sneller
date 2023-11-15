@@ -346,20 +346,24 @@ func formatArgs(bc *bytecode, dst *strings.Builder, compiled []byte, args []bcAr
 			fmt.Fprintf(dst, "dict[%d]", value)
 		case bcSymbolID:
 			value := readUIntFromBC(compiled[offset : offset+width])
-			if (flags & bcFormatSymbols) != 0 {
+			if (value & 0x80808080) == 0 {
+				fmt.Fprintf(dst, "sym(invalid_encoded=0x%X)", value)
+			} else {
 				decoded := decodeSymbolID(uint32(value))
 				if uint64(decoded) < uint64(len(bc.symtab)) {
-					encodedSymbolValue := bc.symtab[decoded].mem()
-					str, _, err := ion.ReadString(encodedSymbolValue)
-					if err == nil {
-						fmt.Fprintf(dst, "sym(%d, %q)", decoded, str)
-					} else {
-						fmt.Fprintf(dst, "sym(%d, <%v>)", decoded, err)
+					if (flags & bcFormatSymbols) != 0 {
+						encodedSymbolValue := bc.symtab[decoded].mem()
+						str, _, err := ion.ReadString(encodedSymbolValue)
+						if err == nil {
+							fmt.Fprintf(dst, "sym(%d, %q)", decoded, str)
+						} else {
+							fmt.Fprintf(dst, "sym(%d, <%v>)", decoded, err)
+						}
+						break
 					}
-					continue
 				}
+				fmt.Fprintf(dst, "sym(%d)", decoded)
 			}
-			fmt.Fprintf(dst, "sym(%d)", value)
 
 		case bcImmI8:
 			value := readUIntFromBC(compiled[offset : offset+width])
