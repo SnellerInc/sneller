@@ -16,6 +16,7 @@ package vm
 
 import (
 	"encoding/binary"
+	"math/bits"
 	"unsafe"
 
 	"golang.org/x/sys/cpu"
@@ -330,12 +331,13 @@ func bcretbkgo(bc *bytecode, pc int) int {
 	bc.vmState.delims.offsets = b.offsets
 	bc.vmState.delims.sizes = b.sizes
 	bc.vmState.outputLanes.mask = k.mask
-
+	bc.auxpos += bits.OnesCount16(bc.vmState.validLanes.mask)
 	return pc + 4
 }
 
 func bcretgo(bc *bytecode, pc int) int {
 	bc.err = 0
+	bc.auxpos += bits.OnesCount16(bc.vmState.validLanes.mask)
 	return pc
 }
 
@@ -344,6 +346,7 @@ func bcretskgo(bc *bytecode, pc int) int {
 	k := argptr[kRegData](bc, pc+2)
 	bc.vmState.sreg = *s
 	bc.vmState.outputLanes = *k
+	bc.auxpos += bits.OnesCount16(bc.vmState.validLanes.mask)
 	return pc + 4
 }
 
@@ -365,7 +368,7 @@ func init() {
 func evalfindgo(bc *bytecode, delims []vmref, stride int) {
 	stack := bc.vstack
 	var alt bytecode
-	l := len(bc.compiled)
+	bc.scratch = bc.scratch[:len(bc.savedlit)] // reset scratch ONCE, here
 	// convert stride to 64-bit words:
 	stride = stride / int(unsafe.Sizeof(bc.vstack[0]))
 	for len(delims) > 0 {
@@ -378,31 +381,17 @@ func evalfindgo(bc *bytecode, delims []vmref, stride int) {
 		bc.vmState.validLanes.mask = mask
 		bc.vmState.outputLanes.mask = mask
 		setvmrefB(&bc.vmState.delims, delims)
-		pc := 0
-		for pc < l && bc.err == 0 {
-			op := bcop(bcword(bc.compiled, pc))
-			pc += 2
-			fn := opinfo[op].portable
-			if fn != nil {
-				pc = fn(bc, pc)
-			} else if cpu.X86.HasAVX512 {
-				pc = runSingle(bc, &alt, pc, bc.vmState.validLanes.mask)
-			} else {
-				bc.err = bcerrNotSupported
-			}
-		}
+		eval(bc, &alt, false)
 		if bc.err != 0 {
 			return
 		}
 		delims = delims[lanes:]
-		bc.auxpos += lanes
 		bc.vstack = bc.vstack[stride:]
 	}
 	bc.vstack = stack
 }
 
 func evalsplatgo(bc *bytecode, indelims, outdelims []vmref, perm []int32) (int, int) {
-	l := len(bc.compiled)
 	ipos, opos := 0, 0
 	var alt bytecode
 	for ipos < len(indelims) && opos < len(outdelims) {
@@ -414,21 +403,7 @@ func evalsplatgo(bc *bytecode, indelims, outdelims []vmref, perm []int32) (int, 
 		setvmrefB(&bc.vmState.delims, indelims[ipos:])
 		bc.vmState.validLanes.mask = mask
 		bc.vmState.outputLanes.mask = 0
-		pc := 0
-		for pc < l && bc.err == 0 {
-			op := bcop(bcword(bc.compiled, pc))
-			pc += 2
-
-			fn := opinfo[op].portable
-			if fn != nil {
-				pc = fn(bc, pc)
-			} else if cpu.X86.HasAVX512 {
-				pc = runSingle(bc, &alt, pc, bc.vmState.validLanes.mask)
-			} else {
-				bc.err = bcerrNotSupported
-				return 0, 0
-			}
-		}
+		eval(bc, &alt, true)
 		if bc.err != 0 {
 			return 0, 0
 		}
@@ -458,50 +433,52 @@ func evalsplatgo(bc *bytecode, indelims, outdelims []vmref, perm []int32) (int, 
 		// checkpoint splat
 		opos = output
 		ipos += lanes
-		bc.auxpos += lanes
 	}
 	return ipos, opos
 }
 
 func evalfiltergolanes(bc *bytecode, delims []vmref) uint16 {
-	l := len(bc.compiled)
-	pc := 0
 	if len(delims) > bcLaneCount {
 		panic("invalid len(delims) for evalfiltergolanes")
 	}
 	mask := uint16(0xffff)
 	mask >>= bcLaneCount - len(delims)
 	var alt bytecode
-
 	setvmrefB(&bc.vmState.delims, delims)
 	bc.vmState.validLanes.mask = mask
 	bc.vmState.outputLanes.mask = 0
-
-	for pc < l && bc.err == 0 {
-		op := bcop(bcword(bc.compiled, pc))
-		pc += 2
-
-		fn := opinfo[op].portable
-		if fn != nil {
-			pc = fn(bc, pc)
-		} else if cpu.X86.HasAVX512 {
-			pc = runSingle(bc, &alt, pc, bc.vmState.validLanes.mask)
-		} else {
-			bc.err = bcerrNotSupported
-			return 0
-		}
-	}
-
+	eval(bc, &alt, true)
 	if bc.err != 0 {
 		return 0
 	}
-
-	bc.auxpos += len(delims)
 	return bc.vmState.outputLanes.mask
 }
 
 //go:noescape
 func bcenter(bc *bytecode, k7 uint16)
+
+// eval evaluates bc and uses alt as scratch space
+// for evaluating unimplemented opcodes via the assembly interpreter
+func eval(bc, alt *bytecode, resetScratch bool) {
+	l := len(bc.compiled)
+	pc := 0
+	if resetScratch {
+		bc.scratch = bc.scratch[:len(bc.savedlit)]
+	}
+	for pc < l && bc.err == 0 {
+		op := bcop(bcword(bc.compiled, pc))
+		pc += 2
+		fn := opinfo[op].portable
+		if fn != nil {
+			pc = fn(bc, pc)
+		} else if cpu.X86.HasAVX512 {
+			pc = runSingle(bc, alt, pc, bc.vmState.validLanes.mask)
+		} else {
+			bc.err = bcerrNotSupported
+			break
+		}
+	}
+}
 
 // run a single bytecode instruction @ pc
 func runSingle(bc, alt *bytecode, pc int, k7 uint16) int {
