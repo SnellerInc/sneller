@@ -80,6 +80,15 @@
   MOVQ bytecode_vstack(VIRT_BCPTR), VIRT_VALUES                \
   BC_INVOKE()
 
+// BC_ENTER_WITH_SCRATCH is the same as BC_ENTER
+// but without resetting the scratch buffer
+#define BC_ENTER_WITH_SCRATCH() \
+  KMOVW K1, K7                                                 \
+  BC_CLEAR_ERROR()                                             \
+  MOVQ bytecode_compiled(VIRT_BCPTR), VIRT_PCREG               \
+  MOVQ bytecode_vstack(VIRT_BCPTR), VIRT_VALUES                \
+  BC_INVOKE()
+
 // BC Scratch Buffer
 // -----------------
 

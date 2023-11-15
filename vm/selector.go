@@ -61,11 +61,14 @@ type syminfo struct {
 func evalfindbc(w *bytecode, delims []vmref, stride int)
 
 func evalfind(w *bytecode, delims []vmref, stride int) error {
-	evalfindbc(w, delims, stride*vRegSize)
+	if globalOptimizationLevel >= OptimizationLevelAVX512V1 {
+		evalfindbc(w, delims, stride*vRegSize)
+	} else {
+		evalfindgo(w, delims, stride*vRegSize)
+	}
 	if w.err != 0 {
 		return w.err
 	}
-
 	return nil
 }
 

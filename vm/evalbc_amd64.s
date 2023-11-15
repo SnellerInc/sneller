@@ -105,7 +105,7 @@ TEXT ·bcenter(SB), NOSPLIT, $0
   XORQ  R9, R9
   XORQ  R10, R10
   MOVQ  ·vmm+0(SB), VIRT_BASE
-  BC_ENTER()
+  BC_ENTER_WITH_SCRATCH()
   RET
 
 // the 'return' instruction

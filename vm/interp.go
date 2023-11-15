@@ -119,7 +119,6 @@ func bcinitgo(bc *bytecode, pc int) int {
 
 	mask := argptr[kRegData](bc, pc+2)
 	mask.mask = bc.vmState.validLanes.mask
-
 	return pc + 4
 }
 
@@ -287,7 +286,44 @@ func bcandkgo(bc *bytecode, pc int) int {
 	return pc + 6
 }
 
-func opretbkgo(bc *bytecode, pc int) int {
+func bcboxf64go(bc *bytecode, pc int) int {
+	dst := argptr[vRegData](bc, pc)
+	src := argptr[f64RegData](bc, pc+2)
+	mask := argptr[kRegData](bc, pc+4).mask
+
+	p := len(bc.scratch)
+	want := 9 * bcLaneCount
+	if cap(bc.scratch)-p < want {
+		bc.err = bcerrMoreScratch
+		return pc + 6
+	}
+	bc.scratch = bc.scratch[:p+want]
+	mem := bc.scratch[p:]
+	var buf ion.Buffer
+	for i := 0; i < bcLaneCount; i++ {
+		if mask&(1<<i) == 0 {
+			dst.offsets[i] = 0
+			dst.sizes[i] = 0
+			dst.typeL[i] = 0
+			dst.headerSize[i] = 0
+			continue
+		}
+		buf.Set(mem[:0])
+		buf.WriteCanonicalFloat(src.values[i])
+		start, ok := vmdispl(mem)
+		if !ok {
+			panic("bad scratch buffer")
+		}
+		dst.offsets[i] = start
+		dst.sizes[i] = 9
+		dst.typeL[i] = mem[0]
+		dst.headerSize[i] = 1 // ints and floats always have 1-byte headers
+		mem = mem[9:]
+	}
+	return pc + 6
+}
+
+func bcretbkgo(bc *bytecode, pc int) int {
 	b := argptr[bRegData](bc, pc+0)
 	k := argptr[kRegData](bc, pc+2)
 
@@ -298,9 +334,14 @@ func opretbkgo(bc *bytecode, pc int) int {
 	return pc + 4
 }
 
+func bcretgo(bc *bytecode, pc int) int {
+	bc.err = 0
+	return pc
+}
+
 func init() {
 	opinfo[opinit].portable = bcinitgo
-	opinfo[opretbk].portable = opretbkgo
+	opinfo[opretbk].portable = bcretbkgo
 	opinfo[opauxval].portable = bcauxvalgo
 	opinfo[opfindsym].portable = bcfindsymgo
 	opinfo[opcmpvi64imm].portable = bccmpvi64immgo
@@ -308,6 +349,47 @@ func init() {
 	opinfo[optuple].portable = bctuplego
 	opinfo[opandk].portable = bcandkgo
 	opinfo[opxnork].portable = bcxnorkgo
+	opinfo[opret].portable = bcretgo
+	opinfo[opboxf64].portable = bcboxf64go
+}
+
+func evalfindgo(bc *bytecode, delims []vmref, stride int) {
+	stack := bc.vstack
+	var alt bytecode
+	l := len(bc.compiled)
+	// convert stride to 64-bit words:
+	stride = stride / int(unsafe.Sizeof(bc.vstack[0]))
+	for len(delims) > 0 {
+		mask := uint16(0xffff)
+		lanes := bcLaneCount
+		if len(delims) < lanes {
+			mask >>= bcLaneCount - len(delims)
+			lanes = len(delims)
+		}
+		bc.vmState.validLanes.mask = mask
+		bc.vmState.outputLanes.mask = mask
+		setvmrefB(&bc.vmState.delims, delims)
+		pc := 0
+		for pc < l && bc.err == 0 {
+			op := bcop(bcword(bc.compiled, pc))
+			pc += 2
+			fn := opinfo[op].portable
+			if fn != nil {
+				pc = fn(bc, pc)
+			} else if cpu.X86.HasAVX512 {
+				pc = runSingle(bc, &alt, pc, bc.vmState.validLanes.mask)
+			} else {
+				bc.err = bcerrNotSupported
+			}
+		}
+		if bc.err != 0 {
+			return
+		}
+		delims = delims[lanes:]
+		bc.auxpos += lanes
+		bc.vstack = bc.vstack[stride:]
+	}
+	bc.vstack = stack
 }
 
 func evalfiltergolanes(bc *bytecode, delims []vmref) uint16 {
@@ -367,5 +449,6 @@ func runSingle(bc, alt *bytecode, pc int, k7 uint16) int {
 	bc.err = alt.err
 	bc.errpc = alt.errpc
 	bc.errinfo = alt.errinfo
+	bc.scratch = alt.scratch // copy back len(scratch)
 	return pc + width
 }
