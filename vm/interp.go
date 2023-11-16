@@ -27,15 +27,15 @@ import (
 type opfn func(bc *bytecode, pc int) int
 
 // ops, arg slots, etc. are encoded as 16-bit integers:
-func bcword(buf []byte, pc int) int {
-	return int(binary.LittleEndian.Uint16(buf[pc:]))
+func bcword(buf []byte, pc int) uint {
+	return uint(binary.LittleEndian.Uint16(buf[pc:]))
 }
 
 func bcword64(buf []byte, pc int) uint64 {
 	return binary.LittleEndian.Uint64(buf[pc:])
 }
 
-func slotcast[T any](b *bytecode, slot int) *T {
+func slotcast[T any](b *bytecode, slot uint) *T {
 	buf := unsafe.Slice((*byte)(unsafe.Pointer(&b.vstack[0])), len(b.vstack)*8)
 	ptr := unsafe.Pointer(&buf[slot])
 	return (*T)(ptr)
@@ -118,6 +118,7 @@ func bcinitgo(bc *bytecode, pc int) int {
 	delims.offsets = bc.vmState.delims.offsets
 	delims.sizes = bc.vmState.delims.sizes
 
+	bc.err = 0
 	mask := argptr[kRegData](bc, pc+2)
 	mask.mask = bc.vmState.validLanes.mask
 	return pc + 4
@@ -287,6 +288,8 @@ func bcandkgo(bc *bytecode, pc int) int {
 	return pc + 6
 }
 
+/*
+// TODO: Temporarily disabled as it regresses one test for some reason.
 func bcboxf64go(bc *bytecode, pc int) int {
 	dst := argptr[vRegData](bc, pc)
 	src := argptr[f64RegData](bc, pc+2)
@@ -316,12 +319,27 @@ func bcboxf64go(bc *bytecode, pc int) int {
 			panic("bad scratch buffer")
 		}
 		dst.offsets[i] = start
-		dst.sizes[i] = 9
+		dst.sizes[i] = uint32(len(buf.Bytes()))
 		dst.typeL[i] = mem[0]
 		dst.headerSize[i] = 1 // ints and floats always have 1-byte headers
 		mem = mem[9:]
 	}
 	return pc + 6
+}
+*/
+
+func bcretgo(bc *bytecode, pc int) int {
+	bc.err = 0
+	bc.vmState.outputLanes.mask = bc.vmState.validLanes.mask
+	bc.auxpos += bits.OnesCount16(bc.vmState.outputLanes.mask)
+	return pc
+}
+
+func bcretkgo(bc *bytecode, pc int) int {
+	k := argptr[kRegData](bc, pc+0)
+	bc.vmState.outputLanes.mask = k.mask
+	bc.auxpos += bits.OnesCount16(bc.vmState.validLanes.mask)
+	return pc + 2
 }
 
 func bcretbkgo(bc *bytecode, pc int) int {
@@ -335,10 +353,16 @@ func bcretbkgo(bc *bytecode, pc int) int {
 	return pc + 4
 }
 
-func bcretgo(bc *bytecode, pc int) int {
-	bc.err = 0
+func bcretbhkgo(bc *bytecode, pc int) int {
+	b := argptr[bRegData](bc, pc+0)
+	k := argptr[kRegData](bc, pc+4)
+
+	bc.vmState.delims.offsets = b.offsets
+	bc.vmState.delims.sizes = b.sizes
+	bc.vmState.outputLanes.mask = k.mask
 	bc.auxpos += bits.OnesCount16(bc.vmState.validLanes.mask)
-	return pc
+
+	return pc + 6
 }
 
 func bcretskgo(bc *bytecode, pc int) int {
@@ -353,8 +377,10 @@ func bcretskgo(bc *bytecode, pc int) int {
 func init() {
 	opinfo[opinit].portable = bcinitgo
 	opinfo[opret].portable = bcretgo
+	opinfo[opretk].portable = bcretkgo
 	opinfo[opretbk].portable = bcretbkgo
 	opinfo[opretsk].portable = bcretskgo
+	opinfo[opretbhk].portable = bcretbhkgo
 	opinfo[opauxval].portable = bcauxvalgo
 	opinfo[opfindsym].portable = bcfindsymgo
 	opinfo[opcmpvi64imm].portable = bccmpvi64immgo
@@ -362,7 +388,7 @@ func init() {
 	opinfo[optuple].portable = bctuplego
 	opinfo[opandk].portable = bcandkgo
 	opinfo[opxnork].portable = bcxnorkgo
-	opinfo[opboxf64].portable = bcboxf64go
+	// opinfo[opboxf64].portable = bcboxf64go
 }
 
 func evalfindgo(bc *bytecode, delims []vmref, stride int) {
@@ -485,6 +511,7 @@ func runSingle(bc, alt *bytecode, pc int, k7 uint16) int {
 	// copy over everything except the compiled bytestream:
 	compiled := alt.compiled
 	*alt = *bc
+
 	alt.compiled = compiled[:0]
 
 	// create a new compiled bytestream with the single instr + return
