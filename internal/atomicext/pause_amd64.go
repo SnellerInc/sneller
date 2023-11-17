@@ -12,6 +12,9 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+//go:build amd64
+// +build amd64
+
 package atomicext
 
 // Pause improves the performance of spin-wait loops. When executing a "spin-wait loop," processors will suffer a severe
