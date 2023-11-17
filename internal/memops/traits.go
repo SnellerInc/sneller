@@ -15,18 +15,6 @@
 // Package memops implements accelerated memory block manipulation primitives
 package memops
 
-import (
-	"unsafe"
-)
-
 type Pointerless interface {
 	// TODO: should be constraints.Integer | constraints.Float | a recursive composition of Pointerless, but Go doesn't support this concept.
 }
-
-// ZeroMemory fills buf with zeros. CAUTION: must be used only for T not containing pointers!
-func ZeroMemory[T Pointerless](buf []T) {
-	zeroMemoryPointerless(unsafe.Pointer(unsafe.SliceData(buf)), uintptr(len(buf)*int(unsafe.Sizeof(buf[0]))))
-}
-
-//go:noescape
-func zeroMemoryPointerless(ptr unsafe.Pointer, n uintptr)
