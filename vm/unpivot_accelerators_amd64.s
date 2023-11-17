@@ -100,13 +100,13 @@ loop_vmrefs:
     //
     //  K1  := master active lanes
     //  K2  := K1
-    //  Z0  := the first byte of every DWORD contains the follow-up ION value prefix, rubish elsewhere
+    //  Z0  := the first byte of every DWORD contains the follow-up ION value prefix, rubbish elsewhere
     //  Z1  := symbol IDs
     //  Z16 := the updated read cursor
     //  AX  := &consts_byte_ion_size_b
 
     VPANDD.Z    Z0, Z25, K1, Z2         // Z2 := isolated ION value prefixes
-    VPGATHERDD  0(AX)(Z2*1), K2, Z0     // Z0 := byte0: decoded ION object length; rubish elsewhere; K2 destroyed
+    VPGATHERDD  0(AX)(Z2*1), K2, Z0     // Z0 := byte0: decoded ION object length; rubbish elsewhere; K2 destroyed
     VPANDD.Z    Z1, Z27, K1, Z2         // Z2 := the bit indices within a DWORD of the symbol IDs
     VPSRLD.Z    $5, Z1, K1, Z1          // Z1 := bitvector DWORD indices
     VPTESTMD    Z0, Z29, K1, K2         // K2 := the lanes requiring VarUInt decode
@@ -200,7 +200,6 @@ select_final_lanes:
     JNZ     process_rows
     RET
 
-
 // func fillVMrefs(p *[]vmref, v vmref, n int)
 TEXT ·fillVMrefs(SB), NOSPLIT | NOFRAME, $0-0
     MOVQ    p+0(FP), BX
@@ -213,7 +212,6 @@ TEXT ·fillVMrefs(SB), NOSPLIT | NOFRAME, $0-0
     REP;    STOSQ           // EFLAGS.DF=0 is assumed per the ABI
     MOVQ    DX, 8(BX)
     RET
-
 
 // func copyVMrefs(p *[]vmref, q *vmref, n int)
 TEXT ·copyVMrefs(SB), NOSPLIT | NOFRAME, $0-0

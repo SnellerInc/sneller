@@ -567,10 +567,6 @@ func (u *kernelUnpivotAtDistinct) next() rowConsumer {
 	return u.out
 }
 
-//go:noescape
-//go:nosplit
-func unpivotAtDistinctDeduplicate(rows []vmref, vmbase uintptr, bitvector *uint)
-
 func (u *kernelUnpivotAtDistinct) writeRows(rows []vmref, params *rowParams) error {
 	// Mark the auxilliary binding fields first. Duplication with regards
 	// to the content of rows is fine, as the next step is deduplication.
@@ -664,11 +660,3 @@ func (p *precedenceResolver) useAuxilliary(s ion.Symbol) bool {
 func (p *precedenceResolver) useION(s ion.Symbol) bool {
 	return !p.useAuxilliary(s)
 }
-
-//go:noescape
-//go:nosplit
-func fillVMrefs(p *[]vmref, v vmref, n int)
-
-//go:noescape
-//go:nosplit
-func copyVMrefs(p *[]vmref, q *vmref, n int)
