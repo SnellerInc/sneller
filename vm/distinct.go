@@ -179,7 +179,12 @@ func (d *deduper) writeRows(delims []vmref, rp *rowParams) error {
 		d.hashes = make([]uint64, len(delims))
 	}
 	d.bc.prepare(rp)
-	count := evaldedup(&d.bc, delims, d.hashes, d.local, d.hashslot)
+	var count int
+	if globalOptimizationLevel >= OptimizationLevelAVX512V1 {
+		count = evaldedup(&d.bc, delims, d.hashes, d.local, d.hashslot)
+	} else {
+		count = evaldedupgo(&d.bc, delims, d.hashes, d.local, d.hashslot)
+	}
 	if d.bc.err != 0 {
 		return bytecodeerror("distinct", &d.bc)
 	}

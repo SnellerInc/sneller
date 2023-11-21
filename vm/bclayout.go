@@ -48,6 +48,10 @@ func (s *sRegData) fill(v uint32) {
 	}
 }
 
+type hRegData struct {
+	lo, _ [bcLaneCount]uint64
+}
+
 type i64RegData struct {
 	values [bcLaneCount]int64
 }
@@ -88,6 +92,7 @@ const (
 	_ = ^uintptr(0) + (uintptr(sRegSize) - unsafe.Sizeof(sRegData{}))
 	_ = ^uintptr(0) + (uintptr(sRegSize) - unsafe.Sizeof(i64RegData{}))
 	_ = ^uintptr(0) + (uintptr(sRegSize) - unsafe.Sizeof(f64RegData{}))
+	_ = ^uintptr(0) + (uintptr(hRegSize) - unsafe.Sizeof(hRegData{}))
 )
 
 func vRegDataFromVStackCast(vstack *[]uint64, count int) (out []vRegData) {

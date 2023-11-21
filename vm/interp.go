@@ -643,6 +643,43 @@ func evalprojectgo(bc *bytecode, delims []vmref, dst []byte, symbols []syminfo) 
 	return offset, rowsProcessed
 }
 
+func evaldedupgo(bc *bytecode, delims []vmref, hashes []uint64, tree *radixTree64, slot int) int {
+	var alt bytecode
+	indelims := delims
+	dout := 0
+	for len(indelims) > 0 {
+		n := min(len(indelims), bcLaneCount)
+		mask := uint16(0xffff)
+		if n < bcLaneCount {
+			mask >>= bcLaneCount - n
+		}
+		setvmrefB(&bc.vmState.delims, indelims[:n])
+		bc.vmState.validLanes.mask = mask
+		bc.vmState.outputLanes.mask = 0
+		apos := bc.auxpos
+		eval(bc, &alt, true)
+		if bc.err != 0 {
+			return 0
+		}
+		outhashes := slotcast[hRegData](bc, uint(slot))
+		outmask := bc.vmState.outputLanes.mask
+		for i := 0; i < n; i++ {
+			if outmask&(1<<i) == 0 || tree.Offset(outhashes.lo[i]) >= 0 {
+				continue // lane not active or tree contains hash already
+			}
+			delims[dout] = indelims[i]
+			hashes[dout] = outhashes.lo[i]
+			// compress auxvals
+			for j, lst := range bc.auxvals {
+				bc.auxvals[j][dout] = lst[apos+i]
+			}
+			dout++
+		}
+		indelims = indelims[n:]
+	}
+	return dout
+}
+
 //go:noescape
 func bcenter(bc *bytecode, k7 uint16)
 
