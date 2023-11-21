@@ -52,7 +52,6 @@ import (
 	"unsafe"
 
 	"golang.org/x/exp/constraints"
-	"golang.org/x/sys/cpu"
 )
 
 type HashEngine ExpandedKey128Quad
@@ -112,16 +111,6 @@ func init() {
 		panic(err) // The crypto/rand RNG can fail in theory and this is the best I can do with err at the init() level.
 	}
 }
-
-const offsX86HasAVX512VAES = unsafe.Offsetof(cpu.X86.HasAVX512VAES) //lint:ignore U1000, used in asm
-
-//go:noescape
-//go:nosplit
-func aesHash64(quad *ExpandedKey128Quad, p *byte, n int) uint64
-
-//go:noescape
-//go:nosplit
-func aesHashWide(quad *ExpandedKey128Quad, p *byte, n int) WideHash
 
 // Volatile is an out-of-the-box HashEngine initialized with a FIPS 140-2-compliant random number generator
 var Volatile HashEngine
