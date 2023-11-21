@@ -740,7 +740,12 @@ func (p *aggregateLocal) writeRows(delims []vmref, rp *rowParams) error {
 			}
 			n = len(delims)
 
-			rowsCount := evalaggregatebc(&p.bc, chunk, p.partialData)
+			var rowsCount int
+			if globalOptimizationLevel >= OptimizationLevelAVX512V1 {
+				rowsCount = evalaggregatebc(&p.bc, chunk, p.partialData)
+			} else {
+				rowsCount = evalaggregatego(&p.bc, chunk, p.partialData)
+			}
 			if p.bc.err != 0 {
 				return bytecodeerror("aggregate", &p.bc)
 			}

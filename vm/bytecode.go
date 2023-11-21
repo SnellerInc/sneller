@@ -226,6 +226,7 @@ type interpreterState struct {
 	sreg        sRegData
 	validLanes  kRegData
 	outputLanes kRegData
+	aggPtr      unsafe.Pointer
 }
 
 type bytecode struct {

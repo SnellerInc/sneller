@@ -680,6 +680,29 @@ func evaldedupgo(bc *bytecode, delims []vmref, hashes []uint64, tree *radixTree6
 	return dout
 }
 
+func evalaggregatego(bc *bytecode, delims []vmref, aggregateDataBuffer []byte) int {
+	var alt bytecode
+	ret := 0
+	bc.vmState.aggPtr = unsafe.Pointer(&aggregateDataBuffer[0])
+	for len(delims) > 0 {
+		n := min(len(delims), bcLaneCount)
+		mask := uint16(0xffff)
+		if n < bcLaneCount {
+			mask >>= bcLaneCount - n
+		}
+		setvmrefB(&bc.vmState.delims, delims)
+		bc.vmState.validLanes.mask = mask
+		bc.vmState.outputLanes.mask = 0
+		eval(bc, &alt, true)
+		if bc.err != 0 {
+			return ret
+		}
+		delims = delims[n:]
+		ret += n
+	}
+	return ret
+}
+
 //go:noescape
 func bcenter(bc *bytecode, k7 uint16)
 
