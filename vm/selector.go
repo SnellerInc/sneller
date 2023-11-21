@@ -220,7 +220,11 @@ func (p *projector) bcproject(delims []vmref, dst []byte, out []syminfo) (int, i
 	p.bc.ensureVStackSize(len(p.parent.sel) * int(vRegSize))
 	p.bc.allocStacks()
 
-	return evalproject(&p.bc, delims, dst, out)
+	if globalOptimizationLevel >= OptimizationLevelAVX512V1 {
+		return evalproject(&p.bc, delims, dst, out)
+	}
+
+	return evalprojectgo(&p.bc, delims, dst, out)
 }
 
 func (p *projector) next() rowConsumer { return p.dstrc }

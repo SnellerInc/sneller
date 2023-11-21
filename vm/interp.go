@@ -67,6 +67,98 @@ func setvmref(dst *vRegData, src []vmref) {
 	}
 }
 
+func getTLVSize(length uint) uint {
+	if length < 14 {
+		return 1
+	}
+
+	if length < (1 << 7) {
+		return 2
+	}
+
+	if length < (1 << 14) {
+		return 3
+	}
+
+	if length < (1 << 21) {
+		return 4
+	}
+
+	if length < (1 << 28) {
+		return 5
+	}
+
+	return 6
+}
+
+func encodeSymbol(dst []byte, offset int, symbol ion.Symbol) int {
+	if symbol < (1 << 7) {
+		dst[offset+0] = byte(symbol) | 0x80
+		return 1
+	}
+
+	if symbol < (1 << 14) {
+		dst[offset+0] = byte((symbol >> 7) & 0x7F)
+		dst[offset+1] = byte(symbol&0xFF) | 0x80
+		return 2
+	}
+
+	if symbol < (1 << 21) {
+		dst[offset+0] = byte((symbol >> 14) & 0x7F)
+		dst[offset+1] = byte((symbol >> 7) & 0x7F)
+		dst[offset+2] = byte(symbol&0xFF) | 0x80
+		return 3
+	}
+
+	if symbol < (1 << 28) {
+		dst[offset+0] = byte((symbol >> 21) & 0x7F)
+		dst[offset+1] = byte((symbol >> 14) & 0x7F)
+		dst[offset+2] = byte((symbol >> 7) & 0x7F)
+		dst[offset+3] = byte(symbol&0xFF) | 0x80
+		return 4
+	}
+
+	panic("encodeSymbol: symbol ID out of range")
+}
+
+func encodeTLVUnsafe(dst []byte, offset int, valueType ion.Type, length uint) int {
+	tag := byte(valueType) << 4
+	if length < 14 {
+		dst[offset] = tag | byte(length)
+		return 1
+	}
+
+	dst[offset] = tag | 0xE
+
+	if length < (1 << 7) {
+		dst[offset+1] = byte(length) | 0x80
+		return 2
+	}
+
+	if length < (1 << 14) {
+		dst[offset+1] = byte((length >> 7) & 0x7F)
+		dst[offset+2] = byte(length&0xFF) | 0x80
+		return 3
+	}
+
+	if length < (1 << 21) {
+		dst[offset+1] = byte((length >> 14) & 0x7F)
+		dst[offset+2] = byte((length >> 7) & 0x7F)
+		dst[offset+3] = byte(length&0xFF) | 0x80
+		return 4
+	}
+
+	if length < (1 << 28) {
+		dst[offset+1] = byte((length >> 21) & 0x7F)
+		dst[offset+2] = byte((length >> 14) & 0x7F)
+		dst[offset+3] = byte((length >> 7) & 0x7F)
+		dst[offset+4] = byte(length&0xFF) | 0x80
+		return 5
+	}
+
+	panic("encodeTLVUnsafe: length too large")
+}
+
 func evalfiltergo(bc *bytecode, delims []vmref) int {
 	i, j := 0, 0
 	for i < len(delims) {
@@ -404,6 +496,7 @@ func evalfindgo(bc *bytecode, delims []vmref, stride int) {
 			mask >>= bcLaneCount - len(delims)
 			lanes = len(delims)
 		}
+		bc.err = 0
 		bc.vmState.validLanes.mask = mask
 		bc.vmState.outputLanes.mask = mask
 		setvmrefB(&bc.vmState.delims, delims)
@@ -478,6 +571,85 @@ func evalfiltergolanes(bc *bytecode, delims []vmref) uint16 {
 		return 0
 	}
 	return bc.vmState.outputLanes.mask
+}
+
+func evalprojectgo(bc *bytecode, delims []vmref, dst []byte, symbols []syminfo) (int, int) {
+	offset := 0
+	capacity := len(dst)
+	rowsProcessed := 0
+
+	dstDisp, ok := vmdispl(dst)
+	if !ok {
+		return 0, 0
+	}
+
+	var alt bytecode
+
+	for rowsProcessed < len(delims) {
+		initialDstLength := offset
+		n := min(len(delims)-rowsProcessed, bcLaneCount)
+
+		for lane := 0; lane < n; lane++ {
+			bc.vmState.delims.offsets[lane] = uint32(delims[rowsProcessed+lane][0])
+			bc.vmState.delims.sizes[lane] = uint32(delims[rowsProcessed+lane][1])
+		}
+
+		mask := uint16((1 << n) - 1)
+		bc.err = 0
+		bc.vmState.validLanes.mask = mask
+
+		eval(bc, &alt, true)
+
+		if bc.err != 0 {
+			return initialDstLength, rowsProcessed
+		}
+
+		mask = bc.vmState.outputLanes.mask
+
+		for lane := 0; lane < n; lane++ {
+			if (mask & (uint16(1) << lane)) == 0 {
+				continue
+			}
+
+			contentSize := uint(0)
+			for i := 0; i < len(symbols); i++ {
+				// Only account for the value if the value is not MISSING.
+				vals := slotcast[vRegData](bc, uint(symbols[i].slot))
+				if symbols[i].size != 0 && vals.sizes[lane] != 0 {
+					contentSize += uint(symbols[i].size) + uint(vals.sizes[lane])
+				}
+			}
+
+			headerSize := getTLVSize(contentSize)
+			structSize := headerSize + contentSize
+
+			if uint(capacity-offset) < structSize {
+				return initialDstLength, rowsProcessed
+			}
+
+			offset += encodeTLVUnsafe(dst, offset, ion.StructType, contentSize)
+
+			// Update delims with the projection output
+			delims[rowsProcessed+lane][0] = uint32(dstDisp + uint32(offset))
+			delims[rowsProcessed+lane][1] = uint32(contentSize)
+
+			for i := 0; i < len(symbols); i++ {
+				// Only serialize Key+Value if the value is not MISSING.
+				vals := slotcast[vRegData](bc, uint(symbols[i].slot))
+				if symbols[i].size != 0 && vals.sizes[lane] != 0 {
+					valOffset := vals.offsets[lane]
+					valLength := vals.sizes[lane]
+
+					offset += encodeSymbol(dst, offset, symbols[i].value)
+					offset += copy(dst[offset:], vmm[valOffset:valOffset+valLength])
+				}
+			}
+		}
+
+		rowsProcessed += n
+	}
+
+	return offset, rowsProcessed
 }
 
 //go:noescape
