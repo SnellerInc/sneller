@@ -364,22 +364,6 @@ func bctuplego(bc *bytecode, pc int) int {
 	return pc + 8
 }
 
-func bcxnorkgo(bc *bytecode, pc int) int {
-	kdst := argptr[kRegData](bc, pc)
-	k0 := argptr[kRegData](bc, pc+2)
-	k1 := argptr[kRegData](bc, pc+4)
-	kdst.mask = (k0.mask ^ (^k1.mask)) & bc.vmState.validLanes.mask
-	return pc + 6
-}
-
-func bcandkgo(bc *bytecode, pc int) int {
-	kdst := argptr[kRegData](bc, pc)
-	k0 := argptr[kRegData](bc, pc+2)
-	k1 := argptr[kRegData](bc, pc+4)
-	kdst.mask = k0.mask & k1.mask
-	return pc + 6
-}
-
 /*
 // TODO: Temporarily disabled as it regresses one test for some reason.
 func bcboxf64go(bc *bytecode, pc int) int {
@@ -478,7 +462,14 @@ func init() {
 	opinfo[opcmpvi64imm].portable = bccmpvi64immgo
 	opinfo[opcmplti64imm].portable = bccmplti64immgo
 	opinfo[optuple].portable = bctuplego
+	opinfo[opbroadcast0k].portable = bcbroadcast0kgo
+	opinfo[opbroadcast1k].portable = bcbroadcast1kgo
+	opinfo[opfalse].portable = bcfalsego
+	opinfo[opnotk].portable = bcnotkgo
 	opinfo[opandk].portable = bcandkgo
+	opinfo[opandnk].portable = bcandnkgo
+	opinfo[opork].portable = bcorkgo
+	opinfo[opxork].portable = bcxorkgo
 	opinfo[opxnork].portable = bcxnorkgo
 	// opinfo[opboxf64].portable = bcboxf64go
 }
