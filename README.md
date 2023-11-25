@@ -82,7 +82,7 @@ one of these instance families:
 
 ## Sneller Cloud
 
-Our [cloud platform](https://sneller.io/sign-up/) simplifies the Sneller SQL
+Our [cloud platform](https://console.sneller.ai/) simplifies the Sneller SQL
 user experience by giving you instant access to thousands of CPU cores to run your queries.
 Sneller Cloud also provides automatic synchronization between your source data and your
 SQL tables, so you don't have any batch processes to manage in order to keep your tables
