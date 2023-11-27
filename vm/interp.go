@@ -31,6 +31,10 @@ func bcword(buf []byte, pc int) uint {
 	return uint(binary.LittleEndian.Uint16(buf[pc:]))
 }
 
+func bcword32(buf []byte, pc int) uint32 {
+	return binary.LittleEndian.Uint32(buf[pc:])
+}
+
 func bcword64(buf []byte, pc int) uint64 {
 	return binary.LittleEndian.Uint64(buf[pc:])
 }
@@ -472,6 +476,12 @@ func init() {
 	opinfo[opxork].portable = bcxorkgo
 	opinfo[opxnork].portable = bcxnorkgo
 	// opinfo[opboxf64].portable = bcboxf64go
+
+	opinfo[opaggminf].portable = bcaggminf
+	opinfo[opaggmaxf].portable = bcaggmaxf
+	opinfo[opaggmini].portable = bcaggmini
+	opinfo[opaggmaxi].portable = bcaggmaxi
+
 }
 
 func evalfindgo(bc *bytecode, delims []vmref, stride int) {
