@@ -482,6 +482,15 @@ func init() {
 	opinfo[opaggmini].portable = bcaggmini
 	opinfo[opaggmaxi].portable = bcaggmaxi
 
+	opinfo[opcvtktof64].portable = bccvtktof64
+	opinfo[opcvtktoi64].portable = bccvtktoi64
+	opinfo[opcvti64tok].portable = bccvti64tok
+	opinfo[opcvtf64tok].portable = bccvtf64tok
+	opinfo[opcvti64tof64].portable = bccvti64tof64
+	opinfo[opcvtfloorf64toi64].portable = bccvtfloorf64toi64
+	opinfo[opcvtceilf64toi64].portable = bccvtceilf64toi64
+	opinfo[opcvttruncf64toi64].portable = bccvttruncf64toi64
+
 	opinfo[ophashvalue].portable = bchashvalue
 	opinfo[ophashvalueplus].portable = bchashvalueplus
 	opinfo[ophashmember].portable = bchashmember
