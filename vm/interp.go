@@ -270,6 +270,59 @@ outer:
 	return pc + 12
 }
 
+func bcfindsym2go(bc *bytecode, pc int) int {
+	dstv := argptr[vRegData](bc, pc)
+	dstk := argptr[kRegData](bc, pc+2)
+	srcb := *argptr[bRegData](bc, pc+4)
+	srcv := *argptr[vRegData](bc, pc+6)
+	srck := argptr[kRegData](bc, pc+8).mask
+	symbol, _, _ := ion.ReadLabel(bc.compiled[pc+10:])
+	srcmask := argptr[kRegData](bc, pc+14).mask
+
+	// initial dst state is the previous src value state
+	*dstv = srcv
+	retmask := uint16(0)
+outer:
+	for i := 0; i < bcLaneCount; i++ {
+		if srcmask&(1<<i) == 0 {
+			continue
+		}
+		searchpos := srcb.offsets[i]
+		end := srcb.offsets[i] + srcb.sizes[i]
+		if srck&(1<<i) != 0 {
+			searchpos = srcv.offsets[i] + srcv.sizes[i]
+		}
+		if searchpos >= end {
+			continue
+		}
+		mem := vmref{searchpos, end - searchpos}.mem()
+		var sym ion.Symbol
+		var err error
+	symsearch:
+		for len(mem) > 0 {
+			sym, mem, err = ion.ReadLabel(mem)
+			if err != nil {
+				bc.err = bcerrCorrupt
+				break outer
+			}
+			if sym > symbol {
+				break symsearch
+			}
+			dstv.offsets[i] = end - uint32(len(mem))
+			dstv.sizes[i] = uint32(ion.SizeOf(mem))
+			dstv.typeL[i] = byte(mem[0])
+			dstv.headerSize[i] = byte(ion.HeaderSizeOf(mem))
+			if sym == symbol {
+				retmask |= (1 << i)
+				break symsearch
+			}
+			mem = mem[ion.SizeOf(mem):]
+		}
+	}
+	dstk.mask = retmask
+	return pc + 16
+}
+
 func bccmplti64immgo(bc *bytecode, pc int) int {
 	dstk := argptr[kRegData](bc, pc)
 	arg0 := argptr[i64RegData](bc, pc+2)
@@ -340,6 +393,37 @@ func bccmpvi64immgo(bc *bytecode, pc int) int {
 	}
 	retk.mask = retmask
 	return pc + 16
+}
+
+func bcsplitgo(bc *bytecode, pc int) int {
+	retv := argptr[vRegData](bc, pc)
+	rets := argptr[sRegData](bc, pc+2)
+	retk := argptr[kRegData](bc, pc+4)
+	srcs := *argptr[sRegData](bc, pc+6)
+	srcmask := argptr[kRegData](bc, pc+8).mask
+
+	retmask := uint16(0)
+	for i := 0; i < bcLaneCount; i++ {
+		if srcmask&(1<<i) == 0 {
+			continue
+		}
+		mem := vmref{srcs.offsets[i], srcs.sizes[i]}.mem()
+		if len(mem) == 0 {
+			rets.offsets[i] = srcs.offsets[i]
+			rets.sizes[i] = srcs.sizes[i]
+			continue
+		}
+		size := ion.SizeOf(mem)
+		rets.offsets[i] = srcs.offsets[i] + uint32(size)
+		rets.sizes[i] = srcs.sizes[i] - uint32(size)
+		retv.offsets[i] = srcs.offsets[i]
+		retv.sizes[i] = uint32(size)
+		retv.typeL[i] = byte(mem[0])
+		retv.headerSize[i] = byte(ion.HeaderSizeOf(mem))
+		retmask |= (1 << i)
+	}
+	retk.mask = retmask
+	return pc + 10
 }
 
 func bctuplego(bc *bytecode, pc int) int {
@@ -504,7 +588,9 @@ func init() {
 	opinfo[opretsk].portable = bcretskgo
 	opinfo[opretbhk].portable = bcretbhkgo
 	opinfo[opauxval].portable = bcauxvalgo
+	opinfo[opsplit].portable = bcsplitgo
 	opinfo[opfindsym].portable = bcfindsymgo
+	opinfo[opfindsym2].portable = bcfindsym2go
 	opinfo[opcmpvi64imm].portable = bccmpvi64immgo
 	opinfo[opcmplti64imm].portable = bccmplti64immgo
 	opinfo[optuple].portable = bctuplego

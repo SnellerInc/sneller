@@ -4796,11 +4796,11 @@ TEXT bcfindsym2(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_ZI32(BC_SLOT_SIZE*5, OUT(Z27))             // Z27 <- encoded symbol to match
 
   VPXORD X2, X2, X2                                    // Z2 <- zeroed, preparation for VPGATHERDD
-  VMOVDQU32 0(VIRT_VALUES)(BX*1), Z3                   // Z3 <- struct offsets
+  VMOVDQU32 0(VIRT_VALUES)(BX*1), Z28                  // Z28 <- struct offsets
 
   BC_UNPACK_SLOT(BC_SLOT_SIZE*5 + 4, OUT(R8))
   BC_UNPACK_SLOT(BC_SLOT_SIZE*3, OUT(CX));
-  VPADDD 64(VIRT_VALUES)(BX*1), Z3, Z29                // Z29 <- end of struct
+  VPADDD 64(VIRT_VALUES)(BX*1), Z28, Z29               // Z29 <- end of struct
 
   VMOVDQU32 0(VIRT_VALUES)(CX*1), Z30                  // Z30 <- previous match offsets (or initial base)
   VMOVDQU32 64(VIRT_VALUES)(CX*1), Z31                 // Z31 <- previous match lengths (or zero if no match)
