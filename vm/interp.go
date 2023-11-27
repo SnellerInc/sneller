@@ -482,6 +482,10 @@ func init() {
 	opinfo[opaggmini].portable = bcaggmini
 	opinfo[opaggmaxi].portable = bcaggmaxi
 
+	opinfo[ophashvalue].portable = bchashvalue
+	opinfo[ophashvalueplus].portable = bchashvalueplus
+	opinfo[ophashmember].portable = bchashmember
+	opinfo[ophashlookup].portable = bchashlookup
 }
 
 func evalfindgo(bc *bytecode, delims []vmref, stride int) {

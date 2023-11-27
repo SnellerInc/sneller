@@ -49,7 +49,7 @@ func (s *sRegData) fill(v uint32) {
 }
 
 type hRegData struct {
-	lo, _ [bcLaneCount]uint64
+	lo, hi [bcLaneCount]uint64
 }
 
 type i64RegData struct {
