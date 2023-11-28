@@ -94,24 +94,6 @@ func bchashmember(bc *bytecode, pc int) int {
 	return pc + 8
 }
 
-func computeHlen(n uint32) byte {
-	// HLenZ <- updated header lengths to 1 (counting TLV byte)
-	hlen := byte(1)
-	if n >= 16388 {
-		// increase header length if the Length is encoded as 3 bytes or more
-		hlen++
-	}
-	if n >= 131 {
-		// increase header length if the Length is encoded as 2 bytes or more
-		hlen++
-	}
-	if n >= 15 {
-		// increase header length if the Length is encoded as 1 byte or more
-		hlen++
-	}
-	return hlen
-}
-
 func bchashlookup(bc *bytecode, pc int) int {
 	// Take snapshots before updating hdst due to possible aliasing
 	destv := argptr[vRegData](bc, pc+0)
@@ -134,7 +116,7 @@ func bchashlookup(bc *bytecode, pc int) int {
 					destv.sizes[lane] = size
 					mem := vmref{offs, size}.mem()
 					destv.typeL[lane] = mem[0]
-					destv.headerSize[lane] = computeHlen(size)
+					destv.headerSize[lane] = byte(getTLVSize(uint(size)))
 				}
 			}
 		}
@@ -145,7 +127,7 @@ func bchashlookup(bc *bytecode, pc int) int {
 			destv.offsets[lane] = 0
 			destv.sizes[lane] = 0
 			destv.typeL[lane] = 0
-			destv.headerSize[lane] = computeHlen(0)
+			destv.headerSize[lane] = 0
 		}
 	}
 	destk.mask = retmask
