@@ -40,14 +40,15 @@ func bcaggminf(bc *bytecode, pc int) int {
 	arg0 := argptr[f64RegData](bc, pc+4)
 	srcmask := argptr[kRegData](bc, pc+6).mask
 
-	m := math.Inf(0)
+	s := refAggState[f64AggState](bc, imm)
+	m := s.value
+
 	for lane := 0; lane < bcLaneCount; lane++ {
 		if srcmask&(1<<lane) != 0 {
 			m = math.Min(m, arg0.values[lane])
 		}
 	}
 
-	s := refAggState[f64AggState](bc, imm)
 	s.value = m
 	s.count += int64(bits.OnesCount16(srcmask))
 	return pc + 8
@@ -58,14 +59,15 @@ func bcaggmaxf(bc *bytecode, pc int) int {
 	arg0 := argptr[f64RegData](bc, pc+4)
 	srcmask := argptr[kRegData](bc, pc+6).mask
 
-	m := math.Inf(-1)
+	s := refAggState[f64AggState](bc, imm)
+	m := s.value
+
 	for lane := 0; lane < bcLaneCount; lane++ {
 		if srcmask&(1<<lane) != 0 {
 			m = math.Max(m, arg0.values[lane])
 		}
 	}
 
-	s := refAggState[f64AggState](bc, imm)
 	s.value = m
 	s.count += int64(bits.OnesCount16(srcmask))
 	return pc + 8
@@ -76,13 +78,15 @@ func bcaggmini(bc *bytecode, pc int) int {
 	arg0 := argptr[i64RegData](bc, pc+4)
 	srcmask := argptr[kRegData](bc, pc+6).mask
 
-	m := int64(math.MaxInt64)
+	s := refAggState[i64AggState](bc, imm)
+	m := s.value
+
 	for lane := 0; lane < bcLaneCount; lane++ {
 		if srcmask&(1<<lane) != 0 {
 			m = min(m, arg0.values[lane])
 		}
 	}
-	s := refAggState[i64AggState](bc, imm)
+
 	s.value = m
 	s.count += int64(bits.OnesCount16(srcmask))
 	return pc + 8
@@ -93,13 +97,15 @@ func bcaggmaxi(bc *bytecode, pc int) int {
 	arg0 := argptr[i64RegData](bc, pc+4)
 	srcmask := argptr[kRegData](bc, pc+6).mask
 
-	m := int64(math.MinInt64)
+	s := refAggState[i64AggState](bc, imm)
+	m := s.value
+
 	for lane := 0; lane < bcLaneCount; lane++ {
 		if srcmask&(1<<lane) != 0 {
 			m = max(m, arg0.values[lane])
 		}
 	}
-	s := refAggState[i64AggState](bc, imm)
+
 	s.value = m
 	s.count += int64(bits.OnesCount16(srcmask))
 	return pc + 8

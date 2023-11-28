@@ -720,6 +720,14 @@ func (p *aggregateLocal) symbolize(st *symtab, aux *auxbindings) error {
 	return recompile(st, p.parent.prog, &p.prog, &p.bc, aux, "aggregateLocal")
 }
 
+func evalaggregate(bc *bytecode, delims []vmref, aggregateDataBuffer []byte) int {
+	if globalOptimizationLevel >= OptimizationLevelAVX512V1 {
+		return evalaggregatebc(bc, delims, aggregateDataBuffer)
+	}
+
+	return evalaggregatego(bc, delims, aggregateDataBuffer)
+}
+
 func (p *aggregateLocal) writeRows(delims []vmref, rp *rowParams) error {
 	if p.bc.compiled == nil {
 		panic("WriteRows() called before Symbolize()")
@@ -740,12 +748,7 @@ func (p *aggregateLocal) writeRows(delims []vmref, rp *rowParams) error {
 			}
 			n = len(delims)
 
-			var rowsCount int
-			if globalOptimizationLevel >= OptimizationLevelAVX512V1 {
-				rowsCount = evalaggregatebc(&p.bc, chunk, p.partialData)
-			} else {
-				rowsCount = evalaggregatego(&p.bc, chunk, p.partialData)
-			}
+			rowsCount := evalaggregate(&p.bc, chunk, p.partialData)
 			if p.bc.err != 0 {
 				return bytecodeerror("aggregate", &p.bc)
 			}
@@ -771,7 +774,7 @@ func (p *aggregateLocal) writeRows(delims []vmref, rp *rowParams) error {
 			}
 		}
 	} else {
-		rowsCount := evalaggregatebc(&p.bc, delims, p.partialData)
+		rowsCount := evalaggregate(&p.bc, delims, p.partialData)
 		if p.bc.err != 0 {
 			return bytecodeerror("aggregate", &p.bc)
 		}

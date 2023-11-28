@@ -341,57 +341,58 @@ func bccmplti64immgo(bc *bytecode, pc int) int {
 }
 
 func bccmpvi64immgo(bc *bytecode, pc int) int {
-	retslot := argptr[i64RegData](bc, pc)
-	retk := argptr[kRegData](bc, pc+2)
 	argv := argptr[vRegData](bc, pc+4)
-	imm := int64(bcword64(bc, pc+6))
-	argk := argptr[kRegData](bc, pc+14)
+	immi64 := int64(bcword64(bc, pc+6))
+	immf64 := float64(immi64)
+	mask := argptr[kRegData](bc, pc+14).mask
 
-	src := *argv // copied since argv may alias retslot
-	mask := argk.mask
+	dst := i64RegData{}
 	retmask := uint16(0)
 	for i := 0; i < bcLaneCount; i++ {
 		if mask&(1<<i) == 0 {
-			retslot.values[i] = 0
 			continue
 		}
-		start := src.offsets[i]
-		width := src.sizes[i]
+		start := argv.offsets[i]
+		width := argv.sizes[i]
 		if width == 0 {
-			retslot.values[i] = 0
 			continue
 		}
 		mem := vmref{start, width}.mem()
-		var rv int64
-		switch ion.Type(src.typeL[i] >> 4) {
+		rv := int64(0)
+
+		switch ion.Type(argv.typeL[i] >> 4) {
 		case ion.FloatType:
-			f, _, _ := ion.ReadFloat64(mem)
-			if f < float64(imm) {
+			val, _, _ := ion.ReadFloat64(mem)
+			if val < immf64 {
 				rv = -1
-			} else if f > float64(imm) {
+			} else if val > immf64 {
 				rv = 1
 			}
 			retmask |= (1 << i)
 		case ion.IntType:
-			j, _, _ := ion.ReadInt(mem)
-			if j < imm {
+			val, _, _ := ion.ReadInt(mem)
+			if val < immi64 {
 				rv = -1
-			} else if j > imm {
+			} else if val > immi64 {
 				rv = 1
 			}
 			retmask |= (1 << i)
 		case ion.UintType:
-			u, _, _ := ion.ReadUint(mem)
-			if imm < 0 || u < uint64(imm) {
+			val, _, _ := ion.ReadUint(mem)
+			if immi64 < 0 {
+				rv = 1
+			} else if val < uint64(immi64) {
 				rv = -1
-			} else if u > uint64(imm) {
+			} else if val > uint64(immi64) {
 				rv = 1
 			}
 			retmask |= (1 << i)
 		}
-		retslot.values[i] = rv
+		dst.values[i] = rv
 	}
-	retk.mask = retmask
+
+	*argptr[i64RegData](bc, pc) = dst
+	*argptr[kRegData](bc, pc+2) = kRegData{retmask}
 	return pc + 16
 }
 
@@ -847,10 +848,7 @@ func evalaggregatego(bc *bytecode, delims []vmref, aggregateDataBuffer []byte) i
 	bc.vmState.aggPtr = unsafe.Pointer(&aggregateDataBuffer[0])
 	for len(delims) > 0 {
 		n := min(len(delims), bcLaneCount)
-		mask := uint16(0xffff)
-		if n < bcLaneCount {
-			mask >>= bcLaneCount - n
-		}
+		mask := uint16(0xffff) >> (bcLaneCount - n)
 		setvmrefB(&bc.vmState.delims, delims)
 		bc.vmState.validLanes.mask = mask
 		bc.vmState.outputLanes.mask = 0
