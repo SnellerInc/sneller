@@ -27,16 +27,16 @@ import (
 type opfn func(bc *bytecode, pc int) int
 
 // ops, arg slots, etc. are encoded as 16-bit integers:
-func bcword(buf []byte, pc int) uint {
-	return uint(binary.LittleEndian.Uint16(buf[pc:]))
+func bcword(bc *bytecode, pc int) uint {
+	return uint(binary.LittleEndian.Uint16(bc.compiled[pc:]))
 }
 
-func bcword32(buf []byte, pc int) uint32 {
-	return binary.LittleEndian.Uint32(buf[pc:])
+func bcword32(bc *bytecode, pc int) uint32 {
+	return binary.LittleEndian.Uint32(bc.compiled[pc:])
 }
 
-func bcword64(buf []byte, pc int) uint64 {
-	return binary.LittleEndian.Uint64(buf[pc:])
+func bcword64(bc *bytecode, pc int) uint64 {
+	return binary.LittleEndian.Uint64(bc.compiled[pc:])
 }
 
 func slotcast[T any](b *bytecode, slot uint) *T {
@@ -46,7 +46,7 @@ func slotcast[T any](b *bytecode, slot uint) *T {
 }
 
 func argptr[T any](b *bytecode, pc int) *T {
-	return slotcast[T](b, bcword(b.compiled, pc))
+	return slotcast[T](b, bcword(b, pc))
 }
 
 func setvmrefB(dst *bRegData, src []vmref) {
@@ -195,7 +195,7 @@ func evalfiltergo(bc *bytecode, delims []vmref) int {
 func bcauxvalgo(bc *bytecode, pc int) int {
 	dstv := argptr[vRegData](bc, pc)
 	dstk := argptr[kRegData](bc, pc+2)
-	auxv := bcword(bc.compiled, pc+4)
+	auxv := bcword(bc, pc+4)
 	lst := bc.auxvals[auxv][bc.auxpos:]
 	lst = lst[:min(bcLaneCount, len(lst))]
 	mask := uint16(0)
@@ -273,7 +273,7 @@ outer:
 func bccmplti64immgo(bc *bytecode, pc int) int {
 	dstk := argptr[kRegData](bc, pc)
 	arg0 := argptr[i64RegData](bc, pc+2)
-	arg1imm := int64(bcword64(bc.compiled, pc+4))
+	arg1imm := int64(bcword64(bc, pc+4))
 	srck := argptr[kRegData](bc, pc+12)
 
 	mask := srck.mask
@@ -291,7 +291,7 @@ func bccmpvi64immgo(bc *bytecode, pc int) int {
 	retslot := argptr[i64RegData](bc, pc)
 	retk := argptr[kRegData](bc, pc+2)
 	argv := argptr[vRegData](bc, pc+4)
-	imm := int64(bcword64(bc.compiled, pc+6))
+	imm := int64(bcword64(bc, pc+6))
 	argk := argptr[kRegData](bc, pc+14)
 
 	src := *argv // copied since argv may alias retslot
@@ -455,6 +455,48 @@ func bcretskgo(bc *bytecode, pc int) int {
 }
 
 func init() {
+	opinfo[opbroadcasti64].portable = bcbroadcasti64go
+	opinfo[opabsi64].portable = bcabsi64go
+	opinfo[opnegi64].portable = bcnegi64go
+	opinfo[opsigni64].portable = bcsigni64go
+	opinfo[opsquarei64].portable = bcsquarei64go
+	opinfo[opbitnoti64].portable = bcbitnoti64go
+	opinfo[opbitcounti64].portable = bcbitcounti64go
+	opinfo[opbitcounti64v2].portable = bcbitcounti64go
+	opinfo[opaddi64].portable = bcaddi64go
+	opinfo[opaddi64imm].portable = bcaddi64immgo
+	opinfo[opsubi64].portable = bcsubi64go
+	opinfo[opsubi64imm].portable = bcsubi64immgo
+	opinfo[oprsubi64imm].portable = bcrsubi64immgo
+	opinfo[opmuli64].portable = bcmuli64go
+	opinfo[opmuli64imm].portable = bcmuli64immgo
+	opinfo[opdivi64].portable = bcdivi64go
+	opinfo[opdivi64imm].portable = bcdivi64immgo
+	opinfo[oprdivi64imm].portable = bcrdivi64immgo
+	opinfo[opmodi64].portable = bcmodi64go
+	opinfo[opmodi64imm].portable = bcmodi64immgo
+	opinfo[oprmodi64imm].portable = bcrmodi64immgo
+	opinfo[oppmodi64].portable = bcpmodi64go
+	opinfo[oppmodi64imm].portable = bcpmodi64immgo
+	opinfo[oprpmodi64imm].portable = bcrpmodi64immgo
+	opinfo[opaddmuli64imm].portable = addmuli64immgo
+	opinfo[opminvaluei64].portable = bcminvaluei64go
+	opinfo[opminvaluei64imm].portable = bcminvaluei64immgo
+	opinfo[opmaxvaluei64].portable = bcmaxvaluei64go
+	opinfo[opmaxvaluei64imm].portable = bcmaxvaluei64immgo
+	opinfo[opandi64].portable = bcandi64go
+	opinfo[opandi64imm].portable = bcandi64immgo
+	opinfo[opori64].portable = bcori64go
+	opinfo[opori64imm].portable = bcori64immgo
+	opinfo[opxori64].portable = bcxori64go
+	opinfo[opxori64imm].portable = bcxori64immgo
+	opinfo[opslli64].portable = bcslli64go
+	opinfo[opslli64imm].portable = bcslli64immgo
+	opinfo[opsrai64].portable = bcsrai64go
+	opinfo[opsrai64imm].portable = bcsrai64immgo
+	opinfo[opsrli64].portable = bcsrli64go
+	opinfo[opsrli64imm].portable = bcsrli64immgo
+
 	opinfo[opinit].portable = bcinitgo
 	opinfo[opret].portable = bcretgo
 	opinfo[opretk].portable = bcretkgo
@@ -748,7 +790,7 @@ func eval(bc, alt *bytecode, resetScratch bool) {
 		bc.scratch = bc.scratch[:len(bc.savedlit)]
 	}
 	for pc < l && bc.err == 0 {
-		op := bcop(bcword(bc.compiled, pc))
+		op := bcop(bcword(bc, pc))
 		pc += 2
 		fn := opinfo[op].portable
 		if fn != nil {

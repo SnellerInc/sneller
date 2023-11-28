@@ -77,7 +77,7 @@ func bchashmember(bc *bytecode, pc int) int {
 	retmask := uint16(0)
 
 	if mask != 0 {
-		imm := bcword(bc.compiled, pc+4)
+		imm := bcword(bc, pc+4)
 		t := bc.trees[imm]
 
 		hptr := argptr[hRegData](bc, pc+2)
@@ -121,7 +121,7 @@ func bchashlookup(bc *bytecode, pc int) int {
 
 	if srcmask != 0 {
 		hashes := argptr[hRegData](bc, pc+4).lo
-		imm := bcword(bc.compiled, pc+6)
+		imm := bcword(bc, pc+6)
 		t := bc.trees[imm]
 		for lane := 0; lane < bcLaneCount; lane++ {
 			if srcmask&(1<<lane) != 0 {

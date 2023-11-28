@@ -36,7 +36,7 @@ func refAggState[T any](bc *bytecode, offs uint32) *T {
 }
 
 func bcaggminf(bc *bytecode, pc int) int {
-	imm := bcword32(bc.compiled, pc+0)
+	imm := bcword32(bc, pc+0)
 	arg0 := argptr[f64RegData](bc, pc+4)
 	srcmask := argptr[kRegData](bc, pc+6).mask
 
@@ -54,7 +54,7 @@ func bcaggminf(bc *bytecode, pc int) int {
 }
 
 func bcaggmaxf(bc *bytecode, pc int) int {
-	imm := bcword32(bc.compiled, pc+0)
+	imm := bcword32(bc, pc+0)
 	arg0 := argptr[f64RegData](bc, pc+4)
 	srcmask := argptr[kRegData](bc, pc+6).mask
 
@@ -72,7 +72,7 @@ func bcaggmaxf(bc *bytecode, pc int) int {
 }
 
 func bcaggmini(bc *bytecode, pc int) int {
-	imm := bcword32(bc.compiled, pc+0)
+	imm := bcword32(bc, pc+0)
 	arg0 := argptr[i64RegData](bc, pc+4)
 	srcmask := argptr[kRegData](bc, pc+6).mask
 
@@ -89,7 +89,7 @@ func bcaggmini(bc *bytecode, pc int) int {
 }
 
 func bcaggmaxi(bc *bytecode, pc int) int {
-	imm := bcword32(bc.compiled, pc+0)
+	imm := bcword32(bc, pc+0)
 	arg0 := argptr[i64RegData](bc, pc+4)
 	srcmask := argptr[kRegData](bc, pc+6).mask
 
