@@ -138,16 +138,16 @@ func TestRadixBytecodeFind(t *testing.T) {
 	t.Logf("index[0]: %d", agt.tree.index[0])
 	checktable(agt.tree, t)
 
-	abort := uint16(0)
-	n = agt.fasteval(first16, &abort)
+	n = agt.fasteval(first16)
 	if n != 16 {
 		slot := agt.bc.errinfo >> 3
 		hashmem := agt.bc.vstack[slot : slot+16]
 		t.Logf("hashes: %x", hashmem)
 		t.Fatalf("n = %d", n)
 	}
-	if abort != 0 {
-		t.Errorf("abort = %x", abort)
+
+	if agt.bc.missingBucketMask != 0 {
+		t.Errorf("missing bucket mask: %x", agt.bc.missingBucketMask)
 	}
 
 	counts := make(map[uint64]int)

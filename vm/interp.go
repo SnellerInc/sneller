@@ -862,6 +862,33 @@ func evalaggregatego(bc *bytecode, delims []vmref, aggregateDataBuffer []byte) i
 	return ret
 }
 
+func evalhashagggo(bc *bytecode, delims []vmref, tree *radixTree64) int {
+	var alt bytecode
+	ret := 0
+
+	bc.err = 0
+	bc.missingBucketMask = 0
+	bc.vmState.aggPtr = unsafe.Pointer(tree)
+
+	for len(delims) > 0 {
+		n := min(len(delims), bcLaneCount)
+		mask := uint16(0xffff) >> (bcLaneCount - n)
+
+		setvmrefB(&bc.vmState.delims, delims)
+		bc.vmState.validLanes.mask = mask
+		bc.vmState.outputLanes.mask = 0
+
+		eval(bc, &alt, true)
+		if bc.err != 0 {
+			return ret
+		}
+
+		delims = delims[n:]
+		ret += n
+	}
+	return ret
+}
+
 //go:noescape
 func bcenter(bc *bytecode, k7 uint16)
 
@@ -903,9 +930,10 @@ func runSingle(bc, alt *bytecode, pc int, k7 uint16) int {
 
 	// evaluate the bytecode and copy back the error state
 	bcenter(alt, k7)
+	bc.scratch = alt.scratch // copy back len(scratch)
 	bc.err = alt.err
 	bc.errpc = alt.errpc
 	bc.errinfo = alt.errinfo
-	bc.scratch = alt.scratch // copy back len(scratch)
+	bc.missingBucketMask = alt.missingBucketMask
 	return pc + width
 }

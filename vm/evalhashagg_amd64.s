@@ -18,15 +18,16 @@
 #include "bc_amd64.h"
 #include "bc_imm_amd64.h"
 
-TEXT ·evalhashagg(SB), NOSPLIT, $8
+TEXT ·evalhashaggbc(SB), NOSPLIT, $8
   NO_LOCAL_POINTERS
 
   MOVQ bc+0(FP), VIRT_BCPTR
   MOVQ ·vmm+0(SB), VIRT_BASE
   XORQ R9, R9           // R9 = rows consumed
   MOVQ tree+32(FP), VIRT_AGG_BUFFER
-  MOVQ abort+40(FP), R8
-  MOVW $0, 0(R8)        // initially, abort = 0
+
+  // Clear missing bucket mask here so it's always zero before executing BC.
+  MOVW $0, bytecode_missingBucketMask(VIRT_BCPTR)
 
 loop:
   MOVQ delims_len+16(FP), CX
@@ -66,13 +67,12 @@ loop:
   BC_ENTER()
   JC     early_end
   JMP    loop
-end:
-  MOVQ      R9, ret+48(FP)
-  RET
+
 early_end:
   KMOVW     K7, R8
   POPCNTL   R8, R8
   SUBQ      R8, R9
-  MOVQ      abort+40(FP), R8
-  KMOVW     K2, 0(R8)
-  JMP       end
+
+end:
+  MOVQ      R9, ret+40(FP)
+  RET

@@ -269,6 +269,8 @@ type bytecode struct {
 	// additional error information;
 	// error-specific
 	errinfo int
+	// mask used to abort 'opaggbucket' in case one or more bucket wasn't found.
+	missingBucketMask uint16
 
 	// currently only used by the interpreter to hold states that are otherwise
 	// passed / retrieved in registers

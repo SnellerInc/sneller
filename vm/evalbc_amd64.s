@@ -6949,6 +6949,7 @@ early_ret:
   MOVL $const_bcerrNeedRadix, bytecode_err(VIRT_BCPTR)
   BC_UNPACK_SLOT(BC_SLOT_SIZE, OUT(R8))
   MOVQ R8, bytecode_errinfo(VIRT_BCPTR)
+  KMOVW K2, bytecode_missingBucketMask(VIRT_BCPTR)
   RET_ABORT()
 
 bad_radix_bucket:

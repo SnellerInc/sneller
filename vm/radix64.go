@@ -511,14 +511,18 @@ func (a *aggtable) initentry(buf []byte) {
 }
 
 //go:noescape
-func evalhashagg(bc *bytecode, delims []vmref, tree *radixTree64, abort *uint16) int
+func evalhashaggbc(bc *bytecode, delims []vmref, tree *radixTree64) int
 
-func (a *aggtable) fasteval(delims []vmref, abort *uint16) int {
+func (a *aggtable) fasteval(delims []vmref) int {
 	if a.bc.compiled == nil {
 		panic("aggtable.bc.compiled == nil")
 	}
 
-	return evalhashagg(&a.bc, delims, a.tree, abort)
+	if globalOptimizationLevel >= OptimizationLevelAVX512V1 {
+		return evalhashaggbc(&a.bc, delims, a.tree)
+	}
+
+	return evalhashagggo(&a.bc, delims, a.tree)
 }
 
 func (a *aggtable) EndSegment() {
@@ -551,7 +555,6 @@ func (a *aggtable) writeRows(delims []vmref, rp *rowParams) error {
 	// in a.repr[] for each aggregated item.
 	projectedGroupByCount := len(a.parent.by)
 	vRegSizeInUInt64Units := int(vRegSize >> 3)
-	var abort uint16
 	a.bc.prepare(rp)
 
 	// for each value that did not have a location,
@@ -628,13 +631,13 @@ func (a *aggtable) writeRows(delims []vmref, rp *rowParams) error {
 			chunk = chunk[:aggregateOpMergeBufferRowsCount]
 		}
 
-		n := a.fasteval(chunk, &abort)
+		n := a.fasteval(chunk)
 		if a.bc.err != 0 && a.bc.err != bcerrNeedRadix {
 			return bytecodeerror("hash aggregate", &a.bc)
 		}
 		delims = delims[n:]
-		if abort != 0 {
-			if err := createNodes(abort); err != nil {
+		if a.bc.missingBucketMask != 0 {
+			if err := createNodes(a.bc.missingBucketMask); err != nil {
 				return err
 			}
 			continue
