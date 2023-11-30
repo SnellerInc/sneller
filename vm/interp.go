@@ -620,19 +620,19 @@ func init() {
 	opinfo[opcvtceilf64toi64].portable = bccvtceilf64toi64
 	opinfo[opcvttruncf64toi64].portable = bccvttruncf64toi64
 
-	opinfo[ophashvalue].portable = bchashvalue
-	opinfo[ophashvalueplus].portable = bchashvalueplus
-	opinfo[ophashmember].portable = bchashmember
-	opinfo[ophashlookup].portable = bchashlookup
+	opinfo[ophashvalue].portable = bchashvaluego
+	opinfo[ophashvalueplus].portable = bchashvalueplusgo
+	opinfo[ophashmember].portable = bchashmembergo
+	opinfo[ophashlookup].portable = bchashlookupgo
 
-	opinfo[opzerov].portable = bczerov
-	opinfo[opmovv].portable = bcmovv
-	opinfo[opmovf64].portable = bcmovf64
-	opinfo[opmovi64].portable = bcmovi64
-	opinfo[opmovk].portable = bcmovk
-	opinfo[opmovvk].portable = bcmovvk
-	opinfo[opblendv].portable = bcblendv
-	opinfo[opblendf64].portable = bcblendf64
+	opinfo[opzerov].portable = bczerovgo
+	opinfo[opmovv].portable = bcmovvgo
+	opinfo[opmovf64].portable = bcmovf64go
+	opinfo[opmovi64].portable = bcmovi64go
+	opinfo[opmovk].portable = bcmovkgo
+	opinfo[opmovvk].portable = bcmovvkgo
+	opinfo[opblendv].portable = bcblendvgo
+	opinfo[opblendf64].portable = bcblendf64go
 
 }
 

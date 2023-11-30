@@ -14,12 +14,12 @@
 
 package vm
 
-func bczerov(bc *bytecode, pc int) int {
+func bczerovgo(bc *bytecode, pc int) int {
 	*argptr[vRegData](bc, pc+0) = vRegData{}
 	return pc + 2
 }
 
-func bcmovv(bc *bytecode, pc int) int {
+func bcmovvgo(bc *bytecode, pc int) int {
 	destv := argptr[vRegData](bc, pc+0)
 	srcv := argptr[vRegData](bc, pc+2)
 	srcmask := argptr[kRegData](bc, pc+4).mask
@@ -38,7 +38,7 @@ func bcmovv(bc *bytecode, pc int) int {
 	return pc + 6
 }
 
-func bcmovf64(bc *bytecode, pc int) int {
+func bcmovf64go(bc *bytecode, pc int) int {
 	destf64 := argptr[f64RegData](bc, pc+0)
 	srcf64 := argptr[f64RegData](bc, pc+2)
 	srcmask := argptr[kRegData](bc, pc+4).mask
@@ -54,7 +54,7 @@ func bcmovf64(bc *bytecode, pc int) int {
 	return pc + 6
 }
 
-func bcmovi64(bc *bytecode, pc int) int {
+func bcmovi64go(bc *bytecode, pc int) int {
 	desti64 := argptr[i64RegData](bc, pc+0)
 	srci64 := argptr[i64RegData](bc, pc+2)
 	srcmask := argptr[kRegData](bc, pc+4).mask
@@ -70,14 +70,14 @@ func bcmovi64(bc *bytecode, pc int) int {
 	return pc + 6
 }
 
-func bcmovk(bc *bytecode, pc int) int {
+func bcmovkgo(bc *bytecode, pc int) int {
 	destk := argptr[kRegData](bc, pc+0)
 	srcmask := argptr[kRegData](bc, pc+2).mask
 	destk.mask = srcmask
 	return pc + 4
 }
 
-func bcmovvk(bc *bytecode, pc int) int {
+func bcmovvkgo(bc *bytecode, pc int) int {
 	destv := argptr[vRegData](bc, pc+0)
 	destk := argptr[kRegData](bc, pc+2)
 	srcv := argptr[vRegData](bc, pc+4)
@@ -98,7 +98,7 @@ func bcmovvk(bc *bytecode, pc int) int {
 	return pc + 8
 }
 
-func bcblendv(bc *bytecode, pc int) int {
+func bcblendvgo(bc *bytecode, pc int) int {
 	destv := argptr[vRegData](bc, pc+0)
 	destk := argptr[kRegData](bc, pc+2)
 	srcmask1 := argptr[kRegData](bc, pc+6).mask
@@ -127,7 +127,7 @@ func bcblendv(bc *bytecode, pc int) int {
 	return pc + 12
 }
 
-func bcblendf64(bc *bytecode, pc int) int {
+func bcblendf64go(bc *bytecode, pc int) int {
 	destf64 := argptr[f64RegData](bc, pc+0)
 	destk := argptr[kRegData](bc, pc+2)
 	srcmaska := argptr[kRegData](bc, pc+6).mask

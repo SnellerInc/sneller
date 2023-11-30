@@ -20,7 +20,7 @@ import (
 	"github.com/dchest/siphash"
 )
 
-func bchashvalue(bc *bytecode, pc int) int {
+func bchashvaluego(bc *bytecode, pc int) int {
 	hdst := argptr[hRegData](bc, pc+0)
 	bsrc := argptr[bRegData](bc, pc+2)
 	argk := argptr[kRegData](bc, pc+4)
@@ -46,7 +46,7 @@ func bchashvalue(bc *bytecode, pc int) int {
 	return pc + 6
 }
 
-func bchashvalueplus(bc *bytecode, pc int) int {
+func bchashvalueplusgo(bc *bytecode, pc int) int {
 	hdst := argptr[hRegData](bc, pc+0)
 	hhash := argptr[hRegData](bc, pc+2)
 	bsrc := argptr[bRegData](bc, pc+4)
@@ -71,7 +71,7 @@ func bchashvalueplus(bc *bytecode, pc int) int {
 	return pc + 8
 }
 
-func bchashmember(bc *bytecode, pc int) int {
+func bchashmembergo(bc *bytecode, pc int) int {
 	destk := argptr[kRegData](bc, pc+0)
 	mask := argptr[kRegData](bc, pc+6).mask
 	retmask := uint16(0)
@@ -94,7 +94,7 @@ func bchashmember(bc *bytecode, pc int) int {
 	return pc + 8
 }
 
-func bchashlookup(bc *bytecode, pc int) int {
+func bchashlookupgo(bc *bytecode, pc int) int {
 	// Take snapshots before updating hdst due to possible aliasing
 	destv := argptr[vRegData](bc, pc+0)
 	destk := argptr[kRegData](bc, pc+2)
