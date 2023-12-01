@@ -453,46 +453,6 @@ func bctuplego(bc *bytecode, pc int) int {
 	return pc + 8
 }
 
-/*
-// TODO: Temporarily disabled as it regresses one test for some reason.
-func bcboxf64go(bc *bytecode, pc int) int {
-	dst := argptr[vRegData](bc, pc)
-	src := argptr[f64RegData](bc, pc+2)
-	mask := argptr[kRegData](bc, pc+4).mask
-
-	p := len(bc.scratch)
-	want := 9 * bcLaneCount
-	if cap(bc.scratch)-p < want {
-		bc.err = bcerrMoreScratch
-		return pc + 6
-	}
-	bc.scratch = bc.scratch[:p+want]
-	mem := bc.scratch[p:]
-	var buf ion.Buffer
-	for i := 0; i < bcLaneCount; i++ {
-		if mask&(1<<i) == 0 {
-			dst.offsets[i] = 0
-			dst.sizes[i] = 0
-			dst.typeL[i] = 0
-			dst.headerSize[i] = 0
-			continue
-		}
-		buf.Set(mem[:0])
-		buf.WriteCanonicalFloat(src.values[i])
-		start, ok := vmdispl(mem)
-		if !ok {
-			panic("bad scratch buffer")
-		}
-		dst.offsets[i] = start
-		dst.sizes[i] = uint32(len(buf.Bytes()))
-		dst.typeL[i] = mem[0]
-		dst.headerSize[i] = 1 // ints and floats always have 1-byte headers
-		mem = mem[9:]
-	}
-	return pc + 6
-}
-*/
-
 func bcretgo(bc *bytecode, pc int) int {
 	bc.err = 0
 	bc.vmState.outputLanes.mask = bc.vmState.validLanes.mask
@@ -604,7 +564,6 @@ func init() {
 	opinfo[opork].portable = bcorkgo
 	opinfo[opxork].portable = bcxorkgo
 	opinfo[opxnork].portable = bcxnorkgo
-	// opinfo[opboxf64].portable = bcboxf64go
 
 	opinfo[opaggminf].portable = bcaggminf
 	opinfo[opaggmaxf].portable = bcaggmaxf
