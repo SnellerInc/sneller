@@ -31,6 +31,10 @@ func bcword(bc *bytecode, pc int) uint {
 	return uint(binary.LittleEndian.Uint16(bc.compiled[pc:]))
 }
 
+func bcword8(bc *bytecode, pc int) byte {
+	return bc.compiled[pc]
+}
+
 func bcword32(bc *bytecode, pc int) uint32 {
 	return binary.LittleEndian.Uint32(bc.compiled[pc:])
 }
@@ -220,109 +224,6 @@ func bcinitgo(bc *bytecode, pc int) int {
 	return pc + 4
 }
 
-func bcfindsymgo(bc *bytecode, pc int) int {
-	dstv := argptr[vRegData](bc, pc)
-	dstk := argptr[kRegData](bc, pc+2)
-	srcb := argptr[bRegData](bc, pc+4)
-	symbol, _, _ := ion.ReadLabel(bc.compiled[pc+6:])
-	srck := argptr[kRegData](bc, pc+10)
-
-	src := *srcb // may alias output
-	srcmask := srck.mask
-	retmask := uint16(0)
-
-outer:
-	for i := 0; i < bcLaneCount; i++ {
-		start := src.offsets[i]
-		width := src.sizes[i]
-		dstv.offsets[i] = start
-		dstv.sizes[i] = 0
-		dstv.typeL[i] = 0
-		dstv.headerSize[i] = 0
-		if srcmask&(1<<i) == 0 {
-			continue
-		}
-		mem := vmref{start, width}.mem()
-		var sym ion.Symbol
-		var err error
-	symsearch:
-		for len(mem) > 0 {
-			sym, mem, err = ion.ReadLabel(mem)
-			if err != nil {
-				bc.err = bcerrCorrupt
-				break outer
-			}
-			if sym > symbol {
-				break symsearch
-			}
-			dstv.offsets[i] = start + width - uint32(len(mem))
-			dstv.sizes[i] = uint32(ion.SizeOf(mem))
-			dstv.typeL[i] = byte(mem[0])
-			dstv.headerSize[i] = byte(ion.HeaderSizeOf(mem))
-			if sym == symbol {
-				retmask |= (1 << i)
-				break symsearch
-			}
-			mem = mem[ion.SizeOf(mem):]
-		}
-	}
-	dstk.mask = retmask
-	return pc + 12
-}
-
-func bcfindsym2go(bc *bytecode, pc int) int {
-	dstv := argptr[vRegData](bc, pc)
-	dstk := argptr[kRegData](bc, pc+2)
-	srcb := *argptr[bRegData](bc, pc+4)
-	srcv := *argptr[vRegData](bc, pc+6)
-	srck := argptr[kRegData](bc, pc+8).mask
-	symbol, _, _ := ion.ReadLabel(bc.compiled[pc+10:])
-	srcmask := argptr[kRegData](bc, pc+14).mask
-
-	// initial dst state is the previous src value state
-	*dstv = srcv
-	retmask := uint16(0)
-outer:
-	for i := 0; i < bcLaneCount; i++ {
-		if srcmask&(1<<i) == 0 {
-			continue
-		}
-		searchpos := srcb.offsets[i]
-		end := srcb.offsets[i] + srcb.sizes[i]
-		if srck&(1<<i) != 0 {
-			searchpos = srcv.offsets[i] + srcv.sizes[i]
-		}
-		if searchpos >= end {
-			continue
-		}
-		mem := vmref{searchpos, end - searchpos}.mem()
-		var sym ion.Symbol
-		var err error
-	symsearch:
-		for len(mem) > 0 {
-			sym, mem, err = ion.ReadLabel(mem)
-			if err != nil {
-				bc.err = bcerrCorrupt
-				break outer
-			}
-			if sym > symbol {
-				break symsearch
-			}
-			dstv.offsets[i] = end - uint32(len(mem))
-			dstv.sizes[i] = uint32(ion.SizeOf(mem))
-			dstv.typeL[i] = byte(mem[0])
-			dstv.headerSize[i] = byte(ion.HeaderSizeOf(mem))
-			if sym == symbol {
-				retmask |= (1 << i)
-				break symsearch
-			}
-			mem = mem[ion.SizeOf(mem):]
-		}
-	}
-	dstk.mask = retmask
-	return pc + 16
-}
-
 func bccmplti64immgo(bc *bytecode, pc int) int {
 	dstk := argptr[kRegData](bc, pc)
 	arg0 := argptr[i64RegData](bc, pc+2)
@@ -500,6 +401,13 @@ func bcretskgo(bc *bytecode, pc int) int {
 }
 
 func init() {
+	opinfo[opinit].portable = bcinitgo
+	opinfo[opret].portable = bcretgo
+	opinfo[opretk].portable = bcretkgo
+	opinfo[opretbk].portable = bcretbkgo
+	opinfo[opretsk].portable = bcretskgo
+	opinfo[opretbhk].portable = bcretbhkgo
+
 	opinfo[opbroadcasti64].portable = bcbroadcasti64go
 	opinfo[opabsi64].portable = bcabsi64go
 	opinfo[opnegi64].portable = bcnegi64go
@@ -542,16 +450,20 @@ func init() {
 	opinfo[opsrli64].portable = bcsrli64go
 	opinfo[opsrli64imm].portable = bcsrli64immgo
 
-	opinfo[opinit].portable = bcinitgo
-	opinfo[opret].portable = bcretgo
-	opinfo[opretk].portable = bcretkgo
-	opinfo[opretbk].portable = bcretbkgo
-	opinfo[opretsk].portable = bcretskgo
-	opinfo[opretbhk].portable = bcretbhkgo
 	opinfo[opauxval].portable = bcauxvalgo
 	opinfo[opsplit].portable = bcsplitgo
+
+	opinfo[oplitref].portable = bclitrefgo
+	opinfo[opisnullv].portable = bcisnullvgo
+	opinfo[opisnotnullv].portable = bcisnotnullvgo
+	opinfo[opistruev].portable = bcistruevgo
+	opinfo[opisfalsev].portable = bcisfalsevgo
+	opinfo[optypebits].portable = bctypebitsgo
+	opinfo[opchecktag].portable = bcchecktaggo
+	opinfo[opobjectsize].portable = bcobjectsizego
 	opinfo[opfindsym].portable = bcfindsymgo
 	opinfo[opfindsym2].portable = bcfindsym2go
+
 	opinfo[opcmpvi64imm].portable = bccmpvi64immgo
 	opinfo[opcmplti64imm].portable = bccmplti64immgo
 	opinfo[optuple].portable = bctuplego

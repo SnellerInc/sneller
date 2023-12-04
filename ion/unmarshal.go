@@ -601,7 +601,8 @@ func ReadLabel(msg []byte) (Symbol, []byte, error) {
 	return Symbol(uv), rest, nil
 }
 
-// read unsigned varint
+// readuv reads unsigned varint and returns the subsequent
+// message bytes
 func readuv(msg []byte) (uint, []byte, bool) {
 	out := uint(0)
 	i := 0
