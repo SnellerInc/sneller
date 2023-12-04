@@ -453,6 +453,18 @@ func init() {
 	opinfo[opauxval].portable = bcauxvalgo
 	opinfo[opsplit].portable = bcsplitgo
 
+	opinfo[oparraysize].portable = bcarraysizego
+	opinfo[oparrayposition].portable = bcarraypositiongo
+	opinfo[oparraysum].portable = bcarraysumgo
+	opinfo[opvectorinnerproduct].portable = bcvectorinnerproductgo
+	opinfo[opvectorinnerproductimm].portable = bcvectorinnerproductimmgo
+	opinfo[opvectorl1distance].portable = bcvectorl1distancego
+	opinfo[opvectorl1distanceimm].portable = bcvectorl1distanceimmgo
+	opinfo[opvectorl2distance].portable = bcvectorl2distancego
+	opinfo[opvectorl2distanceimm].portable = bcvectorl2distanceimmgo
+	opinfo[opvectorcosinedistance].portable = bcvectorcosinedistancego
+	opinfo[opvectorcosinedistanceimm].portable = bcvectorcosinedistanceimmgo
+
 	opinfo[oplitref].portable = bclitrefgo
 	opinfo[opisnullv].portable = bcisnullvgo
 	opinfo[opisnotnullv].portable = bcisnotnullvgo
