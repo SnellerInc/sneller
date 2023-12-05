@@ -16,6 +16,7 @@ package vm
 
 import (
 	"encoding/binary"
+	"math"
 	"math/bits"
 	"unsafe"
 
@@ -41,6 +42,10 @@ func bcword32(bc *bytecode, pc int) uint32 {
 
 func bcword64(bc *bytecode, pc int) uint64 {
 	return binary.LittleEndian.Uint64(bc.compiled[pc:])
+}
+
+func bcfloat64(bc *bytecode, pc int) float64 {
+	return math.Float64frombits(bcword64(bc, pc))
 }
 
 func slotcast[T any](b *bytecode, slot uint) *T {
@@ -516,7 +521,6 @@ func init() {
 	opinfo[opmovvk].portable = bcmovvkgo
 	opinfo[opblendv].portable = bcblendvgo
 	opinfo[opblendf64].portable = bcblendf64go
-
 }
 
 func evalfindgo(bc *bytecode, delims []vmref, stride int) {
