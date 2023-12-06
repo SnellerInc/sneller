@@ -23,6 +23,7 @@ func init() {
 	opinfo[opunboxcvti64].portable = bcunboxcvti64go
 	opinfo[opunboxts].portable = bcunboxtsgo
 	opinfo[opunboxktoi64].portable = bcunboxktoi64go
+	opinfo[opunpack].portable = bcunpackgo
 }
 
 func bcunboxktoi64go(bc *bytecode, pc int) int {
@@ -239,4 +240,27 @@ func bcunboxcoercef64go(bc *bytecode, pc int) int {
 	*dst = out
 	dstk.mask = retmask
 	return pc + 8
+}
+
+func bcunpackgo(bc *bytecode, pc int) int {
+	rets := argptr[sRegData](bc, pc)
+	retk := argptr[kRegData](bc, pc+2)
+	argv := argptr[vRegData](bc, pc+4)
+	imm := bcword(bc, pc+6)
+	argk := argptr[kRegData](bc, pc+8)
+
+	srcmask := argk.mask
+	retmask := uint16(0)
+	var out sRegData
+	for i := 0; i < bcLaneCount; i++ {
+		if srcmask&(1<<i) == 0 || uint(argv.typeL[i]>>4) != imm || argv.sizes[i] == 0 {
+			continue
+		}
+		out.offsets[i] = argv.offsets[i] + uint32(argv.headerSize[i])
+		out.sizes[i] = argv.sizes[i] - uint32(argv.headerSize[i])
+		retmask |= (1 << i)
+	}
+	retk.mask = retmask
+	*rets = out
+	return pc + 10
 }
