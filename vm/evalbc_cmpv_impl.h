@@ -34,17 +34,17 @@
 //   - 0x80 - SORTING SEMANTICS enabled if ALL bits in the predicate are 1
 
 // Matching types only (this predicate doesn't provide sorting semantics)
-CONST_DATA_U64(cmpv_predicate_matching_type, 0, $0x0403000202020100)
+CONST_DATA_U64(cmpv_predicate_matching_type, 0, $0x04037F0202020100)
 CONST_DATA_U64(cmpv_predicate_matching_type, 8, $0x7F7F7F7F7F7F7F04)
 CONST_GLOBAL(cmpv_predicate_matching_type, $16)
 
 // Compare with sorting semantics, NULLs are sorted before any other value.
-CONST_DATA_U64(cmpv_predicate_sort_nulls_first, 0, $0x8483808282828180)
+CONST_DATA_U64(cmpv_predicate_sort_nulls_first, 0, $0x8483FF8282828180)
 CONST_DATA_U64(cmpv_predicate_sort_nulls_first, 8, $0xFFFFFFFFFFFFFF84)
 CONST_GLOBAL(cmpv_predicate_sort_nulls_first, $16)
 
 // Compare with sorting semantics, NULLs are sorted after any other value.
-CONST_DATA_U64(cmpv_predicate_sort_nulls_last, 0, $0x848380828282818F)
+CONST_DATA_U64(cmpv_predicate_sort_nulls_last, 0, $0x84838FF28282818F)
 CONST_DATA_U64(cmpv_predicate_sort_nulls_last, 8, $0xFFFFFFFFFFFFFF84)
 CONST_GLOBAL(cmpv_predicate_sort_nulls_last, $16)
 

@@ -229,79 +229,6 @@ func bcinitgo(bc *bytecode, pc int) int {
 	return pc + 4
 }
 
-func bccmplti64immgo(bc *bytecode, pc int) int {
-	dstk := argptr[kRegData](bc, pc)
-	arg0 := argptr[i64RegData](bc, pc+2)
-	arg1imm := int64(bcword64(bc, pc+4))
-	srck := argptr[kRegData](bc, pc+12)
-
-	mask := srck.mask
-	retmask := uint16(0)
-	for i := 0; i < bcLaneCount; i++ {
-		if arg0.values[i] < arg1imm {
-			retmask |= (1 << i)
-		}
-	}
-	dstk.mask = retmask & mask
-	return pc + 14
-}
-
-func bccmpvi64immgo(bc *bytecode, pc int) int {
-	argv := argptr[vRegData](bc, pc+4)
-	immi64 := int64(bcword64(bc, pc+6))
-	immf64 := float64(immi64)
-	mask := argptr[kRegData](bc, pc+14).mask
-
-	dst := i64RegData{}
-	retmask := uint16(0)
-	for i := 0; i < bcLaneCount; i++ {
-		if mask&(1<<i) == 0 {
-			continue
-		}
-		start := argv.offsets[i]
-		width := argv.sizes[i]
-		if width == 0 {
-			continue
-		}
-		mem := vmref{start, width}.mem()
-		rv := int64(0)
-
-		switch ion.Type(argv.typeL[i] >> 4) {
-		case ion.FloatType:
-			val, _, _ := ion.ReadFloat64(mem)
-			if val < immf64 {
-				rv = -1
-			} else if val > immf64 {
-				rv = 1
-			}
-			retmask |= (1 << i)
-		case ion.IntType:
-			val, _, _ := ion.ReadInt(mem)
-			if val < immi64 {
-				rv = -1
-			} else if val > immi64 {
-				rv = 1
-			}
-			retmask |= (1 << i)
-		case ion.UintType:
-			val, _, _ := ion.ReadUint(mem)
-			if immi64 < 0 {
-				rv = 1
-			} else if val < uint64(immi64) {
-				rv = -1
-			} else if val > uint64(immi64) {
-				rv = 1
-			}
-			retmask |= (1 << i)
-		}
-		dst.values[i] = rv
-	}
-
-	*argptr[i64RegData](bc, pc) = dst
-	*argptr[kRegData](bc, pc+2) = kRegData{retmask}
-	return pc + 16
-}
-
 func bcsplitgo(bc *bytecode, pc int) int {
 	retv := argptr[vRegData](bc, pc)
 	rets := argptr[sRegData](bc, pc+2)
@@ -455,6 +382,51 @@ func init() {
 	opinfo[opsrli64].portable = bcsrli64go
 	opinfo[opsrli64imm].portable = bcsrli64immgo
 
+	opinfo[opcmpv].portable = bccmpvgo
+	opinfo[opsortcmpvnf].portable = bccmpvgo
+	opinfo[opsortcmpvnl].portable = bccmpvgo
+	opinfo[opcmpvk].portable = bccmpvkgo
+	opinfo[opcmpvkimm].portable = bccmpvkimmgo
+	opinfo[opcmpvf64].portable = bccmpvf64go
+	opinfo[opcmpvf64imm].portable = bccmpvf64immgo
+	opinfo[opcmpvi64].portable = bccmpvi64go
+	opinfo[opcmpvi64imm].portable = bccmpvi64immgo
+	opinfo[opcmpeqslice].portable = bccmpeqslicego
+	opinfo[opcmpltstr].portable = bccmpltstrgo
+	opinfo[opcmplestr].portable = bccmplestrgo
+	opinfo[opcmpgtstr].portable = bccmpgtstrgo
+	opinfo[opcmpgestr].portable = bccmpgestrgo
+	opinfo[opcmpltk].portable = bccmpltkgo
+	opinfo[opcmpltkimm].portable = bccmpltkimmgo
+	opinfo[opcmplek].portable = bccmplekgo
+	opinfo[opcmplekimm].portable = bccmplekimmgo
+	opinfo[opcmpgtk].portable = bccmpgtkgo
+	opinfo[opcmpgtkimm].portable = bccmpgtkimmgo
+	opinfo[opcmpgek].portable = bccmpgekgo
+	opinfo[opcmpgekimm].portable = bccmpgekimmgo
+	opinfo[opcmpeqf64].portable = bccmpeqf64go
+	opinfo[opcmpeqf64imm].portable = bccmpeqf64immgo
+	opinfo[opcmpltf64].portable = bccmpltf64go
+	opinfo[opcmpltf64imm].portable = bccmpltf64immgo
+	opinfo[opcmplef64].portable = bccmplef64go
+	opinfo[opcmplef64imm].portable = bccmplef64immgo
+	opinfo[opcmpgtf64].portable = bccmpgtf64go
+	opinfo[opcmpgtf64imm].portable = bccmpgtf64immgo
+	opinfo[opcmpgef64].portable = bccmpgef64go
+	opinfo[opcmpgef64imm].portable = bccmpgef64immgo
+	opinfo[opcmpeqi64].portable = bccmpeqi64go
+	opinfo[opcmpeqi64imm].portable = bccmpeqi64immgo
+	opinfo[opcmplti64].portable = bccmplti64go
+	opinfo[opcmplti64imm].portable = bccmplti64immgo
+	opinfo[opcmplei64].portable = bccmplei64go
+	opinfo[opcmplei64imm].portable = bccmplei64immgo
+	opinfo[opcmpgti64].portable = bccmpgti64go
+	opinfo[opcmpgti64imm].portable = bccmpgti64immgo
+	opinfo[opcmpgei64].portable = bccmpgei64go
+	opinfo[opcmpgei64imm].portable = bccmpgei64immgo
+	opinfo[opcmpeqv].portable = bccmpeqvgo
+	opinfo[opcmpeqvimm].portable = bccmpeqvimmgo
+
 	opinfo[opauxval].portable = bcauxvalgo
 	opinfo[opsplit].portable = bcsplitgo
 
@@ -481,8 +453,6 @@ func init() {
 	opinfo[opfindsym].portable = bcfindsymgo
 	opinfo[opfindsym2].portable = bcfindsym2go
 
-	opinfo[opcmpvi64imm].portable = bccmpvi64immgo
-	opinfo[opcmplti64imm].portable = bccmplti64immgo
 	opinfo[optuple].portable = bctuplego
 	opinfo[opbroadcast0k].portable = bcbroadcast0kgo
 	opinfo[opbroadcast1k].portable = bcbroadcast1kgo
