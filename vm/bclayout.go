@@ -60,6 +60,10 @@ type f64RegData struct {
 	values [bcLaneCount]float64
 }
 
+type tsRegData struct {
+	values [bcLaneCount]int64
+}
+
 func (k *kRegData) getBit(idx int) bool {
 	return (k.mask>>idx)&1 == 1
 }

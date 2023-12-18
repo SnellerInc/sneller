@@ -515,6 +515,37 @@ func init() {
 	opinfo[opxork].portable = bcxorkgo
 	opinfo[opxnork].portable = bcxnorkgo
 
+	opinfo[opdateaddmonth].portable = bcdateaddmonthgo
+	opinfo[opdateaddmonthimm].portable = bcdateaddmonthimmgo
+	opinfo[opdateaddquarter].portable = bcdateaddquartergo
+	opinfo[opdateaddyear].portable = bcdateaddyeargo
+	opinfo[opdatebin].portable = bcdatebingo
+	opinfo[opdatediffmicrosecond].portable = bcdatediffmicrosecondgo
+	opinfo[opdatediffparam].portable = bcdatediffparamgo
+	opinfo[opdatediffmqy].portable = bcdatediffmqygo
+	opinfo[opdateextractmicrosecond].portable = bcdateextractmicrosecondgo
+	opinfo[opdateextractmillisecond].portable = bcdateextractmillisecondgo
+	opinfo[opdateextractsecond].portable = bcdateextractsecondgo
+	opinfo[opdateextractminute].portable = bcdateextractminutego
+	opinfo[opdateextracthour].portable = bcdateextracthourgo
+	opinfo[opdateextractday].portable = bcdateextractdaygo
+	opinfo[opdateextractdow].portable = bcdateextractdowgo
+	opinfo[opdateextractdoy].portable = bcdateextractdoygo
+	opinfo[opdateextractmonth].portable = bcdateextractmonthgo
+	opinfo[opdateextractquarter].portable = bcdateextractquartergo
+	opinfo[opdateextractyear].portable = bcdateextractyeargo
+	opinfo[opdatetounixepoch].portable = bcdatetounixepochgo
+	opinfo[opdatetounixmicro].portable = bcdatetounixmicrogo
+	opinfo[opdatetruncmillisecond].portable = bcdatetruncmillisecondgo
+	opinfo[opdatetruncsecond].portable = bcdatetruncsecondgo
+	opinfo[opdatetruncminute].portable = bcdatetruncminutego
+	opinfo[opdatetrunchour].portable = bcdatetrunchourgo
+	opinfo[opdatetruncday].portable = bcdatetruncdaygo
+	opinfo[opdatetruncdow].portable = bcdatetruncdowgo
+	opinfo[opdatetruncmonth].portable = bcdatetruncmonthgo
+	opinfo[opdatetruncquarter].portable = bcdatetruncquartergo
+	opinfo[opdatetruncyear].portable = bcdatetruncyeargo
+
 	opinfo[opaggminf].portable = bcaggminf
 	opinfo[opaggmaxf].portable = bcaggmaxf
 	opinfo[opaggmini].portable = bcaggmini

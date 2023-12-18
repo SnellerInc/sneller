@@ -2097,8 +2097,8 @@ next:
   /* Z4/Z5 <- Number of hours, minutes, seconds, and microseconds. */                       \
   VPSLLQ $13, Z6, Z4                                                                        \
   VPSLLQ $13, Z7, Z5                                                                        \
-  VPTERNLOGQ.BCST $TLOG_BLEND_BA, CONSTQ_0x1FFF(), INPUT1, Z4                            \
-  VPTERNLOGQ.BCST $TLOG_BLEND_BA, CONSTQ_0x1FFF(), INPUT2, Z5                            \
+  VPTERNLOGQ.BCST $TLOG_BLEND_BA, CONSTQ_0x1FFF(), INPUT1, Z4                               \
+  VPTERNLOGQ.BCST $TLOG_BLEND_BA, CONSTQ_0x1FFF(), INPUT2, Z5                               \
                                                                                             \
   /* Z8/Z9 <- Number of 400Y cycles. */                                                     \
   BC_DIV_U64_WITH_CONST_RECIPROCAL_BCST(Z8, Z9, Z12, Z13, CONSTQ_963315389(), 47)           \
