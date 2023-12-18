@@ -938,3 +938,61 @@ func FuzzLike(f *testing.F) {
 		p.like(node, expr, escape, caseSensitive)
 	})
 }
+
+func FuzzEncodeDecodeString(f *testing.F) {
+
+	f.Add("keyword")
+	f.Add("мmM")
+
+	f.Fuzz(func(t *testing.T, str string) {
+		ops := []bcop{
+			opCmpStrEqCs, opCmpStrEqCi, opCmpStrEqUTF8Ci,
+			opContainsPrefixCs, opContainsPrefixCi, opContainsPrefixUTF8Ci,
+			opContainsSuffixCs, opContainsSuffixCi, opContainsSuffixUTF8Ci,
+			opContainsSubstrCs, opContainsSubstrCi, opContainsSubstrUTF8Ci,
+			opCmpStrFuzzyA3, opHasSubstrFuzzyA3,
+			opCmpStrFuzzyUnicodeA3, opHasSubstrFuzzyUnicodeA3,
+		}
+		needle1 := Needle(str)
+		for _, op := range ops {
+			string2 := encodeNeedleOp(needle1, op)
+			needle3 := deEncodeNeedleOp(string2, op)
+			string4 := encodeNeedleOp(needle3, op)
+			needle5 := deEncodeNeedleOp(string4, op)
+
+			if string2 != string4 {
+				t.Errorf("encodeNeedleOp mismatch: %v: needle1 %v; needle2 %v; needle3 %v; needle4 %v", op, needle1, string2, needle3, string4)
+			}
+			if needle3 != needle5 {
+				t.Errorf("deEncodeNeedleOp mismatch: %v: needle1 %v; needle3 %v; needle4 %v, needle5 %v", op, needle1, needle3, string4, needle5)
+			}
+		}
+	})
+}
+
+func FuzzEncodeDecodePattern(f *testing.F) {
+	f.Add("keyword")
+	f.Add("мmM")
+
+	const wc = '_'
+	const escape = '@'
+
+	f.Fuzz(func(t *testing.T, str string) {
+		ops := []bcop{
+			opEqPatternCs, opContainsPatternCs,
+			opEqPatternCi, opContainsPatternCi,
+			opEqPatternUTF8Ci, opContainsPatternUTF8Ci,
+		}
+		pattern1 := stringext.NewPattern(str, wc, escape)
+		for _, op := range ops {
+			string2 := encodePatternOp(&pattern1, op)
+			pattern3 := deEncodePatternOp(string2, op)
+			string4 := encodePatternOp(&pattern3, op)
+			pattern5 := deEncodePatternOp(string4, op)
+
+			if pattern3.Needle != pattern5.Needle {
+				t.Errorf("deEncodeNeedleOp mismatch: %v: pattern1 %v; pattern3 %v; string4 %v, pattern5 %v", op, pattern1, pattern3, string4, pattern5)
+			}
+		}
+	})
+}

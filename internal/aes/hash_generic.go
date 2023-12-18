@@ -69,7 +69,7 @@ func aesHashWide(quad *ExpandedKey128Quad, p *byte, n int) WideHash {
 		k1 := ^uint64(0) >> (cx & 0x3f)
 		cx = cx & ^uint64(0x3f)
 		si = -int64(cx)
-		z0 = simd.VMOVDQU8Z(p, -0x40+si, k1).ToVec64x8()
+		z0 = simd.Vmovdqu8Z(p, -0x40+si, k1).ToVec64x8()
 	}
 
 	z6 = quad[0].toVec64x8() // The round 1 key quad
@@ -109,9 +109,9 @@ func aesHashWide(quad *ExpandedKey128Quad, p *byte, n int) WideHash {
 			break
 		}
 
-		t := simd.VMOVDQU8(p, -0x40+si).ToVec64x8()
-		simd.VPXORQ(&t, &z0, &z0)
-		simd.VMOVDQA64(&z8, &z7)
+		t := simd.Vmovdqu8(p, -0x40+si).ToVec64x8()
+		simd.Vpxorq(&t, &z0, &z0)
+		simd.Vmovdqa64(&z8, &z7)
 	}
 
 	// No more chunks to process. The in-lane diffusion should be quite good per
@@ -133,21 +133,21 @@ func aesHashWide(quad *ExpandedKey128Quad, p *byte, n int) WideHash {
 	// The remaining operations are expected to slide under the VAESenc latency, barely
 	// contributing to the total execution time of the mixer. enc(x)=enc2(enc1(x)).
 
-	simd.VSHUFI64X2(((1 << 6) | (1 << 4) | (1 << 2) | (1 << 0)), &z0, &z0, &z1) // z1 := BBBB
-	simd.VSHUFI64X2(((2 << 6) | (2 << 4) | (2 << 2) | (2 << 0)), &z0, &z0, &z2) // z2 := CCCC
-	simd.VSHUFI64X2(((3 << 6) | (3 << 4) | (3 << 2) | (3 << 0)), &z0, &z0, &z3) // z3 := DDDD
-	simd.VSHUFI64X2(((0 << 6) | (0 << 4) | (0 << 2) | (0 << 0)), &z0, &z0, &z0) // z0 := AAAA
-	simd.VPXORQ(&z1, &z2, &z16)                                                 // z16 := B^C
+	simd.Vshufi64X2(((1 << 6) | (1 << 4) | (1 << 2) | (1 << 0)), &z0, &z0, &z1) // z1 := BBBB
+	simd.Vshufi64X2(((2 << 6) | (2 << 4) | (2 << 2) | (2 << 0)), &z0, &z0, &z2) // z2 := CCCC
+	simd.Vshufi64X2(((3 << 6) | (3 << 4) | (3 << 2) | (3 << 0)), &z0, &z0, &z3) // z3 := DDDD
+	simd.Vshufi64X2(((0 << 6) | (0 << 4) | (0 << 2) | (0 << 0)), &z0, &z0, &z0) // z0 := AAAA
+	simd.Vpxorq(&z1, &z2, &z16)                                                 // z16 := B^C
 	simd.VAESENC(&z6, &z16, &z16)                                               // z16 := enc1(B^C,k_1), enc1(B^C,k_2), enc1(B^C,k_3), enc1(B^C,k_4)
-	simd.VPXORQ(&z1, &z3, &z17)                                                 // z17 := B^D
+	simd.Vpxorq(&z1, &z3, &z17)                                                 // z17 := B^D
 	simd.VAESENC(&z6, &z17, &z17)                                               // z17 := enc1(B^D,k_1), enc1(B^D,k_2), enc1(B^D,k_3), enc1(B^D,k_4)
-	simd.VPXORQ(&z2, &z3, &z18)                                                 // z18 := C^D
+	simd.Vpxorq(&z2, &z3, &z18)                                                 // z18 := C^D
 	simd.VAESENC(&z6, &z18, &z18)                                               // z18 := enc1(C^D,k_1), enc1(C^D,k_2), enc1(C^D,k_3), enc1(C^D,k_4)
-	simd.VPXORQ(&z0, &z1, &z19)                                                 // z19 := A^B
+	simd.Vpxorq(&z0, &z1, &z19)                                                 // z19 := A^B
 	simd.VAESENC(&z6, &z19, &z19)                                               // z19 := enc1(A^B,k_1), enc1(A^B,k_2), enc1(A^B,k_3), enc1(A^B,k_4)
-	simd.VPXORQ(&z0, &z2, &z20)                                                 // z20 := A^C
+	simd.Vpxorq(&z0, &z2, &z20)                                                 // z20 := A^C
 	simd.VAESENC(&z6, &z20, &z20)                                               // z20 := enc1(A^C,k_1), enc1(A^C,k_2), enc1(A^C,k_3), enc1(A^C,k_4)
-	simd.VPXORQ(&z0, &z3, &z21)                                                 // z21 := A^D
+	simd.Vpxorq(&z0, &z3, &z21)                                                 // z21 := A^D
 	simd.VAESENC(&z6, &z21, &z21)                                               // z21 := enc1(A^D,k_1), enc1(A^D,k_2), enc1(A^D,k_3), enc1(A^D,k_4)
 	simd.VAESENC(&z8, &z16, &z16)                                               // z16 := enc2(z16)
 	simd.VAESENC(&z8, &z17, &z17)                                               // z17 := enc2(z17)
@@ -155,9 +155,9 @@ func aesHashWide(quad *ExpandedKey128Quad, p *byte, n int) WideHash {
 	simd.VAESENC(&z8, &z19, &z19)                                               // z19 := enc2(z19)
 	simd.VAESENC(&z8, &z20, &z20)                                               // z20 := enc2(z20)
 	simd.VAESENC(&z8, &z21, &z21)                                               // z21 := enc2(z21)
-	simd.VPTERNLOGQ(0x96, &z18, &z17, &z16)                                     // z16 := enc(B^C)^enc(B^D)^enc(C^D)
-	simd.VPTERNLOGQ(0x96, &z21, &z20, &z19)                                     // z19 := enc(A^B)^enc(A^C)^enc(A^D)
-	simd.VPXORQ(&z16, &z19, &z0)                                                // z0  := enc(A^B)^enc(A^C)^enc(A^D)^enc(B^C)^enc(B^D)^enc(C^D)
+	simd.Vpternlogq(0x96, &z18, &z17, &z16)                                     // z16 := enc(B^C)^enc(B^D)^enc(C^D)
+	simd.Vpternlogq(0x96, &z21, &z20, &z19)                                     // z19 := enc(A^B)^enc(A^C)^enc(A^D)
+	simd.Vpxorq(&z16, &z19, &z0)                                                // z0  := enc(A^B)^enc(A^C)^enc(A^D)^enc(B^C)^enc(B^D)^enc(C^D)
 	// Z0 contains the final result
 	return WideHash{z0[0], z0[1], z0[2], z0[3], z0[4], z0[5], z0[6], z0[7]}
 }

@@ -19,6 +19,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -711,6 +712,20 @@ func EncodeFuzzyNeedleUnicode(needle Needle) string {
 	return string(result)
 }
 
+// DeEncodeFuzzyNeedleUnicode de-encode a needle (string) for fuzzy unicode comparisons
+func DeEncodeFuzzyNeedleUnicode(needle string) Needle {
+	bytes := []byte(needle)
+	bytes = bytes[512+4:] // 512 bytes for the fuzzyApprox3Spec, and 4 bytes for the number of bytes
+	nRunes := len(bytes) / 4
+	result := strings.Builder{}
+	for i := 0; i < nRunes; i++ {
+		r, _ := utf8.DecodeRune(bytes)
+		result.WriteRune(r)
+		bytes = bytes[4:]
+	}
+	return Needle(result.String())
+}
+
 // EncodeFuzzyNeedleASCII encode a needle (string) for fuzzy ASCII comparisons
 func EncodeFuzzyNeedleASCII(needle Needle) string {
 	nBytes := len(needle)
@@ -719,6 +734,15 @@ func EncodeFuzzyNeedleASCII(needle Needle) string {
 	result = append(result, NormalizeStringASCIIOnly([]byte(needle))...)
 	result = append(result, byte(0xFF), byte(0xFF), byte(0xFF)) // pad with 3 invalid ascii bytes 0xFF
 	return string(result)
+}
+
+// DeEncodeFuzzyNeedleASCII de-encode a needle (string) for fuzzy ASCII comparisons
+func DeEncodeFuzzyNeedleASCII(needle string) Needle {
+	bytes := []byte(needle)
+	bytes = bytes[512+4:] // 512 bytes for the fuzzyApprox3Spec, and 4 bytes for the number of bytes
+	nBytes := len(bytes)
+	result := string(bytes[:nBytes-3])
+	return Needle(result)
 }
 
 // NormalizeRune normalizes the provided rune into the smallest and equal rune wrt case-folding.
@@ -826,9 +850,52 @@ func genNeedleUTF8Ci(needle Needle, reversed, addASCII, addUpperBounds, addLower
 	return string(result)
 }
 
+// deEncoderUTF de-encodes genNeedleUTF8Ci
+func deEncoderUTF(needle string, reversed, addASCII, addUpperBounds, addLowerBounds bool) Needle {
+
+	reverse := func(s string) string {
+		chars := []rune(s)
+		for i, j := 0, len(chars)-1; i < j; i, j = i+1, j-1 {
+			chars[i], chars[j] = chars[j], chars[i]
+		}
+		return string(chars)
+	}
+
+	spacing := 4
+	if addASCII {
+		spacing++
+	}
+	if addUpperBounds {
+		spacing++
+	}
+	if addLowerBounds {
+		spacing++
+	}
+	bytes := []byte(needle)
+	nRunes := int(binary.LittleEndian.Uint32(bytes))
+
+	bytes = bytes[4:]
+	result := strings.Builder{}
+
+	for i := 0; i < nRunes; i++ {
+		r, _ := utf8.DecodeRune(bytes)
+		result.WriteRune(r)
+		bytes = bytes[4*spacing:]
+	}
+	if reversed {
+		return Needle(reverse(result.String()))
+	}
+	return Needle(result.String())
+}
+
 // EncodeEqualStringCS encodes the provided string for usage with bcStrCmpEqCs
 func EncodeEqualStringCS(needle Needle) string {
 	return string(needle)
+}
+
+// DeEncodeEqualStringCS de-encodes the provided string for usage with bcStrCmpEqCs
+func DeEncodeEqualStringCS(needle string) Needle {
+	return Needle(needle)
 }
 
 // EncodeEqualStringCI encodes the provided string for usage with bcStrCmpEqCi
@@ -837,9 +904,20 @@ func EncodeEqualStringCI(needle Needle) string {
 	return NormalizeStringASCIIOnlyString(string(needle))
 }
 
+// DeEncodeEqualStringCI de-encodes the provided string for usage with bcStrCmpEqCi
+func DeEncodeEqualStringCI(needle string) Needle {
+	// only normalize ASCII values, leave other values (UTF8) unchanged
+	return Needle(NormalizeStringASCIIOnlyString(needle))
+}
+
 // EncodeEqualStringUTF8CI encodes the provided string for usage with bcStrCmpEqUTF8Ci
 func EncodeEqualStringUTF8CI(needle Needle) string {
 	return genNeedleUTF8Ci(needle, false, true, true, true)
+}
+
+// DeEncodeEqualStringUTF8CI de-encodes the provided string for usage with bcStrCmpEqUTF8Ci
+func DeEncodeEqualStringUTF8CI(needle string) Needle {
+	return deEncoderUTF(needle, false, true, true, true)
 }
 
 // EncodeContainsPrefixCS encodes the provided string for usage with bcContainsPrefixCs
@@ -847,9 +925,19 @@ func EncodeContainsPrefixCS(needle Needle) string {
 	return string(needle)
 }
 
+// DeEncodeContainsPrefixCS de-encodes the provided string for usage with bcContainsPrefixCs
+func DeEncodeContainsPrefixCS(needle string) Needle {
+	return Needle(needle)
+}
+
 // EncodeContainsPrefixCI encodes the provided string for usage with bcContainsPrefixCi
 func EncodeContainsPrefixCI(needle Needle) string {
 	return NormalizeString(string(needle))
+}
+
+// DeEncodeContainsPrefixCI de-encodes the provided string for usage with bcContainsPrefixCi
+func DeEncodeContainsPrefixCI(needle string) Needle {
+	return Needle(needle)
 }
 
 // EncodeContainsPrefixUTF8CI encodes the provided string for usage with bcContainsPrefixUTF8Ci
@@ -857,9 +945,19 @@ func EncodeContainsPrefixUTF8CI(needle Needle) string {
 	return genNeedleUTF8Ci(needle, false, true, true, false)
 }
 
+// DeEncodeContainsPrefixUTF8CI de-encodes the provided string for usage with bcContainsPrefixUTF8Ci
+func DeEncodeContainsPrefixUTF8CI(needle string) Needle {
+	return deEncoderUTF(needle, false, true, true, false)
+}
+
 // EncodeContainsSuffixCS encodes the provided string for usage with bcContainsSuffixCs
 func EncodeContainsSuffixCS(needle Needle) string {
 	return string(needle)
+}
+
+// DeEncodeContainsSuffixCS de-encodes the provided string for usage with bcContainsSuffixCs
+func DeEncodeContainsSuffixCS(needle string) Needle {
+	return Needle(needle)
 }
 
 // EncodeContainsSuffixCI encodes the provided string for usage with bcContainsSuffixCi
@@ -867,9 +965,19 @@ func EncodeContainsSuffixCI(needle Needle) string {
 	return NormalizeString(string(needle))
 }
 
+// DeEncodeContainsSuffixCI de-encodes the provided string for usage with bcContainsSuffixCi
+func DeEncodeContainsSuffixCI(needle string) Needle {
+	return Needle(needle)
+}
+
 // EncodeContainsSuffixUTF8CI encodes the provided string for usage with bcContainsSuffixUTF8Ci
 func EncodeContainsSuffixUTF8CI(needle Needle) string {
 	return genNeedleUTF8Ci(needle, true, true, true, false)
+}
+
+// DeEncodeContainsSuffixUTF8CI de-encodes the provided string for usage with bcContainsSuffixUTF8Ci
+func DeEncodeContainsSuffixUTF8CI(needle string) Needle {
+	return deEncoderUTF(needle, true, true, true, false)
 }
 
 // EncodeContainsSubstrCS encodes the provided string for usage with bcContainsSubstrCs
@@ -877,14 +985,29 @@ func EncodeContainsSubstrCS(needle Needle) string {
 	return string(needle)
 }
 
+// DeEncodeContainsSubstrCS de-encodes the provided string for usage with bcContainsSubstrCs
+func DeEncodeContainsSubstrCS(needle string) Needle {
+	return Needle(needle)
+}
+
 // EncodeContainsSubstrCI encodes the provided string for usage with bcContainsSubstrCi
 func EncodeContainsSubstrCI(needle Needle) string {
 	return NormalizeStringASCIIOnlyString(string(needle))
 }
 
+// DeEncodeContainsSubstrCI de-encodes the provided string for usage with bcContainsSubstrCi
+func DeEncodeContainsSubstrCI(needle string) Needle {
+	return Needle(needle)
+}
+
 // EncodeContainsSubstrUTF8CI encodes the provided string for usage with bcContainsSubstrUTF8Ci
 func EncodeContainsSubstrUTF8CI(needle Needle) string {
 	return genNeedleUTF8Ci(needle, false, false, true, false)
+}
+
+// DeEncodeContainsSubstrUTF8CI de-encodes the provided string for usage with bcContainsSubstrUTF8Ci
+func DeEncodeContainsSubstrUTF8CI(needle string) Needle {
+	return deEncoderUTF(needle, false, false, true, false)
 }
 
 // EncodeContainsPatternCS encodes the provided string for usage with bcContainsPatternCs
@@ -904,10 +1027,27 @@ func EncodeContainsPatternCS(pattern *Pattern) string {
 	return string(append(result, 0xFF, 0xFF, 0xFF))
 }
 
+// DeEncodeContainsPatternCS de-encodes the provided string for usage with bcContainsPatternCs
+func DeEncodeContainsPatternCS(pattern string) Pattern {
+	bytes := []byte(pattern)
+	nBytes := int(binary.LittleEndian.Uint32(bytes))
+	bytes = bytes[4:]
+	needle := string(bytes[:nBytes])
+
+	const wc = '_'
+	const escape = '@'
+	return NewPattern(needle, wc, escape)
+}
+
 // EncodeContainsPatternCI encodes the provided string for usage with bcContainsPatternCi
 func EncodeContainsPatternCI(pattern *Pattern) string {
 	pattern.Needle = Needle(NormalizeStringASCIIOnlyString(string(pattern.Needle)))
 	return EncodeContainsPatternCS(pattern)
+}
+
+// DeEncodeContainsPatternCI de-encodes the provided string for usage with bcContainsPatternCi
+func DeEncodeContainsPatternCI(pattern string) Pattern {
+	return DeEncodeContainsPatternCS(pattern)
 }
 
 // EncodeContainsPatternUTF8CI encodes the provided string for usage with bcContainsPatternUTF8Ci
@@ -929,11 +1069,30 @@ func EncodeContainsPatternUTF8CI(pattern *Pattern) string {
 	return string(result)
 }
 
+// DeEncodeContainsPatternUTF8CI de-encodes the provided string for usage with bcContainsPatternUTF8Ci
+func DeEncodeContainsPatternUTF8CI(pattern string) Pattern {
+	bytes := []byte(pattern)
+	nRunes := int(binary.LittleEndian.Uint32(bytes))
+
+	bytes = bytes[4:]
+	result := strings.Builder{}
+
+	for i := 0; i < nRunes; i++ {
+		r, _ := utf8.DecodeRune(bytes)
+		result.WriteRune(r)
+		bytes = bytes[4*4:] // advance 4 runes (of 4 bytes)
+	}
+
+	const wc = '_'
+	const escape = '@'
+	return NewPattern(result.String(), wc, escape)
+}
+
 // ToBCD converts two byte arrays to byte sequence of binary coded digits, needed by opIsSubnetOfIP4.
 // Create an encoding of an IP4 as 16 bytes that is convenient. eg., byte sequence [192,1,2,3] becomes byte
 // sequence 2,9,1,0, 1,0,0,0, 2,0,0,0, 3,0,0,0
 func ToBCD(min, max *[4]byte) string {
-	ipBCD := make([]byte, 32)
+	ipBCD := make([]byte, 16)
 	minStr := []byte(fmt.Sprintf("%04d%04d%04d%04d", min[0], min[1], min[2], min[3]))
 	maxStr := []byte(fmt.Sprintf("%04d%04d%04d%04d", max[0], max[1], max[2], max[3]))
 	for i := 0; i < 16; i += 4 {
@@ -943,6 +1102,46 @@ func ToBCD(min, max *[4]byte) string {
 		ipBCD[3+i] = (minStr[0+i] & 0b1111) | ((maxStr[0+i] & 0b1111) << 4)
 	}
 	return string(ipBCD)
+}
+
+// DeEncodeBCD is the dual of ToBCD
+func DeEncodeBCD(s string) (min, max [4]byte) {
+	bytes := []byte(s)
+
+	s0 := fmt.Sprintf("%v%v%v", bytes[2]&0b1111, bytes[1]&0b1111, bytes[0]&0b1111)
+	s1 := fmt.Sprintf("%v%v%v", bytes[6]&0b1111, bytes[5]&0b1111, bytes[4]&0b1111)
+	s2 := fmt.Sprintf("%v%v%v", bytes[10]&0b1111, bytes[9]&0b1111, bytes[8]&0b1111)
+	s3 := fmt.Sprintf("%v%v%v", bytes[14]&0b1111, bytes[13]&0b1111, bytes[12]&0b1111)
+	s4 := fmt.Sprintf("%v%v%v", bytes[2]>>4, bytes[1]>>4, bytes[0]>>4)
+	s5 := fmt.Sprintf("%v%v%v", bytes[6]>>4, bytes[5]>>4, bytes[4]>>4)
+	s6 := fmt.Sprintf("%v%v%v", bytes[10]>>4, bytes[9]>>4, bytes[8]>>4)
+	s7 := fmt.Sprintf("%v%v%v", bytes[14]>>4, bytes[13]>>4, bytes[12]>>4)
+
+	if i, err := strconv.Atoi(s0); err == nil {
+		min[0] = byte(i)
+	}
+	if i, err := strconv.Atoi(s1); err == nil {
+		min[1] = byte(i)
+	}
+	if i, err := strconv.Atoi(s2); err == nil {
+		min[2] = byte(i)
+	}
+	if i, err := strconv.Atoi(s3); err == nil {
+		min[3] = byte(i)
+	}
+	if i, err := strconv.Atoi(s4); err == nil {
+		max[0] = byte(i)
+	}
+	if i, err := strconv.Atoi(s5); err == nil {
+		max[1] = byte(i)
+	}
+	if i, err := strconv.Atoi(s6); err == nil {
+		max[2] = byte(i)
+	}
+	if i, err := strconv.Atoi(s7); err == nil {
+		max[3] = byte(i)
+	}
+	return
 }
 
 // NoEscape is the default escape for LIKE parameters; it signals no escape

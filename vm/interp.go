@@ -453,6 +453,57 @@ func init() {
 	opinfo[opfindsym].portable = bcfindsymgo
 	opinfo[opfindsym2].portable = bcfindsym2go
 
+	opinfo[opCmpStrEqCs].portable = func(bc *bytecode, pc int) int { return bcCmpStrGo(bc, pc, opCmpStrEqCs) }
+	opinfo[opCmpStrEqCi].portable = func(bc *bytecode, pc int) int { return bcCmpStrGo(bc, pc, opCmpStrEqCi) }
+	opinfo[opCmpStrEqUTF8Ci].portable = func(bc *bytecode, pc int) int { return bcCmpStrGo(bc, pc, opCmpStrEqUTF8Ci) }
+
+	opinfo[opCmpStrFuzzyA3].portable = func(bc *bytecode, pc int) int { return bcCmpStrFuzzyGo(bc, pc, opCmpStrFuzzyA3) }
+	opinfo[opCmpStrFuzzyUnicodeA3].portable = func(bc *bytecode, pc int) int { return bcCmpStrFuzzyGo(bc, pc, opCmpStrFuzzyUnicodeA3) }
+	opinfo[opHasSubstrFuzzyA3].portable = func(bc *bytecode, pc int) int { return bcCmpStrFuzzyGo(bc, pc, opHasSubstrFuzzyA3) }
+	opinfo[opHasSubstrFuzzyUnicodeA3].portable = func(bc *bytecode, pc int) int { return bcCmpStrFuzzyGo(bc, pc, opHasSubstrFuzzyUnicodeA3) }
+
+	opinfo[opSkip1charLeft].portable = func(bc *bytecode, pc int) int { return bcSkip1Go(bc, pc, opSkip1charLeft) }
+	opinfo[opSkip1charRight].portable = func(bc *bytecode, pc int) int { return bcSkip1Go(bc, pc, opSkip1charRight) }
+	opinfo[opSkipNcharLeft].portable = func(bc *bytecode, pc int) int { return bcSkipNGo(bc, pc, opSkipNcharLeft) }
+	opinfo[opSkipNcharRight].portable = func(bc *bytecode, pc int) int { return bcSkipNGo(bc, pc, opSkipNcharRight) }
+
+	opinfo[opTrimWsLeft].portable = func(bc *bytecode, pc int) int { return bcTrimWsGo(bc, pc, opTrimWsLeft) }
+	opinfo[opTrimWsRight].portable = func(bc *bytecode, pc int) int { return bcTrimWsGo(bc, pc, opTrimWsRight) }
+	opinfo[opTrim4charLeft].portable = func(bc *bytecode, pc int) int { return bcTrim4CharGo(bc, pc, opTrim4charLeft) }
+	opinfo[opTrim4charRight].portable = func(bc *bytecode, pc int) int { return bcTrim4CharGo(bc, pc, opTrim4charRight) }
+
+	opinfo[opoctetlength].portable = func(bc *bytecode, pc int) int { return bcLengthGo(bc, pc, opoctetlength) }
+	opinfo[opcharlength].portable = func(bc *bytecode, pc int) int { return bcLengthGo(bc, pc, opcharlength) }
+	opinfo[opSubstr].portable = bcSubstrGo
+	opinfo[opSplitPart].portable = bcSplitPartGo
+
+	opinfo[opContainsPrefixCs].portable = func(bc *bytecode, pc int) int { return bcContainsPreSufSubGo(bc, pc, opContainsPrefixCs) }
+	opinfo[opContainsPrefixCi].portable = func(bc *bytecode, pc int) int { return bcContainsPreSufSubGo(bc, pc, opContainsPrefixCi) }
+	opinfo[opContainsPrefixUTF8Ci].portable = func(bc *bytecode, pc int) int { return bcContainsPreSufSubGo(bc, pc, opContainsPrefixUTF8Ci) }
+	opinfo[opContainsSuffixCs].portable = func(bc *bytecode, pc int) int { return bcContainsPreSufSubGo(bc, pc, opContainsSuffixCs) }
+	opinfo[opContainsSuffixCi].portable = func(bc *bytecode, pc int) int { return bcContainsPreSufSubGo(bc, pc, opContainsSuffixCi) }
+	opinfo[opContainsSuffixUTF8Ci].portable = func(bc *bytecode, pc int) int { return bcContainsPreSufSubGo(bc, pc, opContainsSuffixUTF8Ci) }
+	opinfo[opContainsSubstrCs].portable = func(bc *bytecode, pc int) int { return bcContainsPreSufSubGo(bc, pc, opContainsSubstrCs) }
+	opinfo[opContainsSubstrCi].portable = func(bc *bytecode, pc int) int { return bcContainsPreSufSubGo(bc, pc, opContainsSubstrCi) }
+	opinfo[opContainsSubstrUTF8Ci].portable = func(bc *bytecode, pc int) int { return bcContainsPreSufSubGo(bc, pc, opContainsSubstrUTF8Ci) }
+
+	opinfo[opEqPatternCs].portable = func(bc *bytecode, pc int) int { return bcContainsPatternGo(bc, pc, opEqPatternCs) }
+	opinfo[opEqPatternCi].portable = func(bc *bytecode, pc int) int { return bcContainsPatternGo(bc, pc, opEqPatternCi) }
+	opinfo[opEqPatternUTF8Ci].portable = func(bc *bytecode, pc int) int { return bcContainsPatternGo(bc, pc, opEqPatternUTF8Ci) }
+	opinfo[opContainsPatternCs].portable = func(bc *bytecode, pc int) int { return bcContainsPatternGo(bc, pc, opContainsPatternCs) }
+	opinfo[opContainsPatternCi].portable = func(bc *bytecode, pc int) int { return bcContainsPatternGo(bc, pc, opContainsPatternCi) }
+	opinfo[opContainsPatternUTF8Ci].portable = func(bc *bytecode, pc int) int { return bcContainsPatternGo(bc, pc, opContainsPatternUTF8Ci) }
+
+	opinfo[opIsSubnetOfIP4].portable = bcIsSubnetOfIP4Go
+
+	opinfo[opDfaT6].portable = func(bc *bytecode, pc int) int { return bcDFAGo(bc, pc, opDfaT6) }
+	opinfo[opDfaT7].portable = func(bc *bytecode, pc int) int { return bcDFAGo(bc, pc, opDfaT7) }
+	opinfo[opDfaT8].portable = func(bc *bytecode, pc int) int { return bcDFAGo(bc, pc, opDfaT8) }
+	opinfo[opDfaT6Z].portable = func(bc *bytecode, pc int) int { return bcDFAGo(bc, pc, opDfaT6Z) }
+	opinfo[opDfaT7Z].portable = func(bc *bytecode, pc int) int { return bcDFAGo(bc, pc, opDfaT7Z) }
+	opinfo[opDfaT8Z].portable = func(bc *bytecode, pc int) int { return bcDFAGo(bc, pc, opDfaT8Z) }
+	opinfo[opDfaLZ].portable = func(bc *bytecode, pc int) int { return bcDFAGo(bc, pc, opDfaLZ) }
+
 	opinfo[optuple].portable = bctuplego
 	opinfo[opbroadcast0k].portable = bcbroadcast0kgo
 	opinfo[opbroadcast1k].portable = bcbroadcast1kgo

@@ -344,3 +344,22 @@ func FuzzSimplifyLikeExpr(f *testing.F) {
 		SimplifyLikeExpr(s, wc, kc, esc)
 	})
 }
+
+// FuzzToBCD checks whether ToBCD and DeEncodeBCD are duals
+func FuzzToBCD(f *testing.F) {
+	f.Add(byte(0), byte(1), byte(2), byte(3), byte(4), byte(5), byte(6), byte(7))
+
+	f.Fuzz(func(t *testing.T, b0, b1, b2, b3, b4, b5, b6, b7 byte) {
+		minX := [4]byte{b0, b1, b2, b3}
+		maxX := [4]byte{b4, b5, b6, b7}
+		str := ToBCD(&minX, &maxX)
+		minY, maxY := DeEncodeBCD(str)
+
+		if minX != minY {
+			t.Errorf("Expected min %v but got %v ([]byte=%v)", minX, minY, []byte(str))
+		}
+		if maxX != maxY {
+			t.Errorf("Expected max %v but got %v ([]byte=%v)", maxX, maxY, []byte(str))
+		}
+	})
+}

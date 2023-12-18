@@ -4471,6 +4471,41 @@ func encodeNeedleOp(needle stringext.Needle, op bcop) string {
 	}
 }
 
+func deEncodeNeedleOp(needle string, op bcop) stringext.Needle {
+	switch op {
+	case opCmpStrEqCs:
+		return stringext.DeEncodeEqualStringCS(needle)
+	case opCmpStrEqCi:
+		return stringext.DeEncodeEqualStringCI(needle)
+	case opCmpStrEqUTF8Ci:
+		return stringext.DeEncodeEqualStringUTF8CI(needle)
+	case opContainsPrefixCs:
+		return stringext.DeEncodeContainsPrefixCS(needle)
+	case opContainsPrefixCi:
+		return stringext.DeEncodeContainsPrefixCI(needle)
+	case opContainsPrefixUTF8Ci:
+		return stringext.DeEncodeContainsPrefixUTF8CI(needle)
+	case opContainsSuffixCs:
+		return stringext.DeEncodeContainsSuffixCS(needle)
+	case opContainsSuffixCi:
+		return stringext.DeEncodeContainsSuffixCI(needle)
+	case opContainsSuffixUTF8Ci:
+		return stringext.DeEncodeContainsSuffixUTF8CI(needle)
+	case opContainsSubstrCs:
+		return stringext.DeEncodeContainsSubstrCS(needle)
+	case opContainsSubstrCi:
+		return stringext.DeEncodeContainsSubstrCI(needle)
+	case opContainsSubstrUTF8Ci:
+		return stringext.DeEncodeContainsSubstrUTF8CI(needle)
+	case opCmpStrFuzzyA3, opHasSubstrFuzzyA3:
+		return stringext.DeEncodeFuzzyNeedleASCII(needle)
+	case opCmpStrFuzzyUnicodeA3, opHasSubstrFuzzyUnicodeA3:
+		return stringext.DeEncodeFuzzyNeedleUnicode(needle)
+	default:
+		panic("unsupported op")
+	}
+}
+
 func encodePattern(pattern *stringext.Pattern, op ssaop) string {
 	return encodePatternOp(pattern, ssainfo[op].bc)
 }
@@ -4483,6 +4518,19 @@ func encodePatternOp(pattern *stringext.Pattern, op bcop) string {
 		return stringext.EncodeContainsPatternCI(pattern)
 	case opEqPatternUTF8Ci, opContainsPatternUTF8Ci:
 		return stringext.EncodeContainsPatternUTF8CI(pattern)
+	default:
+		panic("unsupported op")
+	}
+}
+
+func deEncodePatternOp(pattern string, op bcop) stringext.Pattern {
+	switch op {
+	case opEqPatternCs, opContainsPatternCs:
+		return stringext.DeEncodeContainsPatternCS(pattern)
+	case opEqPatternCi, opContainsPatternCi:
+		return stringext.DeEncodeContainsPatternCI(pattern)
+	case opEqPatternUTF8Ci, opContainsPatternUTF8Ci:
+		return stringext.DeEncodeContainsPatternUTF8CI(pattern)
 	default:
 		panic("unsupported op")
 	}
