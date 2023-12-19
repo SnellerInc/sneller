@@ -335,3 +335,59 @@ outer:
 	dstk.mask = retmask
 	return pc + 16
 }
+
+func calcStringTlvAndHLen(valueSize uint32) (byte, byte) {
+	tlv := byte(ion.StringType<<4) | byte(valueSize&0xFF)
+	hLen := byte(1)
+	if valueSize > 14 {
+		tlv = byte(ion.StringType<<4) | 0xE
+		hLen++
+	}
+
+	if valueSize > 129 {
+		hLen++
+	}
+
+	if valueSize > 16386 {
+		hLen++
+	}
+
+	if valueSize > 2097155 {
+		hLen++
+	}
+
+	return tlv, hLen
+}
+
+func bcunsymbolizego(bc *bytecode, pc int) int {
+	src := argptr[vRegData](bc, pc+2)
+	msk := argptr[kRegData](bc, pc+4).mask
+
+	dst := *src
+
+	for i := 0; i < bcLaneCount; i++ {
+		if (msk&(1<<i)) == 0 || src.sizes[i] == 0 {
+			continue
+		}
+
+		tlv := src.typeL[i]
+		if ion.Type(tlv>>4) != ion.SymbolType {
+			continue
+		}
+
+		mem := vmref{src.offsets[i], src.sizes[i]}.mem()
+		symbol, _, _ := ion.ReadSymbol(mem)
+
+		symref := bc.symtab[symbol]
+		dst.offsets[i] = symref[0]
+		dst.sizes[i] = symref[1]
+
+		// NOTE: We don't have to read the string data to properly
+		// construct the tlv byte and its header size as we know it's
+		// a string and we know how to calculate TLV and header size.
+		dst.typeL[i], dst.headerSize[i] = calcStringTlvAndHLen(symref[1])
+	}
+
+	*argptr[vRegData](bc, pc) = dst
+	return pc + 6
+}

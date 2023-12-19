@@ -452,6 +452,7 @@ func init() {
 	opinfo[opobjectsize].portable = bcobjectsizego
 	opinfo[opfindsym].portable = bcfindsymgo
 	opinfo[opfindsym2].portable = bcfindsym2go
+	opinfo[opunsymbolize].portable = bcunsymbolizego
 
 	opinfo[opCmpStrEqCs].portable = func(bc *bytecode, pc int) int { return bcCmpStrGo(bc, pc, opCmpStrEqCs) }
 	opinfo[opCmpStrEqCi].portable = func(bc *bytecode, pc int) int { return bcCmpStrGo(bc, pc, opCmpStrEqCi) }
