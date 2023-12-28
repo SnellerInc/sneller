@@ -39,7 +39,7 @@ scalar_loop:
     // update HLL register
     MOVBQZX (R15)(DX*1), BX
     CMPQ    BX, CX
-    CMOVQLT CX, BX      // BX = max(DX, BX)
+    CMOVQLT CX, BX      // BX = max(CX, BX)
     MOVB    BL, (R15)(DX*1)
 
 loop_tail:
