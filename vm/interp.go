@@ -547,10 +547,10 @@ func init() {
 	opinfo[opdatetruncquarter].portable = bcdatetruncquartergo
 	opinfo[opdatetruncyear].portable = bcdatetruncyeargo
 
-	opinfo[opaggminf].portable = bcaggminf
-	opinfo[opaggmaxf].portable = bcaggmaxf
-	opinfo[opaggmini].portable = bcaggmini
-	opinfo[opaggmaxi].portable = bcaggmaxi
+	opinfo[opaggminf].portable = bcaggminfgo
+	opinfo[opaggmaxf].portable = bcaggmaxfgo
+	opinfo[opaggmini].portable = bcaggminigo
+	opinfo[opaggmaxi].portable = bcaggmaxigo
 
 	opinfo[opcvtktof64].portable = bccvtktof64
 	opinfo[opcvtktoi64].portable = bccvtktoi64
